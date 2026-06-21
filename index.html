@@ -247,9 +247,11 @@ const EXC_NATURES = [
   {key:'revenu',        label:'Revenu exceptionnel (vrai gain)',cash:+1, patr:+1, desc:"Vrai gain non récurrent (prime exceptionnelle, vente avec plus-value…). Augmente le patrimoine."},
   {key:'remboursement', label:'Remboursement d\'emprunt',       cash:-1, patr:0,  desc:"Tu rembourses un prêt. -cash mais -dette → patrimoine net inchangé."},
   {key:'investissement',label:'Placement / achat d\'actif',     cash:-1, patr:0,  desc:"Terrain, BRVM, bitcoin, compte-titres, dépôt sur livret… Tu transformes du cash en actif → patrimoine net inchangé."},
-  {key:'conso',         label:'Consommation / don exceptionnel',cash:-1, patr:-1, desc:"Dîme, dons, aide famille, gros achat conso (électroménager, déménagement…). Sortie réelle qui réduit le patrimoine."}
+  {key:'conso',         label:'Consommation exceptionnelle',    cash:-1, patr:-1, desc:"Gros achat de consommation (électroménager, high-tech, déménagement, mobilier…). Sortie réelle qui réduit le patrimoine."},
+  {key:'don',           label:'Don exceptionnel',               cash:-1, patr:-1, desc:"Dîme, dons, aide à la famille, cadeau… Sortie réelle qui réduit le patrimoine (parfois défiscalisable : voir onglet Défiscalisation)."}
 ];
-function excNat(k){ return EXC_NATURES.find(n=>n.key===k)||EXC_NATURES[5]; }
+function excNat(k){ return EXC_NATURES.find(n=>n.key===k)||EXC_NATURES.find(n=>n.key==='conso'); }
+function excSumKey(k){ return excList().filter(e=>e.nature===k).reduce((s,e)=>s+(e.montant||0),0); }
 const CURRENCIES = ['EUR','USDT','USD','GBP','FCFA'];
 const FX_DEFAULT = {EUR:1, USDT:0.92, USD:0.92, GBP:1.17, FCFA:0.001524};
 const AUX = ['inv','liq','asset','debt','deduc','dedm','fx','startcash','excm','excl','excn','excmt'];
@@ -768,20 +770,24 @@ function renderExcept(){
 
   // Bilan
   const entrees=excEntrees(), sorties=excSorties(), tres=entrees-sorties, patr=excPatr();
+  const sPlac=excSumKey('investissement'), sConso=excSumKey('conso'), sDon=excSumKey('don'), sRemb=excSumKey('remboursement');
   h+=`<div class="card"><h2>Bilan exceptionnel ${state.currentYear}</h2><div class="kpis">`;
   h+=kpi('Entrées exceptionnelles',eur(entrees));
   h+=kpi('Sorties exceptionnelles',eur(sorties));
-  h+=kpi('Δ Trésorerie (cash)',(tres>=0?'+':'')+eur(tres),tres>=0?'good':'bad');
+  h+=kpi('Résultat exceptionnel (entrées − sorties)',(tres>=0?'+':'')+eur(tres),tres>=0?'good':'bad');
   h+=kpi('Impact patrimoine net',(patr>=0?'+':'')+eur(patr),patr>=0?'good':'bad');
   h+=`</div>`;
+  h+=`<p class="note" style="margin-top:8px"><b>Résultat exceptionnel = entrées − sorties = ${(tres>=0?'+':'')+eur(tres)}</b> → c'est ce qu'il te reste (en cash + placements) une fois tous les mouvements exceptionnels faits. Détail des sorties : Placements <b>${eur(sPlac)}</b> • Consommation <b>${eur(sConso)}</b> • Dons <b>${eur(sDon)}</b> • Remboursements <b>${eur(sRemb)}</b>.</p>`;
   // épargne d'exploitation (courant) — inchangée
-  let opSave=0; state.people.forEach(p=>MONTHS.forEach((_,m)=>opSave+=epargne(p,m,'planned')));
   let opProj=0; state.people.forEach(p=>MONTHS.forEach((_,m)=>opProj+=epargneProj(p,m)));
   h+=`<div class="kpis" style="margin-top:8px">`;
   h+=kpi('Épargne d\'exploitation (projetée)',eur(opProj),opProj>=0?'good':'bad');
   h+=kpi('Variation patrimoine estimée',(opProj+patr>=0?'+':'')+eur(opProj+patr),(opProj+patr)>=0?'good':'bad');
   h+=`</div>
-  <p class="note" style="margin-top:8px"><b>Lecture :</b> ton <b>épargne d'exploitation</b> = ce que ton train de vie dégage (revenus − dépenses courantes), <u>non polluée</u> par l'exceptionnel. La <b>variation de patrimoine</b> = épargne d'exploitation + impact exceptionnel (les dons/conso la baissent ; déblocages, emprunts, placements sont neutres car ils déplacent juste de l'argent).</p></div>`;
+  <p class="note" style="margin-top:8px"><b>Deux lectures, ne pas confondre :</b><br>
+  • <b>Résultat exceptionnel</b> (entrées − sorties) = trésorerie nette dégagée par ces événements (ce qui reste, qu'il soit en cash ou réinvesti).<br>
+  • <b>Impact patrimoine net</b> = seulement ce qui t'enrichit/appauvrit vraiment (revenus exceptionnels − consommation − dons). Les déblocages, emprunts, remboursements et placements sont <u>neutres</u> (ils déplacent juste l'argent).<br>
+  • Ton <b>épargne d'exploitation</b> (train de vie) reste <u>non polluée</u> par tout ceci.</p></div>`;
 
   // Camemberts entrées / sorties par nature
   const byNat=(dir)=>{ const map={}; excList().forEach(e=>{ const n=excNat(e.nature); if(Math.sign(n.cash)===dir){ map[n.label]=(map[n.label]||0)+(e.montant||0); } }); return Object.keys(map).map(k=>({label:k,value:map[k]})); };
@@ -866,7 +872,7 @@ function dashCouple(){
   if(excList().length){
     const ent=excEntrees(), sor=excSorties(), patr=excPatr();
     h+=`<div class="card"><h2>Événements exceptionnels ${state.currentYear} ✨</h2>
-     <div class="kpis">${kpi('Entrées except.',eur(ent))}${kpi('Sorties except.',eur(sor))}${kpi('Δ Trésorerie',(ent-sor>=0?'+':'')+eur(ent-sor),(ent-sor)>=0?'good':'bad')}${kpi('Impact patrimoine',(patr>=0?'+':'')+eur(patr),patr>=0?'good':'bad')}</div>
+     <div class="kpis">${kpi('Entrées except.',eur(ent))}${kpi('Sorties except.',eur(sor))}${kpi('Résultat except. (entrées − sorties)',(ent-sor>=0?'+':'')+eur(ent-sor),(ent-sor)>=0?'good':'bad')}${kpi('Impact patrimoine',(patr>=0?'+':'')+eur(patr),patr>=0?'good':'bad')}</div>
      <p class="note" style="margin-top:6px">Détail dans l'onglet <b>Exceptionnel</b>. Ces montants n'affectent pas l'épargne d'exploitation.</p></div>`;
   }
 
