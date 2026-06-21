@@ -93,6 +93,8 @@
   tr.total td{font-weight:700;background:color-mix(in srgb,var(--accent2) 12%,var(--panel))}
   tr.grand td{font-weight:800;background:color-mix(in srgb,var(--accent) 18%,var(--panel))}
   tr.sub td:first-child{padding-left:18px;color:var(--txt)}
+  table.planif td:last-child{font-weight:700}
+  tr.group td,tr.total td,tr.grand td{font-weight:700}
   input.cell{
     width:60px;background:transparent;border:1px solid transparent;border-radius:6px;
     color:var(--txt);text-align:right;padding:3px 4px;font-size:13px;
@@ -147,6 +149,8 @@
     .kpi .val{font-size:18px}
     th,td{padding:3px 4px;font-size:11px}
     td:first-child,th:first-child{min-width:78px;max-width:150px}
+    table.reel{table-layout:fixed;min-width:300px}
+    table.reel td:first-child,table.reel th:first-child{width:116px;max-width:116px;min-width:0}
     input.cell{width:44px;padding:3px 2px}
     input.txt{width:84px}
     .mv,.del,.noteicon{padding:0 1px;font-size:11px}
@@ -188,7 +192,8 @@
     <button class="btn ghost sm" id="btnRedo" title="Restaurer la dernière modification (Cmd/Ctrl+Maj+Z)">↪</button>
     <button class="btn ghost sm themebtn" id="btnTheme" title="Thème clair / sombre / auto">🌗</button>
     <button class="btn ghost sm" id="btnPrint" title="Imprimer / PDF de l'onglet courant">🖨 PDF</button>
-    <button class="btn ghost sm" id="btnExport">⬇ Export</button>
+    <button class="btn ghost sm" id="btnExcel">⬇ Excel</button>
+    <button class="btn ghost sm" id="btnExport">⬇ JSON</button>
     <button class="btn ghost sm" id="btnImport">⬆ Import</button>
     <input type="file" id="fileImport" accept="application/json" style="display:none">
   </div>
@@ -223,9 +228,19 @@ const GROUP_TYPE = {
   'Loisirs':'loisir','Épargne commune':'epargne'
 };
 const TYPE_LABEL = {fixe:'Total charges fixes',variable:'Total variables',loisir:'Total loisirs',epargne:'Épargne commune'};
+// Événements exceptionnels (hors budget courant). cash: +entrée / -sortie ; patr: impact patrimoine net (+/-/0)
+const EXC_NATURES = [
+  {key:'deblocage',     label:'Déblocage épargne / PEE',        cash:+1, patr:0,  desc:"Tu débloques une épargne déjà constituée (PEE…). Entre du cash, mais ton patrimoine ne change pas (tu transformes de l'épargne en liquide)."},
+  {key:'emprunt',       label:'Emprunt reçu',                   cash:+1, patr:0,  desc:"Tu reçois un prêt. +cash mais +dette → patrimoine net inchangé."},
+  {key:'revenu',        label:'Revenu exceptionnel (vrai gain)',cash:+1, patr:+1, desc:"Vrai gain non récurrent (prime exceptionnelle, vente avec plus-value…). Augmente le patrimoine."},
+  {key:'remboursement', label:'Remboursement d\'emprunt',       cash:-1, patr:0,  desc:"Tu rembourses un prêt. -cash mais -dette → patrimoine net inchangé."},
+  {key:'investissement',label:'Placement / achat d\'actif',     cash:-1, patr:0,  desc:"Terrain, BRVM, bitcoin, compte-titres, dépôt sur livret… Tu transformes du cash en actif → patrimoine net inchangé."},
+  {key:'conso',         label:'Consommation / don exceptionnel',cash:-1, patr:-1, desc:"Dîme, dons, aide famille, gros achat conso (électroménager, déménagement…). Sortie réelle qui réduit le patrimoine."}
+];
+function excNat(k){ return EXC_NATURES.find(n=>n.key===k)||EXC_NATURES[5]; }
 const CURRENCIES = ['EUR','USDT','USD','GBP','FCFA'];
 const FX_DEFAULT = {EUR:1, USDT:0.92, USD:0.92, GBP:1.17, FCFA:0.001524};
-const AUX = ['inv','asset','debt','deduc','fx','startcash'];
+const AUX = ['inv','asset','debt','deduc','fx','startcash','excm','excl','excn','excmt'];
 
 let uid = 1; const nid = ()=> 'i'+(uid++)+Date.now().toString(36).slice(-3);
 const arr12 = ()=> [0,0,0,0,0,0,0,0,0,0,0,0];
@@ -280,7 +295,8 @@ function makeYear(){
     persons: {
       'Madina': emptyPerson(catsMadina),
       'Juvens': emptyPerson(catsJuvens)
-    }
+    },
+    exceptional: []
   };
 }
 function defaultState(){
@@ -313,10 +329,13 @@ function migrate(){
   if(state.startCash==null) state.startCash=0;
   if(!state.years || !Object.keys(state.years).length){ state.years={}; const y=new Date().getFullYear(); state.years[y]=makeYear(); state.currentYear=y; }
   if(!state.years[state.currentYear]) state.currentYear=Number(Object.keys(state.years).sort()[0]);
-  // Dîme auto 10% par défaut sur les lignes « Dîme » (sans écraser un choix existant)
-  Object.values(state.years).forEach(yr=> Object.values(yr.persons||{}).forEach(P=> (P.cats||[]).forEach(l=>{
-    if(/^d[îi]me$/i.test(String(l.name||'').trim()) && l.auto===undefined){ l.auto=true; l.rate=10; }
-  })));
+  // Dîme auto 10% par défaut sur les lignes « Dîme » (sans écraser un choix existant) + tableau exceptionnel
+  Object.values(state.years).forEach(yr=>{
+    if(!yr.exceptional) yr.exceptional=[];
+    Object.values(yr.persons||{}).forEach(P=> (P.cats||[]).forEach(l=>{
+      if(/^d[îi]me$/i.test(String(l.name||'').trim()) && l.auto===undefined){ l.auto=true; l.rate=10; }
+    }));
+  });
 }
 let saveTimer=null;
 function save(){
@@ -422,6 +441,7 @@ function renderTopbar(){
     ['foyer','Budget Foyer'],
     ...state.people.map(p=>['person:'+p,'Budget '+p]),
     ['reel','Suivi réel'],
+    ['except','Exceptionnel'],
     ['dash','Tableau de bord'],
     ['invest','Investissements'],
     ['patrimoine','Patrimoine'],
@@ -589,7 +609,7 @@ function renderPerson(p){
    ONGLET SUIVI RÉEL
    ========================================================= */
 function reelFoyer(m){
-  let h=`<div class="card"><h2>Foyer — ${MONTHS[m]}</h2><div class="tablewrap"><table style="min-width:520px"><thead><tr><th>Poste</th><th>Planifié</th><th>Réel</th><th>Écart</th></tr></thead><tbody>`;
+  let h=`<div class="card"><h2>Foyer — ${MONTHS[m]}</h2><div class="tablewrap"><table class="reel" style="min-width:320px"><thead><tr><th>Poste</th><th>Planifié</th><th>Réel</th><th>Écart</th></tr></thead><tbody>`;
   foyerGroups().forEach(g=>{
     const lines=Y().foyer.filter(l=>l.group===g);
     h += `<tr class="group"><td>${esc(g)}</td><td>${num(foyerGroupTotal(g,m,'planned'))}</td><td>${num(foyerGroupTotal(g,m,'real'))}</td><td></td></tr>`;
@@ -605,7 +625,7 @@ function reelFoyer(m){
 }
 function reelPersonTbl(p,m){
   const P=Y().persons[p];
-  let h=`<div class="card"><h2>${esc(p)} — ${MONTHS[m]}</h2><div class="tablewrap"><table style="min-width:520px"><thead><tr><th>Poste</th><th>Planifié</th><th>Réel</th><th>Écart</th></tr></thead><tbody>`;
+  let h=`<div class="card"><h2>${esc(p)} — ${MONTHS[m]}</h2><div class="tablewrap"><table class="reel" style="min-width:320px"><thead><tr><th>Poste</th><th>Planifié</th><th>Réel</th><th>Écart</th></tr></thead><tbody>`;
   [...new Set(P.cats.map(c=>c.group))].forEach(g=>{
     const lines=P.cats.filter(c=>c.group===g);
     const gp=lines.reduce((s,l)=>s+catVal(p,l,m,'planned'),0), gr=lines.reduce((s,l)=>s+catVal(p,l,m,'real'),0);
@@ -692,6 +712,61 @@ function renderProjection(){
 }
 
 /* =========================================================
+   ONGLET ÉVÉNEMENTS EXCEPTIONNELS (hors budget courant)
+   ========================================================= */
+function excList(){ return Y().exceptional||(Y().exceptional=[]); }
+function excCashMonth(m){ return excList().filter(e=>e.month===m).reduce((s,e)=>s+excNat(e.nature).cash*(e.montant||0),0); }
+function excCashYear(){ return MONTHS.reduce((s,_,m)=>s+excCashMonth(m),0); }
+function excEntrees(){ return excList().reduce((s,e)=>s+(excNat(e.nature).cash>0?(e.montant||0):0),0); }
+function excSorties(){ return excList().reduce((s,e)=>s+(excNat(e.nature).cash<0?(e.montant||0):0),0); }
+function excPatr(){ return excList().reduce((s,e)=>s+excNat(e.nature).patr*(e.montant||0),0); }
+function renderExcept(){
+  let h=`<div class="card"><h2>Événements exceptionnels ${state.currentYear} ✨</h2>
+  <p class="hint">Tout ce qui sort du budget courant : déblocage PEE, emprunt, gros achats, placements, dons exceptionnels…<br>
+  👉 Ces lignes <b>n'entrent PAS</b> dans ton épargne mensuelle/annuelle d'exploitation (elle reste « propre »). Elles servent à suivre ta <b>trésorerie</b> et ton <b>patrimoine</b>.</p>
+  ${lastEditLine()}
+  <div class="tablewrap"><table style="min-width:560px"><thead><tr><th>Mois</th><th>Libellé</th><th>Nature</th><th>Montant</th><th>Trésorerie</th><th>Patrimoine</th></tr></thead><tbody>`;
+  if(!excList().length){
+    h+=`<tr class="sub"><td colspan="6" class="note">Aucun événement. Ajoute par exemple : « Déblocage PEE », « Emprunt », « Achat terrain »…</td></tr>`;
+  }
+  excList().forEach(e=>{
+    const n=excNat(e.nature), mt=e.montant||0;
+    const cash=n.cash*mt, patr=n.patr*mt;
+    h+=`<tr class="sub"><td><span class="del" data-act="delexc|${e.id}">✕</span> ${selCell(MONTHS[e.month]||'Jan','excm|'+e.id,MONTHS)}</td>`
+      +`<td>${txtCell(e.label,'excl|'+e.id)}</td>`
+      +`<td>${selCell(n.label,'excn|'+e.id,EXC_NATURES.map(x=>x.label))}</td>`
+      +`<td>${inCell(e.montant,'excmt|'+e.id)}</td>`
+      +`<td class="${cash>=0?'good':'bad'}">${cash>=0?'+':''}${num(cash)}</td>`
+      +`<td class="${patr>0?'good':patr<0?'bad':'neutral'}">${patr>0?'+':''}${patr?num(patr):'0'}</td></tr>`;
+  });
+  h+=`<tr><td colspan="6"><span class="miniadd" data-act="addexc">+ ajouter un événement exceptionnel</span></td></tr>`;
+  h+=`</tbody></table></div></div>`;
+
+  // Bilan
+  const entrees=excEntrees(), sorties=excSorties(), tres=entrees-sorties, patr=excPatr();
+  h+=`<div class="card"><h2>Bilan exceptionnel ${state.currentYear}</h2><div class="kpis">`;
+  h+=kpi('Entrées exceptionnelles',eur(entrees));
+  h+=kpi('Sorties exceptionnelles',eur(sorties));
+  h+=kpi('Δ Trésorerie (cash)',(tres>=0?'+':'')+eur(tres),tres>=0?'good':'bad');
+  h+=kpi('Impact patrimoine net',(patr>=0?'+':'')+eur(patr),patr>=0?'good':'bad');
+  h+=`</div>`;
+  // épargne d'exploitation (courant) — inchangée
+  let opSave=0; state.people.forEach(p=>MONTHS.forEach((_,m)=>opSave+=epargne(p,m,'planned')));
+  let opProj=0; state.people.forEach(p=>MONTHS.forEach((_,m)=>opProj+=epargneProj(p,m)));
+  h+=`<div class="kpis" style="margin-top:8px">`;
+  h+=kpi('Épargne d\'exploitation (projetée)',eur(opProj),opProj>=0?'good':'bad');
+  h+=kpi('Variation patrimoine estimée',(opProj+patr>=0?'+':'')+eur(opProj+patr),(opProj+patr)>=0?'good':'bad');
+  h+=`</div>
+  <p class="note" style="margin-top:8px"><b>Lecture :</b> ton <b>épargne d'exploitation</b> = ce que ton train de vie dégage (revenus − dépenses courantes), <u>non polluée</u> par l'exceptionnel. La <b>variation de patrimoine</b> = épargne d'exploitation + impact exceptionnel (les dons/conso la baissent ; déblocages, emprunts, placements sont neutres car ils déplacent juste de l'argent).</p></div>`;
+
+  // Aide : natures
+  h+=`<div class="card"><h2>Comment classer ?</h2><ul class="note" style="line-height:1.7">`;
+  EXC_NATURES.forEach(n=>{ h+=`<li><b>${esc(n.label)}</b> — ${esc(n.desc)}</li>`; });
+  h+=`</ul></div>`;
+  return h;
+}
+
+/* =========================================================
    ONGLET TABLEAU DE BORD
    ========================================================= */
 function coupleIncomeYear(){ return MONTHS.reduce((s,_,m)=>s+incomeTotal(m),0); }
@@ -746,10 +821,10 @@ function dashCouple(){
     {name:'Revenus',values:rev,color:'#22c55e'},{name:'Dépenses',values:dpm,color:'#ef4444'}])}</div>`;
 
   // Prévision de trésorerie
-  let bal=state.startCash||0; const tres=MONTHS.map((_,m)=>{ let mp=0; state.people.forEach(p=>mp+=epargneProj(p,m)); mp+=commonEpargneProj(m); bal+=mp; return bal; });
+  let bal=state.startCash||0; const tres=MONTHS.map((_,m)=>{ let mp=0; state.people.forEach(p=>mp+=epargneProj(p,m)); mp+=commonEpargneProj(m); mp+=excCashMonth(m); bal+=mp; return bal; });
   const neg=tres.findIndex(v=>v<0);
   h+=`<div class="card"><h2>Prévision de trésorerie 💧</h2>
-   <p class="hint">Solde de départ + épargne cumulée, mois par mois — pour repérer un mois dans le rouge à l'avance.</p>
+   <p class="hint">Solde de départ + épargne cumulée + événements exceptionnels (PEE, emprunt, achats…), mois par mois — pour repérer un mois dans le rouge à l'avance.</p>
    <div class="row" style="margin-bottom:8px"><span class="note">Solde de départ (€) :</span>${inCell(state.startCash,'startcash','style="width:120px"')}</div>
    ${lineChart(MONTHS,[{name:'Solde projeté',values:tres,color:neg>=0?'#ef4444':'#22c55e'}])}
    ${neg>=0?`<p class="bad note">⚠️ Solde négatif dès ${MONTHS[neg]} — prévois une réserve.</p>`:`<p class="good note">✓ Solde positif toute l'année.</p>`}</div>`;
@@ -1047,6 +1122,7 @@ function renderTab(){
   else if(t==='foyer') html=renderFoyer();
   else if(t.startsWith('person:')) html=renderPerson(t.slice(7));
   else if(t==='reel') html=renderReel();
+  else if(t==='except') html=renderExcept();
   else if(t==='dash') html=renderDashboard();
   else if(t==='invest') html=renderInvest();
   else if(t==='patrimoine') html=renderPatrimoine();
@@ -1137,6 +1213,10 @@ function applyAux(c, el){
     case 'deduc': { const it=state.deductions.find(x=>x.id===c[1]); if(it){ it[c[2]] = (c[2]==='montant'||c[2]==='rate')?n:v; } break; }
     case 'fx': state.fx[c[1]]=n; break;
     case 'startcash': state.startCash=n; break;
+    case 'excm': { const it=excList().find(x=>x.id===c[1]); if(it) it.month=Math.max(0,MONTHS.indexOf(v)); break; }
+    case 'excl': { const it=excList().find(x=>x.id===c[1]); if(it) it.label=v; break; }
+    case 'excn': { const it=excList().find(x=>x.id===c[1]); if(it){ const nat=EXC_NATURES.find(x=>x.label===v); it.nature=nat?nat.key:'conso'; } break; }
+    case 'excmt': { const it=excList().find(x=>x.id===c[1]); if(it) it.montant=n; break; }
   }
 }
 document.addEventListener('input', e=>{
@@ -1180,14 +1260,16 @@ document.addEventListener('keydown', e=>{
     save(); rerender();
     toast(e.shiftKey?'Recopié sur toute l\'année':'Recopié jusqu\'à décembre');
   } else {
-    // valider : remplacer la formule par sa valeur, puis descendre à la cellule du dessous (même mois)
-    el.value=String(v); save(); const curCell=el.dataset.cell; rerender();
+    // valider : écrire la valeur, remplacer la formule par son résultat, puis descendre à la cellule du dessous (même mois)
+    if(AUX.includes(c[0])) applyAux(c, el); else applyCellValue(c, v);
+    markEdit();
+    el.value = el.value.trim()===''?'':String(v); save(); const curCell=el.dataset.cell; rerender();
     if(/^\d+$/.test(last)){
-      const col=[...document.querySelectorAll('input.cell.num[data-cell$="|'+last+'"]')];
+      const col=[...document.querySelectorAll('input.cell.num[data-cell$="|'+last+'"]')].filter(x=>x.offsetParent!==null);
       const i=col.findIndex(x=>x.dataset.cell===curCell);
       const nx=col[i+1];
       if(nx){ nx.focus(); if(nx.select) nx.select(); }
-    }
+    } else { toast('Validé ✓'); }
   }
 });
 
@@ -1236,6 +1318,8 @@ document.addEventListener('click', e=>{
     case 'deldebt': state.debts=state.debts.filter(x=>x.id!==c[1]); break;
     case 'adddeduc': state.deductions.push({id:nid(),label:'Don / dîme',montant:0,rate:66}); break;
     case 'deldeduc': state.deductions=state.deductions.filter(x=>x.id!==c[1]); break;
+    case 'addexc': excList().push({id:nid(),month:(state.ui.month||0),label:'Nouvel événement',nature:'conso',montant:0}); break;
+    case 'delexc': Y().exceptional=excList().filter(x=>x.id!==c[1]); break;
     case 'sumdimes': {
       const re=/d[îi]me|offrande|don/i; let s=0;
       Y().foyer.forEach(l=>{ if(re.test(l.name)) s+=l.planned.reduce((a,v)=>a+v,0); });
@@ -1294,6 +1378,64 @@ function doExport(){
   URL.revokeObjectURL(a.href); toast('Exporté');
 }
 function doImport(){ document.getElementById('fileImport').click(); }
+/* ----- Export Excel (.xlsx) avec formules + totaux en gras (ExcelJS via CDN) ----- */
+async function ensureExcelJS(){ if(window.ExcelJS) return; await loadScript('https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js'); }
+function colL(ci){ return String.fromCharCode(64+ci); } // 2->B ... 13->M
+function xlSheet(wb, title, groups, grandLabel){
+  const ws=wb.addWorksheet(title.slice(0,31));
+  ws.columns=[{width:28},...MONTHS.map(()=>({width:9})),{width:11}];
+  const head=ws.addRow(['Poste',...MONTHS,'Total']); head.font={bold:true}; head.alignment={horizontal:'right'}; head.getCell(1).alignment={horizontal:'left'};
+  const subRows=[];
+  groups.forEach(g=>{
+    const first=ws.rowCount+1;
+    g.lines.forEach(l=>{ const r=ws.addRow([l.name, ...l.vals.map(v=>Math.round(v||0)), null]); r.getCell(14).value={formula:`SUM(B${r.number}:M${r.number})`}; });
+    const last=ws.rowCount;
+    const sr=ws.addRow(['Total '+g.name, ...MONTHS.map(()=>0), null]); sr.font={bold:true};
+    for(let ci=2;ci<=13;ci++){ sr.getCell(ci).value = last>=first ? {formula:`SUM(${colL(ci)}${first}:${colL(ci)}${last})`} : 0; }
+    sr.getCell(14).value={formula:`SUM(B${sr.number}:M${sr.number})`};
+    subRows.push(sr.number);
+  });
+  if(grandLabel){
+    const gr=ws.addRow([grandLabel, ...MONTHS.map(()=>0), null]); gr.font={bold:true};
+    for(let ci=2;ci<=13;ci++){ gr.getCell(ci).value = subRows.length? {formula:subRows.map(rn=>colL(ci)+rn).join('+')} : 0; }
+    gr.getCell(14).value={formula:`SUM(B${gr.number}:M${gr.number})`};
+  }
+  return ws;
+}
+async function doExportExcel(){
+  try{
+    toast('Génération Excel…'); await ensureExcelJS();
+    const wb=new ExcelJS.Workbook(); wb.creator='Budget Famille';
+    // Revenus
+    const revGroups=state.people.map(p=>{ const P=Y().persons[p];
+      const lines=[{name:'Salaire net',vals:P.salary.slice()}];
+      (P.extras||[]).forEach(e=>lines.push({name:e.name,vals:e.amounts.slice()}));
+      (P.persoExtras||[]).forEach(e=>lines.push({name:e.name+' (perso)',vals:e.amounts.slice()}));
+      return {name:'revenus '+p, lines};
+    });
+    xlSheet(wb,'Revenus',revGroups,'TOTAL REVENUS');
+    // Foyer
+    const foyG=foyerGroups().map(g=>({name:g, lines:Y().foyer.filter(l=>l.group===g).map(l=>({name:l.name,vals:l.planned}))}));
+    xlSheet(wb,'Foyer',foyG,'TOTAL FOYER');
+    // Budgets individuels
+    state.people.forEach(p=>{ const P=Y().persons[p];
+      const gs=[...new Set(P.cats.map(c=>c.group))].map(g=>({name:g, lines:P.cats.filter(c=>c.group===g).map(l=>({name:l.name,vals:MONTHS.map((_,m)=>catVal(p,l,m,'planned'))}))}));
+      xlSheet(wb,'Budget '+p,gs,'TOTAL DÉPENSES '+p.toUpperCase());
+    });
+    // Exceptionnel
+    if(excList().length){
+      const ws=wb.addWorksheet('Exceptionnel'); ws.columns=[{width:8},{width:30},{width:26},{width:12},{width:12},{width:12}];
+      const hd=ws.addRow(['Mois','Libellé','Nature','Montant','Trésorerie','Patrimoine']); hd.font={bold:true};
+      excList().forEach(e=>{ const n=excNat(e.nature),mt=e.montant||0; ws.addRow([MONTHS[e.month]||'',e.label,n.label,Math.round(mt),Math.round(n.cash*mt),Math.round(n.patr*mt)]); });
+      const tot=ws.addRow(['','Δ Trésorerie / Patrimoine','', '', {formula:`SUM(E2:E${ws.rowCount})`}, {formula:`SUM(F2:F${ws.rowCount})`}]); tot.font={bold:true};
+    }
+    const buf=await wb.xlsx.writeBuffer();
+    const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='budget-'+state.currentYear+'.xlsx'; a.click(); URL.revokeObjectURL(a.href);
+    toast('Excel exporté ✓');
+  }catch(e){ toast('Erreur Excel : '+e.message); }
+}
+document.getElementById('btnExcel').onclick=doExportExcel;
 document.getElementById('btnExport').onclick=doExport;
 document.getElementById('btnImport').onclick=doImport;
 document.getElementById('btnPrint').onclick=()=>{
