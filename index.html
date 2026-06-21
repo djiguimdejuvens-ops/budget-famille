@@ -86,7 +86,7 @@
   table{border-collapse:collapse;width:100%;font-size:13px;min-width:760px}
   th,td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:4px 6px;text-align:right;white-space:nowrap}
   th{background:var(--panel2);color:var(--muted);font-weight:600;position:sticky;top:0;z-index:5}
-  td:first-child,th:first-child{text-align:left;position:sticky;left:0;background:var(--panel);z-index:6;min-width:116px;max-width:230px;white-space:normal;overflow-wrap:normal}
+  td:first-child,th:first-child{text-align:left;position:sticky;left:0;background:var(--panel);z-index:6;min-width:150px;max-width:300px;white-space:normal;overflow-wrap:normal}
   th:first-child{z-index:7}
   tr.group td:first-child{font-weight:700;color:var(--accent2)}
   tr.group td{background:var(--panel2)}
@@ -101,7 +101,7 @@
   }
   input.cell:focus{outline:none;border-color:var(--accent);background:var(--cellfocus)}
   input.cell:hover{border-color:var(--line)}
-  input.txt{width:118px;text-align:left}
+  input.txt{display:block;width:100%;box-sizing:border-box;text-align:left}
   input.cell::placeholder{color:#46556e}
   .good{color:var(--good)} .bad{color:var(--bad)} .neutral{color:var(--neutral)} .warn{color:var(--warn)}
   .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;border:1px solid var(--line)}
@@ -140,6 +140,11 @@
   .toast.show{opacity:1}
   .ctip{position:fixed;pointer-events:none;z-index:200;background:var(--panel);border:1px solid var(--accent);color:var(--txt);padding:5px 9px;border-radius:8px;font-size:12px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.35);opacity:0;transition:opacity .08s;white-space:nowrap;max-width:90vw;overflow:hidden;text-overflow:ellipsis}
   .ctip.show{opacity:1}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:300;padding:16px}
+  .modal.show{display:flex}
+  .modalbox{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;width:min(600px,96vw);box-shadow:0 12px 40px rgba(0,0,0,.4)}
+  .modalbox h3{margin:0 0 10px;font-size:15px}
+  .modalbox textarea{width:100%;min-height:160px;box-sizing:border-box;background:var(--panel2);border:1px solid var(--line);border-radius:10px;color:var(--txt);padding:11px;font:inherit;font-size:14px;line-height:1.5;resize:vertical}
   svg rect[data-tip],svg circle{cursor:pointer}
   @media(max-width:600px){
     main{padding:8px}
@@ -152,7 +157,6 @@
     table.reel{table-layout:fixed;min-width:300px}
     table.reel td:first-child,table.reel th:first-child{width:116px;max-width:116px;min-width:0}
     input.cell{width:44px;padding:3px 2px}
-    input.txt{width:84px}
     .mv,.del,.noteicon{padding:0 1px;font-size:11px}
     /* sur mobile, on masque Budget/Écart/Ratio des tableaux de planification pour voir les mois */
     table.planif th:nth-child(2),table.planif td:nth-child(2),
@@ -210,6 +214,14 @@
 <main id="app"></main>
 <div class="toast" id="toast"></div>
 <div class="ctip" id="ctip"></div>
+<div class="modal" id="noteModal"><div class="modalbox">
+  <h3 id="noteTitle">Note</h3>
+  <textarea id="noteText" placeholder="Saisis ta remarque… (Entrée = nouvelle ligne)"></textarea>
+  <div class="row" style="justify-content:flex-end;margin-top:12px">
+    <button class="btn" id="noteCancel">Annuler</button>
+    <button class="btn primary" id="noteSave">Enregistrer</button>
+  </div>
+</div></div>
 
 <script>
 /* =========================================================
@@ -240,7 +252,7 @@ const EXC_NATURES = [
 function excNat(k){ return EXC_NATURES.find(n=>n.key===k)||EXC_NATURES[5]; }
 const CURRENCIES = ['EUR','USDT','USD','GBP','FCFA'];
 const FX_DEFAULT = {EUR:1, USDT:0.92, USD:0.92, GBP:1.17, FCFA:0.001524};
-const AUX = ['inv','asset','debt','deduc','fx','startcash','excm','excl','excn','excmt'];
+const AUX = ['inv','asset','debt','deduc','dedm','fx','startcash','excm','excl','excn','excmt'];
 
 let uid = 1; const nid = ()=> 'i'+(uid++)+Date.now().toString(36).slice(-3);
 const arr12 = ()=> [0,0,0,0,0,0,0,0,0,0,0,0];
@@ -296,7 +308,8 @@ function makeYear(){
       'Madina': emptyPerson(catsMadina),
       'Juvens': emptyPerson(catsJuvens)
     },
-    exceptional: []
+    exceptional: [],
+    deductions: []
   };
 }
 function defaultState(){
@@ -332,10 +345,13 @@ function migrate(){
   // Dîme auto 10% par défaut sur les lignes « Dîme » (sans écraser un choix existant) + tableau exceptionnel
   Object.values(state.years).forEach(yr=>{
     if(!yr.exceptional) yr.exceptional=[];
+    if(!yr.deductions) yr.deductions=[];
     Object.values(yr.persons||{}).forEach(P=> (P.cats||[]).forEach(l=>{
       if(/^d[îi]me$/i.test(String(l.name||'').trim()) && l.auto===undefined){ l.auto=true; l.rate=10; }
     }));
   });
+  // migration : déductions globales (ancienne version) → année courante
+  if(state.deductions && state.deductions.length){ const y=state.years[state.currentYear]; y.deductions=(y.deductions||[]).concat(state.deductions); state.deductions=[]; }
 }
 let saveTimer=null;
 function save(){
@@ -509,7 +525,7 @@ function renderFoyer(){
   foyerGroups().forEach(g=>{
     const lines = Y().foyer.filter(l=>l.group===g);
     let gT=0; const gm=MONTHS.map((_,m)=>{const v=foyerGroupTotal(g,m,'planned');gT+=v;return `<td>${num(v)}</td>`}).join(''); const gB=foyerGroupBudget(g);
-    h += `<tr class="group"><td><span class="mv" data-act="rengrpf|${esc(g)}" title="Renommer la catégorie">✏️</span><span class="del" data-act="delgrpf|${esc(g)}" title="Supprimer toute la catégorie">🗑</span> ${esc(g)} <span class="pill">${groupType(g)}</span></td>${bcell(gB)}${ecartCell(gT,gB)}${ratioCell(gT,base)}${gm}<td>${eur(gT)}</td></tr>`;
+    h += `<tr class="group"><td><span class="mv" data-act="movegrpf|${esc(g)}|up" title="Monter la catégorie">▲</span><span class="mv" data-act="movegrpf|${esc(g)}|down" title="Descendre la catégorie">▼</span><span class="mv" data-act="rengrpf|${esc(g)}" title="Renommer la catégorie">✏️</span><span class="del" data-act="delgrpf|${esc(g)}" title="Supprimer toute la catégorie">🗑</span> ${esc(g)} <span class="pill">${groupType(g)}</span></td>${bcell(gB)}${ecartCell(gT,gB)}${ratioCell(gT,base)}${gm}<td>${eur(gT)}</td></tr>`;
     lines.forEach(l=>{
       let t=0; const lm=MONTHS.map((_,m)=>{t+=l.planned[m]||0;return `<td>${inCell(l.planned[m],'fp|'+l.id+'|'+m)}</td>`}).join('');
       h += `<tr class="sub"><td title="${l.note?esc(l.note):''}"><span class="mv" data-act="movef|${l.id}|up" title="Monter">↑</span><span class="mv" data-act="movef|${l.id}|down" title="Descendre">↓</span> <span class="del" data-act="delfoyer|${l.id}">✕</span> ${noteIcon('notef|'+l.id,l.note)} ${txtCell(l.name,'fname|'+l.id)}</td><td>${inCell(l.budget,'fb|'+l.id)}</td>${ecartCell(t,l.budget||0)}${ratioCell(t,base)}${lm}<td>${eur(t)}</td></tr>`;
@@ -559,7 +575,7 @@ function renderPerson(p){
   groups.forEach(g=>{
     const lines=P.cats.filter(c=>c.group===g);
     let gt=0; const gm=MONTHS.map((_,m)=>{const v=lines.reduce((s,l)=>s+catVal(p,l,m,'planned'),0);gt+=v;return `<td>${num(v)}</td>`}).join(''); const gb=persoGroupBudget(p,g);
-    h += `<tr class="group"><td><span class="mv" data-act="rengrpc|${p}|${esc(g)}" title="Renommer la catégorie">✏️</span><span class="del" data-act="delgrpc|${p}|${esc(g)}" title="Supprimer toute la catégorie">🗑</span> ${esc(g)}</td>${bcell(gb)}${ecartCell(gt,gb)}${ratioCell(gt,base)}${gm}<td>${eur(gt)}</td></tr>`;
+    h += `<tr class="group"><td><span class="mv" data-act="movegrpc|${p}|${esc(g)}|up" title="Monter la catégorie">▲</span><span class="mv" data-act="movegrpc|${p}|${esc(g)}|down" title="Descendre la catégorie">▼</span><span class="mv" data-act="rengrpc|${p}|${esc(g)}" title="Renommer la catégorie">✏️</span><span class="del" data-act="delgrpc|${p}|${esc(g)}" title="Supprimer toute la catégorie">🗑</span> ${esc(g)}</td>${bcell(gb)}${ecartCell(gt,gb)}${ratioCell(gt,base)}${gm}<td>${eur(gt)}</td></tr>`;
     lines.forEach(l=>{
       let t=0; const lm=MONTHS.map((_,m)=>{const v=catVal(p,l,m,'planned');t+=v;return l.auto?`<td class="autocell" title="10% du revenu (auto)">${num(v)}</td>`:`<td>${inCell(l.planned[m],'cp|'+p+'|'+l.id+'|'+m)}</td>`}).join('');
       const badge=(l.auto!==undefined)?` <span class="pill dimebadge" data-act="dimeauto|${p}|${l.id}" title="Basculer entre 10% auto et saisie manuelle">${l.auto?'auto '+(l.rate||10)+'%':'manuel ✎'}</span>`:'';
@@ -612,7 +628,7 @@ function reelFoyer(m){
   let h=`<div class="card"><h2>Foyer — ${MONTHS[m]}</h2><div class="tablewrap"><table class="reel" style="min-width:320px"><thead><tr><th>Poste</th><th>Planifié</th><th>Réel</th><th>Écart</th></tr></thead><tbody>`;
   foyerGroups().forEach(g=>{
     const lines=Y().foyer.filter(l=>l.group===g);
-    h += `<tr class="group"><td>${esc(g)}</td><td>${num(foyerGroupTotal(g,m,'planned'))}</td><td>${num(foyerGroupTotal(g,m,'real'))}</td><td></td></tr>`;
+    h += `<tr class="group"><td>${esc(g)} <span class="mv" data-act="reelcopyf|${esc(g)}|${m}" title="Réel = Planifié pour cette catégorie">⇄</span></td><td>${num(foyerGroupTotal(g,m,'planned'))}</td><td>${num(foyerGroupTotal(g,m,'real'))}</td><td></td></tr>`;
     lines.forEach(l=>{
       const pl=l.planned[m]||0, re=l.real[m]||0, ec=re-pl;
       h += `<tr class="sub"><td>${esc(l.name)}</td><td>${num(pl)}</td><td>${inCell(l.real[m],'fr|'+l.id+'|'+m)}</td><td class="${expClass(re,pl)}">${ec>0?'+':''}${num(ec)}</td></tr>`;
@@ -629,7 +645,7 @@ function reelPersonTbl(p,m){
   [...new Set(P.cats.map(c=>c.group))].forEach(g=>{
     const lines=P.cats.filter(c=>c.group===g);
     const gp=lines.reduce((s,l)=>s+catVal(p,l,m,'planned'),0), gr=lines.reduce((s,l)=>s+catVal(p,l,m,'real'),0);
-    h += `<tr class="group"><td>${esc(g)}</td><td>${num(gp)}</td><td>${num(gr)}</td><td class="${expClass(gr,gp)}">${(gr-gp)>0?'+':''}${num(gr-gp)}</td></tr>`;
+    h += `<tr class="group"><td>${esc(g)} <span class="mv" data-act="reelcopyc|${p}|${esc(g)}|${m}" title="Réel = Planifié pour cette catégorie">⇄</span></td><td>${num(gp)}</td><td>${num(gr)}</td><td class="${expClass(gr,gp)}">${(gr-gp)>0?'+':''}${num(gr-gp)}</td></tr>`;
     lines.forEach(l=>{
       const pl=catVal(p,l,m,'planned'), re=catVal(p,l,m,'real'), ec=re-pl;
       const cell = l.auto ? `<td class="autocell" title="10% auto">${num(re)}</td>` : `<td>${inCell(l.real[m],'cr|'+p+'|'+l.id+'|'+m)}</td>`;
@@ -759,6 +775,15 @@ function renderExcept(){
   h+=`</div>
   <p class="note" style="margin-top:8px"><b>Lecture :</b> ton <b>épargne d'exploitation</b> = ce que ton train de vie dégage (revenus − dépenses courantes), <u>non polluée</u> par l'exceptionnel. La <b>variation de patrimoine</b> = épargne d'exploitation + impact exceptionnel (les dons/conso la baissent ; déblocages, emprunts, placements sont neutres car ils déplacent juste de l'argent).</p></div>`;
 
+  // Camemberts entrées / sorties par nature
+  const byNat=(dir)=>{ const map={}; excList().forEach(e=>{ const n=excNat(e.nature); if(Math.sign(n.cash)===dir){ map[n.label]=(map[n.label]||0)+(e.montant||0); } }); return Object.keys(map).map(k=>({label:k,value:map[k]})); };
+  const ent=byNat(1), sor=byNat(-1);
+  if(ent.length||sor.length){
+    h+=`<div class="card"><h2>Répartition des événements</h2><div class="grid2">`;
+    h+=`<div><h3 style="font-size:14px;margin:0 0 6px">Entrées (cash +)</h3>${pieChart(ent)}</div>`;
+    h+=`<div><h3 style="font-size:14px;margin:0 0 6px">Sorties (cash −)</h3>${pieChart(sor)}</div>`;
+    h+=`</div></div>`;
+  }
   // Aide : natures
   h+=`<div class="card"><h2>Comment classer ?</h2><ul class="note" style="line-height:1.7">`;
   EXC_NATURES.forEach(n=>{ h+=`<li><b>${esc(n.label)}</b> — ${esc(n.desc)}</li>`; });
@@ -828,6 +853,14 @@ function dashCouple(){
    <div class="row" style="margin-bottom:8px"><span class="note">Solde de départ (€) :</span>${inCell(state.startCash,'startcash','style="width:120px"')}</div>
    ${lineChart(MONTHS,[{name:'Solde projeté',values:tres,color:neg>=0?'#ef4444':'#22c55e'}])}
    ${neg>=0?`<p class="bad note">⚠️ Solde négatif dès ${MONTHS[neg]} — prévois une réserve.</p>`:`<p class="good note">✓ Solde positif toute l'année.</p>`}</div>`;
+
+  // Événements exceptionnels (repris ici)
+  if(excList().length){
+    const ent=excEntrees(), sor=excSorties(), patr=excPatr();
+    h+=`<div class="card"><h2>Événements exceptionnels ${state.currentYear} ✨</h2>
+     <div class="kpis">${kpi('Entrées except.',eur(ent))}${kpi('Sorties except.',eur(sor))}${kpi('Δ Trésorerie',(ent-sor>=0?'+':'')+eur(ent-sor),(ent-sor)>=0?'good':'bad')}${kpi('Impact patrimoine',(patr>=0?'+':'')+eur(patr),patr>=0?'good':'bad')}</div>
+     <p class="note" style="margin-top:6px">Détail dans l'onglet <b>Exceptionnel</b>. Ces montants n'affectent pas l'épargne d'exploitation.</p></div>`;
+  }
 
   // Répartition du revenu (repère 50/30/20)
   const fixe=MONTHS.reduce((s,_,m)=>s+foyerTypeTotal('fixe',m,'planned'),0);
@@ -968,6 +1001,23 @@ function barChart(labels, series, horizontal=false){
 function legend(series){
   return `<div class="legend">${series.map(s=>`<span><b style="color:${s.color}">■</b> ${esc(s.name)}</span>`).join('')}</div>`;
 }
+const PIE_COLORS=['#14b8a6','#0ea5e9','#f59e0b','#a855f7','#ef4444','#22c55e','#eab308','#3b82f6','#ec4899','#10b981','#f97316','#6366f1'];
+function pieChart(items){
+  items=(items||[]).filter(d=>(d.value||0)>0);
+  const total=items.reduce((s,d)=>s+d.value,0);
+  if(!total) return `<p class="note">Aucune donnée à afficher.</p>`;
+  const R=78,C=88,VB=176; let ang=-Math.PI/2, s='';
+  items.forEach((d,i)=>{ const frac=d.value/total, a2=ang+frac*2*Math.PI, col=d.color||PIE_COLORS[i%PIE_COLORS.length];
+    if(frac>0.9999){ s+=`<circle cx="${C}" cy="${C}" r="${R}" fill="${col}"/>`; }
+    else { const x1=C+R*Math.cos(ang),y1=C+R*Math.sin(ang),x2=C+R*Math.cos(a2),y2=C+R*Math.sin(a2),large=frac>0.5?1:0;
+      s+=`<path d="M${C},${C} L${x1.toFixed(1)},${y1.toFixed(1)} A${R},${R} 0 ${large} 1 ${x2.toFixed(1)},${y2.toFixed(1)} Z" fill="${col}"/>`; }
+    if(frac>0.05){ const mid=(ang+a2)/2,lr=R*0.62,lx=C+lr*Math.cos(mid),ly=C+lr*Math.sin(mid);
+      s+=`<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" style="fill:#06231f;font-size:11px;font-weight:700">${Math.round(frac*100)}%</text>`; }
+    ang=a2;
+  });
+  const leg=`<div class="legend" style="flex-direction:column;align-items:flex-start;gap:5px">${items.map((d,i)=>`<span><b style="color:${d.color||PIE_COLORS[i%PIE_COLORS.length]}">■</b> ${esc(d.label)} : <b>${eur(d.value)}</b> (${Math.round(d.value/total*100)}%)</span>`).join('')}</div>`;
+  return `<div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center"><svg viewBox="0 0 ${VB} ${VB}" width="176" height="176" style="flex:0 0 auto">${s}</svg><div style="flex:1;min-width:180px">${leg}</div></div>`;
+}
 
 /* =========================================================
    ONGLET PARAMÈTRES
@@ -1059,7 +1109,7 @@ function renderInvest(){
   const plats=[...new Set(state.investments.map(i=>i.platform||'—'))].filter(Boolean);
   if(plats.length){
     const alloc=plats.map(p=>state.investments.filter(i=>(i.platform||'—')===p).reduce((s,i)=>s+toEUR(i.current,i.devise),0));
-    h+=`<div class="chartbox"><h3>Répartition par plateforme (valeur € )</h3>${barChart(plats,[{name:'Valeur',values:alloc,color:'#14b8a6'}],true)}</div>`;
+    h+=`<div class="chartbox"><h3>Répartition par plateforme (valeur actuelle)</h3>${pieChart(plats.map((p,i)=>({label:p,value:alloc[i]})))}</div>`;
   }
   h+=`</div>`;
   return h;
@@ -1099,15 +1149,18 @@ function renderPatrimoine(){
 /* =========================================================
    ONGLET DÉFISCALISATION
    ========================================================= */
+function dedList(){ return Y().deductions||(Y().deductions=[]); }
 function renderDefisc(){
-  let h=`<div class="card"><h2>Défiscalisation — dons & dîmes 🧾</h2>
-   <p class="hint">En France, les dons à des organismes reconnus donnent droit à une réduction d'impôt (souvent 66 %, parfois 75 %), dans la limite de 20 % du revenu imposable. ⚠️ L'aide directe à la famille (ex. envois au Burkina) n'est en général <b>pas</b> déductible, sauf via un organisme agréé — saisis 0 % dans ce cas pour la suivre sans réduction.</p>`;
-  h+=`<div class="tablewrap"><table style="min-width:580px"><thead><tr><th>Libellé</th><th>Montant annuel</th><th>Taux</th><th>Réduction estimée</th></tr></thead><tbody>`;
+  let h=`<div class="card"><h2>Défiscalisation ${state.currentYear} — dons & dîmes 🧾</h2>
+   <p class="hint">En France, les dons à des organismes reconnus donnent droit à une réduction d'impôt (souvent 66 %, parfois 75 %), dans la limite de 20 % du revenu imposable. ⚠️ L'aide directe à la famille (ex. envois au Burkina) n'est en général <b>pas</b> déductible, sauf via un organisme agréé — saisis 0 % dans ce cas pour la suivre sans réduction. Change d'année avec les flèches ◀ ▶ en haut.</p>
+   ${lastEditLine()}`;
+  h+=`<div class="tablewrap"><table style="min-width:600px"><thead><tr><th>Mois</th><th>Libellé</th><th>Montant</th><th>Taux</th><th>Réduction estimée</th></tr></thead><tbody>`;
   let tot=0,red=0;
-  state.deductions.forEach(d=>{ const r=(d.montant||0)*((d.rate||0)/100); tot+=d.montant||0; red+=r;
-    h+=`<tr class="sub"><td><span class="del" data-act="deldeduc|${d.id}">✕</span> ${txtCell(d.label,'deduc|'+d.id+'|label')}</td><td>${inCell(d.montant,'deduc|'+d.id+'|montant')}</td><td>${inCell(d.rate,'deduc|'+d.id+'|rate','style="width:58px"')} %</td><td class="good">${num(r)} €</td></tr>`; });
-  h+=`<tr><td colspan="4"><span class="miniadd" data-act="adddeduc">+ ajouter une ligne</span> &nbsp; <span class="miniadd" data-act="sumdimes">↻ importer dîmes & dons du budget ${state.currentYear}</span></td></tr>`;
-  h+=`<tr class="grand"><td>Total</td><td>${num(tot)}</td><td></td><td class="good">${num(red)} €</td></tr></tbody></table></div>`;
+  dedList().forEach(d=>{ const r=(d.montant||0)*((d.rate||0)/100); tot+=d.montant||0; red+=r;
+    h+=`<tr class="sub"><td><span class="del" data-act="deldeduc|${d.id}">✕</span> ${selCell(MONTHS[d.month]||'Jan','dedm|'+d.id,MONTHS)}</td><td>${txtCell(d.label,'deduc|'+d.id+'|label')}</td><td>${inCell(d.montant,'deduc|'+d.id+'|montant')}</td><td>${inCell(d.rate,'deduc|'+d.id+'|rate','style="width:54px"')} %</td><td class="good">${num(r)} €</td></tr>`; });
+  if(!dedList().length) h+=`<tr class="sub"><td colspan="5" class="note">Aucune ligne. Ajoute tes dons/dîmes du mois.</td></tr>`;
+  h+=`<tr><td colspan="5"><span class="miniadd" data-act="adddeduc">+ ajouter une ligne</span> &nbsp; <span class="miniadd" data-act="sumdimes">↻ importer dîmes & dons du budget ${state.currentYear}</span></td></tr>`;
+  h+=`<tr class="grand"><td></td><td>Total</td><td>${num(tot)}</td><td></td><td class="good">${num(red)} €</td></tr></tbody></table></div>`;
   h+=`<div class="kpis" style="margin-top:12px">${kpi('Total dons / dîmes',eur(tot))}${kpi('Réduction d\'impôt estimée',eur(red),'good')}${kpi('Coût net après impôt',eur(tot-red))}</div></div>`;
   return h;
 }
@@ -1135,16 +1188,20 @@ function rerender(){
   const key=a&&a.dataset&&a.dataset.cell?a.dataset.cell:null;
   const ss=a&&typeof a.selectionStart==='number'?a.selectionStart:null;
   const raw=a&&'value'in a?a.value:null;
+  // mémoriser le défilement (page + tableaux) pour ne PAS sauter en haut à la validation
+  const sy=window.scrollY, sx=window.scrollX;
+  const twScroll=[...document.querySelectorAll('.tablewrap')].map(t=>[t.scrollLeft,t.scrollTop]);
   renderTopbar(); renderTab();
+  [...document.querySelectorAll('.tablewrap')].forEach((t,i)=>{ if(twScroll[i]){ t.scrollLeft=twScroll[i][0]; t.scrollTop=twScroll[i][1]; } });
   if(key){
     const el=document.querySelector('[data-cell="'+key.replace(/"/g,'\\"')+'"]');
     if(el){
-      el.focus();
-      // garde le texte exactement tel que tapé (ex: "12," en cours de décimale)
+      el.focus({preventScroll:true});
       if(raw!=null && el.classList.contains('num')) el.value=raw;
       try{ if(ss!=null) el.setSelectionRange(ss,ss);}catch(e){}
     }
   }
+  window.scrollTo(sx,sy);
 }
 function fullRender(){ renderTopbar(); renderTab(); }
 
@@ -1166,9 +1223,13 @@ function moveItem(arr, id, dir){
   if(j<0||j>=arr.length) return; const t=arr[i]; arr[i]=arr[j]; arr[j]=t;
 }
 // Catégories foyer réellement présentes (ordre standard puis personnalisées)
-function foyerGroups(){
-  const present=[...new Set(Y().foyer.map(l=>l.group))];
-  return [...FOYER_GROUPS.filter(g=>present.includes(g)), ...present.filter(g=>!FOYER_GROUPS.includes(g))];
+function foyerGroups(){ return [...new Set(Y().foyer.map(l=>l.group))]; }
+// Déplace une catégorie entière (avec ses lignes) d'un cran
+function moveGroup(arr, g, dir){
+  const order=[...new Set(arr.map(l=>l.group))];
+  const i=order.indexOf(g), j=i+dir; if(i<0||j<0||j>=order.length) return;
+  const t=order[i]; order[i]=order[j]; order[j]=t;
+  arr.sort((a,b)=>order.indexOf(a.group)-order.indexOf(b.group));
 }
 function groupType(g){ const l=Y().foyer.find(x=>x.group===g && x.type); return (l&&l.type)||GROUP_TYPE[g]||'variable'; }
 // Valeur effective d'une ligne perso : si auto (ex. Dîme), rate% du revenu calculé à la volée ;
@@ -1210,7 +1271,8 @@ function applyAux(c, el){
     case 'inv': { const it=state.investments.find(x=>x.id===c[1]); if(it){ it[c[2]] = (c[2]==='invested'||c[2]==='current')?n:v; } break; }
     case 'asset': { const it=state.assets.find(x=>x.id===c[1]); if(it){ it[c[2]] = c[2]==='value'?n:v; } break; }
     case 'debt': { const it=state.debts.find(x=>x.id===c[1]); if(it){ it[c[2]] = c[2]==='value'?n:v; } break; }
-    case 'deduc': { const it=state.deductions.find(x=>x.id===c[1]); if(it){ it[c[2]] = (c[2]==='montant'||c[2]==='rate')?n:v; } break; }
+    case 'deduc': { const it=dedList().find(x=>x.id===c[1]); if(it){ it[c[2]] = (c[2]==='montant'||c[2]==='rate')?n:v; } break; }
+    case 'dedm': { const it=dedList().find(x=>x.id===c[1]); if(it) it.month=Math.max(0,MONTHS.indexOf(v)); break; }
     case 'fx': state.fx[c[1]]=n; break;
     case 'startcash': state.startCash=n; break;
     case 'excm': { const it=excList().find(x=>x.id===c[1]); if(it) it.month=Math.max(0,MONTHS.indexOf(v)); break; }
@@ -1231,6 +1293,12 @@ document.addEventListener('input', e=>{
     const wasPeople=applyTextValue(c, el.value); save(); if(wasPeople) rerender();
   }
 });
+// À la sélection d'une cellule chiffre, on sélectionne tout → la saisie remplace la valeur (robuste au clic)
+function isNumCell(el){ return el&&el.classList&&el.classList.contains('cell')&&el.classList.contains('num'); }
+let _mdCell=null;
+document.addEventListener('mousedown', e=>{ const el=e.target.closest&&e.target.closest('input.cell.num'); _mdCell = (el && document.activeElement!==el) ? el : null; });
+document.addEventListener('mouseup', e=>{ if(_mdCell && e.target===_mdCell){ e.preventDefault(); try{ _mdCell.select(); }catch(_){} } _mdCell=null; });
+document.addEventListener('focusin', e=>{ if(isNumCell(e.target)){ try{ e.target.select(); }catch(_){} } });
 // Au blur d'une cellule formule, on remplace le texte par le résultat calculé ; selects auxiliaires
 document.addEventListener('change', e=>{
   const el=e.target;
@@ -1268,7 +1336,7 @@ document.addEventListener('keydown', e=>{
       const col=[...document.querySelectorAll('input.cell.num[data-cell$="|'+last+'"]')].filter(x=>x.offsetParent!==null);
       const i=col.findIndex(x=>x.dataset.cell===curCell);
       const nx=col[i+1];
-      if(nx){ nx.focus(); if(nx.select) nx.select(); }
+      if(nx){ nx.focus({preventScroll:true}); if(nx.select) nx.select(); }
     } else { toast('Validé ✓'); }
   }
 });
@@ -1299,6 +1367,10 @@ document.addEventListener('click', e=>{
     case 'moveext': moveItem(Y().persons[c[1]].extras, c[2], c[3]==='up'?-1:1); break;
     case 'movepext': moveItem(Y().persons[c[1]].persoExtras||[], c[2], c[3]==='up'?-1:1); break;
     case 'moveinv': moveItem(state.investments, c[1], c[2]==='up'?-1:1); break;
+    case 'movegrpf': moveGroup(Y().foyer, c[1], c[2]==='up'?-1:1); break;
+    case 'movegrpc': moveGroup(Y().persons[c[1]].cats, c[2], c[3]==='up'?-1:1); break;
+    case 'reelcopyf': { const g=c[1], m=+c[2]; Y().foyer.filter(l=>l.group===g).forEach(l=>l.real[m]=l.planned[m]); toast('Réel = planifié'); break; }
+    case 'reelcopyc': { const p=c[1], g=c[2], m=+c[3]; Y().persons[p].cats.filter(l=>l.group===g).forEach(l=>l.real[m]=l.planned[m]); toast('Réel = planifié'); break; }
     case 'delgrpf': { const g=c.slice(1).join('|'); if(confirm('Supprimer toute la catégorie « '+g+' » du foyer ?')) Y().foyer=Y().foyer.filter(l=>l.group!==g); break; }
     case 'delgrpc': { const p=c[1], g=c.slice(2).join('|'); if(confirm('Supprimer toute la catégorie « '+g+' » de '+p+' ?')) Y().persons[p].cats=Y().persons[p].cats.filter(l=>l.group!==g); break; }
     case 'rengrpf': { const old=c.slice(1).join('|'); const nw=prompt('Renommer la catégorie foyer :', old); if(nw&&nw.trim()&&nw!==old){ const tp=groupType(old); Y().foyer.forEach(l=>{ if(l.group===old){ l.type=tp; l.group=nw.trim(); } }); } break; }
@@ -1308,23 +1380,23 @@ document.addEventListener('click', e=>{
           if(l.planned.every(v=>!v)){ for(let mm=0;mm<12;mm++) l.planned[mm]=Math.round((l.rate||10)/100*personFullIncome(p,mm)); }
           l.auto=false;
         } else { l.auto=true; if(!l.rate) l.rate=10; } } break; }
-    case 'notef': { const l=getLine('foyer',c[1]); if(l){ const n=prompt('Note pour « '+l.name+' » :', l.note||''); if(n!==null) l.note=n; } break; }
-    case 'notec': { const l=Y().persons[c[1]].cats.find(x=>x.id===c[2]); if(l){ const n=prompt('Note pour « '+l.name+' » :', l.note||''); if(n!==null) l.note=n; } break; }
+    case 'notef': openNote(()=>getLine('foyer',c[1])); return;
+    case 'notec': openNote(()=>Y().persons[c[1]].cats.find(x=>x.id===c[2])); return;
     case 'addinv': state.investments.push({id:nid(),platform:'Binance',name:'Nouvel actif',devise:'EUR',invested:0,current:0}); break;
     case 'delinv': state.investments=state.investments.filter(x=>x.id!==c[1]); break;
     case 'addasset': state.assets.push({id:nid(),name:'Livret / compte',devise:'EUR',value:0}); break;
     case 'delasset': state.assets=state.assets.filter(x=>x.id!==c[1]); break;
     case 'adddebt': state.debts.push({id:nid(),name:'Emprunt',devise:'EUR',value:0}); break;
     case 'deldebt': state.debts=state.debts.filter(x=>x.id!==c[1]); break;
-    case 'adddeduc': state.deductions.push({id:nid(),label:'Don / dîme',montant:0,rate:66}); break;
-    case 'deldeduc': state.deductions=state.deductions.filter(x=>x.id!==c[1]); break;
+    case 'adddeduc': dedList().push({id:nid(),month:(state.ui.month||0),label:'Don / dîme',montant:0,rate:66}); break;
+    case 'deldeduc': Y().deductions=dedList().filter(x=>x.id!==c[1]); break;
     case 'addexc': excList().push({id:nid(),month:(state.ui.month||0),label:'Nouvel événement',nature:'conso',montant:0}); break;
     case 'delexc': Y().exceptional=excList().filter(x=>x.id!==c[1]); break;
     case 'sumdimes': {
       const re=/d[îi]me|offrande|don/i; let s=0;
       Y().foyer.forEach(l=>{ if(re.test(l.name)) s+=l.planned.reduce((a,v)=>a+v,0); });
       state.people.forEach(p=>Y().persons[p].cats.forEach(l=>{ if(re.test(l.name)) for(let mm=0;mm<12;mm++) s+=catVal(p,l,mm,'planned'); }));
-      state.deductions.push({id:nid(),label:'Dîmes & dons '+state.currentYear,montant:Math.round(s),rate:66});
+      dedList().push({id:nid(),month:(state.ui.month||0),label:'Dîmes & dons '+state.currentYear,montant:Math.round(s),rate:66});
       toast('Importé : '+eur(s)); break;
     }
     case 'addnext2': addYear(true); break;
@@ -1447,6 +1519,13 @@ document.getElementById('btnPrint').onclick=()=>{
 };
 document.getElementById('btnUndo').onclick=undo;
 document.getElementById('btnRedo').onclick=redo;
+/* fenêtre de note (multi-ligne) */
+let noteGetter=null;
+function openNote(getter){ const o=getter&&getter(); if(!o) return; noteGetter=getter; document.getElementById('noteTitle').textContent='Note — '+esc(o.name||o.label||'ligne'); document.getElementById('noteText').value=o.note||''; document.getElementById('noteModal').classList.add('show'); setTimeout(()=>document.getElementById('noteText').focus(),60); }
+function closeNote(){ document.getElementById('noteModal').classList.remove('show'); noteGetter=null; }
+document.getElementById('noteCancel').onclick=closeNote;
+document.getElementById('noteSave').onclick=()=>{ if(noteGetter){ const o=noteGetter(); if(o){ snapshot(true); o.note=document.getElementById('noteText').value; markEdit(); save(); fullRender(); } } closeNote(); };
+document.getElementById('noteModal').addEventListener('click', e=>{ if(e.target.id==='noteModal') closeNote(); });
 document.addEventListener('keydown', e=>{
   if((e.metaKey||e.ctrlKey) && (e.key==='z'||e.key==='Z')){ e.preventDefault(); if(e.shiftKey) redo(); else undo(); }
   else if((e.metaKey||e.ctrlKey) && (e.key==='y'||e.key==='Y')){ e.preventDefault(); redo(); }
