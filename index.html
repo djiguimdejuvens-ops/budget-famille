@@ -73,7 +73,7 @@
   .btn.ghost{background:transparent}
   .btn.sm{padding:3px 8px;font-size:12px;border-radius:7px}
   .btn.danger{border-color:#5b2230;color:#fca5a5}
-  main{max-width:1200px;margin:0 auto;padding:14px}
+  main{max-width:1400px;margin:0 auto;padding:14px}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:14px}
   .card h2{margin:0 0 4px;font-size:16px}
   .card .hint{color:var(--muted);font-size:12.5px;margin:0 0 12px}
@@ -84,9 +84,9 @@
   .kpi .val{font-size:20px;font-weight:700;margin-top:3px}
   .tablewrap{overflow:auto;border:1px solid var(--line);border-radius:12px;max-height:74vh}
   table{border-collapse:collapse;width:100%;font-size:13px;min-width:760px}
-  th,td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:5px 7px;text-align:right;white-space:nowrap}
+  th,td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:4px 6px;text-align:right;white-space:nowrap}
   th{background:var(--panel2);color:var(--muted);font-weight:600;position:sticky;top:0;z-index:5}
-  td:first-child,th:first-child{text-align:left;position:sticky;left:0;background:var(--panel);z-index:6;min-width:190px}
+  td:first-child,th:first-child{text-align:left;position:sticky;left:0;background:var(--panel);z-index:6;min-width:116px;max-width:230px;white-space:normal;overflow-wrap:normal}
   th:first-child{z-index:7}
   tr.group td:first-child{font-weight:700;color:var(--accent2)}
   tr.group td{background:var(--panel2)}
@@ -94,12 +94,12 @@
   tr.grand td{font-weight:800;background:color-mix(in srgb,var(--accent) 18%,var(--panel))}
   tr.sub td:first-child{padding-left:18px;color:var(--txt)}
   input.cell{
-    width:78px;background:transparent;border:1px solid transparent;border-radius:6px;
-    color:var(--txt);text-align:right;padding:3px 5px;font-size:13px;
+    width:60px;background:transparent;border:1px solid transparent;border-radius:6px;
+    color:var(--txt);text-align:right;padding:3px 4px;font-size:13px;
   }
   input.cell:focus{outline:none;border-color:var(--accent);background:var(--cellfocus)}
   input.cell:hover{border-color:var(--line)}
-  input.txt{width:150px;text-align:left}
+  input.txt{width:118px;text-align:left}
   input.cell::placeholder{color:#46556e}
   .good{color:var(--good)} .bad{color:var(--bad)} .neutral{color:var(--neutral)} .warn{color:var(--warn)}
   .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;border:1px solid var(--line)}
@@ -140,24 +140,38 @@
   .ctip.show{opacity:1}
   svg rect[data-tip],svg circle{cursor:pointer}
   @media(max-width:600px){
-    main{padding:10px}
-    .card{padding:11px}
+    main{padding:8px}
+    .card{padding:10px}
     .brand h1{font-size:16px}
     .tab{padding:7px 10px;font-size:12px}
     .kpi .val{font-size:18px}
-    th,td{padding:4px 6px;font-size:12px}
-    td:first-child,th:first-child{min-width:140px}
-    input.cell{width:62px}
+    th,td{padding:3px 4px;font-size:11px}
+    td:first-child,th:first-child{min-width:78px;max-width:150px}
+    input.cell{width:44px;padding:3px 2px}
+    input.txt{width:84px}
+    .mv,.del,.noteicon{padding:0 1px;font-size:11px}
+    /* sur mobile, on masque Budget/Écart/Ratio des tableaux de planification pour voir les mois */
+    table.planif th:nth-child(2),table.planif td:nth-child(2),
+    table.planif th:nth-child(3),table.planif td:nth-child(3),
+    table.planif th:nth-child(4),table.planif td:nth-child(4){display:none}
   }
   @media print{
-    :root[data-theme="dark"]{--bg1:#fff;--bg2:#fff;--panel:#fff;--panel2:#f4f6fb;--line:#cfd8e6;--txt:#0b1320;--muted:#444;--accentInk:#fff;}
-    body{background:#fff !important;padding:0}
-    header{position:static;background:#fff;border:0}
-    .tabs,.yearbar,#btnExport,#btnImport,#btnPrint,#btnTheme,.miniadd,.del,.noteicon,.monthtabs{display:none !important}
-    .tablewrap{overflow:visible;max-height:none}
-    table{min-width:0 !important;font-size:10px}
-    .card{break-inside:avoid;border-color:#ccc}
-    @page{margin:10mm}
+    :root[data-theme="dark"]{--bg1:#fff;--bg2:#fff;--panel:#fff;--panel2:#f4f6fb;--line:#cfd8e6;--txt:#0b1320;--muted:#333;--accentInk:#fff;}
+    body{background:#fff !important;padding:0;color:#000}
+    header{position:static;background:#fff;border:0;padding:0}
+    .brand,.tabs,.yearbar,#btnExport,#btnImport,#btnPrint,#btnTheme,#btnUndo,#btnRedo,.miniadd,.del,.mv,.noteicon,.monthtabs,.dimebadge,.toast,.ctip{display:none !important}
+    main{max-width:none;margin:0;padding:0}
+    .card{break-inside:avoid;border:1px solid #ccc;box-shadow:none;margin-bottom:8px}
+    .tablewrap{overflow:visible !important;max-height:none !important;border:0}
+    table{min-width:0 !important;width:100% !important;font-size:8px;table-layout:fixed}
+    th,td{padding:2px 3px;white-space:normal;overflow-wrap:break-word;border-color:#bbb;color:#000}
+    td:first-child,th:first-child{position:static;min-width:0;max-width:none}
+    th{position:static;box-shadow:none}
+    input.cell{border:0 !important;width:100%;font-size:8px;color:#000;padding:0;-webkit-text-fill-color:#000}
+    td.autocell{background:transparent}
+    .chartbox{break-inside:avoid;border:1px solid #ccc}
+    .kpis{break-inside:avoid}
+    @page{margin:8mm}
   }
 </style>
 </head>
@@ -170,7 +184,8 @@
       <div class="sub">Planification • Prorata • Suivi réel vs planifié</div>
     </div>
     <div class="spacer"></div>
-    <button class="btn ghost sm" id="btnUndo" title="Annuler la dernière action (Cmd/Ctrl+Z)">↩</button>
+    <button class="btn ghost sm" id="btnUndo" title="Annuler (Cmd/Ctrl+Z)">↩</button>
+    <button class="btn ghost sm" id="btnRedo" title="Restaurer la dernière modification (Cmd/Ctrl+Maj+Z)">↪</button>
     <button class="btn ghost sm themebtn" id="btnTheme" title="Thème clair / sombre / auto">🌗</button>
     <button class="btn ghost sm" id="btnPrint" title="Imprimer / PDF de l'onglet courant">🖨 PDF</button>
     <button class="btn ghost sm" id="btnExport">⬇ Export</button>
@@ -308,10 +323,13 @@ function save(){
   clearTimeout(saveTimer);
   saveTimer=setTimeout(()=>{ try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }catch(e){ toast('Erreur de sauvegarde'); } if(syncRef) pushRemote(); },150);
 }
-// Historique pour l'annulation (Cmd/Ctrl+Z)
-let undoStack=[], lastSnap=0;
-function snapshot(force){ const t=Date.now(); if(!force && t-lastSnap<700) return; lastSnap=t; undoStack.push(JSON.stringify(state)); if(undoStack.length>60) undoStack.shift(); }
-function undo(){ if(!undoStack.length){ toast('Rien à annuler'); return; } try{ state=JSON.parse(undoStack.pop()); migrate(); save(); applyTheme(); fullRender(); toast('Annulé ↩'); }catch(e){ toast('Annulation impossible'); } }
+// Historique annuler / refaire (Cmd/Ctrl+Z et Cmd/Ctrl+Maj+Z)
+let undoStack=[], redoStack=[], lastSnap=0;
+function snapshot(force){ const t=Date.now(); if(!force && t-lastSnap<700) return; lastSnap=t; undoStack.push(JSON.stringify(state)); if(undoStack.length>80) undoStack.shift(); redoStack=[]; }
+function undo(){ if(!undoStack.length){ toast('Rien à annuler'); return; } try{ redoStack.push(JSON.stringify(state)); state=JSON.parse(undoStack.pop()); migrate(); save(); applyTheme(); fullRender(); toast('Annulé ↩'); }catch(e){ toast('Annulation impossible'); } }
+function redo(){ if(!redoStack.length){ toast('Rien à rétablir'); return; } try{ undoStack.push(JSON.stringify(state)); state=JSON.parse(redoStack.pop()); migrate(); save(); applyTheme(); fullRender(); toast('Rétabli ↪'); }catch(e){ toast('Rétablissement impossible'); } }
+function markEdit(){ state.lastEdit=Date.now(); }
+function lastEditLine(){ return state.lastEdit ? `<p class="note" style="margin:2px 0 10px">🕒 Dernière saisie : ${esc(new Date(state.lastEdit).toLocaleString('fr-FR'))}</p>` : ''; }
 
 /* =========================================================
    CALCULS
@@ -422,7 +440,7 @@ function renderTopbar(){
    ========================================================= */
 function renderRevenus(){
   let h = `<div class="card"><h2>Revenus mensuels nets & autres entrées</h2>
-    <p class="hint">Saisis le salaire net de chaque mois et ajoute les revenus exceptionnels (primes, remboursements…). Le prorata de chacun est recalculé automatiquement.</p>`;
+    <p class="hint">Saisis le salaire net de chaque mois et ajoute les revenus exceptionnels (primes, remboursements…). Le prorata de chacun est recalculé automatiquement.</p>${lastEditLine()}`;
   h += `<div class="tablewrap"><table><thead><tr><th>Personne / poste</th>${MONTHS.map(m=>`<th>${m}</th>`).join('')}<th>Total</th></tr></thead><tbody>`;
   state.people.forEach(p=>{
     const P=Y().persons[p];
@@ -466,8 +484,8 @@ function renderFoyer(){
   const E3='<td></td><td></td><td></td>';
   let h = `<div class="card"><h2>Budget foyer ${state.currentYear} — planification annuelle</h2>
   <p class="hint">Colonnes <b>Budget</b> (objectif annuel) • <b>Écart</b> (budget − planifié : 🟢 sous / 🔴 dépassé) • <b>Ratio</b> (part du revenu couple). 💡 Tape une formule (ex. <b>=1040*12</b>) puis <b>Entrée</b>. Recopie : <b>Ctrl/Cmd+Entrée</b> jusqu'à déc., <b>Maj+Entrée</b> sur l'année.</p>
-  <p class="hint" style="margin-top:-6px">Sur chaque ligne : <b>↑↓</b> déplacer • <b>✕</b> supprimer • <b>📝</b> note/commentaire. Sur une catégorie : <b>✏️</b> renommer • <b>🗑</b> supprimer toute la catégorie.</p>`;
-  h += `<div class="tablewrap"><table><thead><tr><th>Catégorie</th><th>Budget</th><th>Écart</th><th>Ratio</th>${MONTHS.map(m=>`<th>${m}</th>`).join('')}<th>Total an.</th></tr></thead><tbody>`;
+  <p class="hint" style="margin-top:-6px">Sur chaque ligne : <b>↑↓</b> déplacer • <b>✕</b> supprimer • <b>📝</b> note/commentaire. Sur une catégorie : <b>✏️</b> renommer • <b>🗑</b> supprimer toute la catégorie.</p>${lastEditLine()}`;
+  h += `<div class="tablewrap"><table class="planif"><thead><tr><th>Catégorie</th><th>Budget</th><th>Écart</th><th>Ratio</th>${MONTHS.map(m=>`<th>${m}</th>`).join('')}<th>Total an.</th></tr></thead><tbody>`;
   foyerGroups().forEach(g=>{
     const lines = Y().foyer.filter(l=>l.group===g);
     let gT=0; const gm=MONTHS.map((_,m)=>{const v=foyerGroupTotal(g,m,'planned');gT+=v;return `<td>${num(v)}</td>`}).join(''); const gB=foyerGroupBudget(g);
@@ -502,8 +520,8 @@ function renderPerson(p){
   const base=personIncomeYear(p);
   const E3='<td></td><td></td><td></td>';
   let h = `<div class="card"><h2>Budget ${esc(p)} — planification ${state.currentYear}</h2>
-  <p class="hint">Colonnes <b>Budget</b>/<b>Écart</b>/<b>Ratio</b> (part du revenu de ${esc(p)}). 💡 Formule (ex. <b>=200*12</b>) + <b>Entrée</b>. Recopie : <b>Ctrl/Cmd+Entrée</b> jusqu'à déc., <b>Maj+Entrée</b> sur l'année. Ligne : <b>↑↓</b> déplacer • <b>📝</b> note • <b>✕</b> suppr. ; catégorie : <b>✏️</b> renommer • <b>🗑</b> suppr. La <b>Dîme</b> est à 10% auto (badge <b>auto 10%</b>) — clique le badge pour saisir manuellement.</p>`;
-  h += `<div class="tablewrap"><table><thead><tr><th>Poste</th><th>Budget</th><th>Écart</th><th>Ratio</th>${MONTHS.map(m=>`<th>${m}</th>`).join('')}<th>Total an.</th></tr></thead><tbody>`;
+  <p class="hint">Colonnes <b>Budget</b>/<b>Écart</b>/<b>Ratio</b> (part du revenu de ${esc(p)}). 💡 Formule (ex. <b>=200*12</b>) + <b>Entrée</b>. Recopie : <b>Ctrl/Cmd+Entrée</b> jusqu'à déc., <b>Maj+Entrée</b> sur l'année. Ligne : <b>↑↓</b> déplacer • <b>📝</b> note • <b>✕</b> suppr. ; catégorie : <b>✏️</b> renommer • <b>🗑</b> suppr. La <b>Dîme</b> est à 10% auto (badge <b>auto 10%</b>) — clique le badge pour saisir manuellement.</p>${lastEditLine()}`;
+  h += `<div class="tablewrap"><table class="planif"><thead><tr><th>Poste</th><th>Budget</th><th>Écart</th><th>Ratio</th>${MONTHS.map(m=>`<th>${m}</th>`).join('')}<th>Total an.</th></tr></thead><tbody>`;
   // revenus
   let rT=0;
   h += `<tr class="group"><td>Revenus</td>${E3}${MONTHS.map(()=>`<td></td>`).join('')}<td></td></tr>`;
@@ -620,7 +638,7 @@ function renderReel(){
     <button class="monthtab ${scope==='foyer'?'active':''}" data-reel="foyer">🏠 Foyer</button>
     ${state.people.map(p=>`<button class="monthtab ${scope===('person:'+p)?'active':''}" data-reel="person:${esc(p)}">${esc(p)}</button>`).join('')}
     <button class="monthtab ${scope==='bilan'?'active':''}" data-reel="bilan">📊 Bilan annuel</button>
-  </div></div>`;
+  </div>${lastEditLine()}</div>`;
   if(scope==='foyer') h+=reelFoyer(m);
   else if(scope.startsWith('person:')) h+=reelPersonTbl(scope.slice(7),m);
   else if(scope==='bilan') h+=renderProjection();
@@ -887,7 +905,7 @@ function renderParams(){
   });
   h += `</div>`;
 
-  h += `<div class="card"><h2>Gestion des années (vision N → N+5)</h2><p class="hint">Planifie sur plusieurs années. « Dupliquer » copie les montants planifiés de l'année courante (le réel est remis à zéro).</p>`;
+  h += `<div class="card"><h2>Gestion des années</h2><p class="hint">Planifie sur autant d'années que tu veux (aucune limite). « Dupliquer » copie les montants planifiés de l'année courante (le réel est remis à zéro).</p>`;
   h += `<div class="row">`;
   ys.forEach(y=>{
     h += `<span class="pill" style="display:inline-flex;gap:8px;align-items:center;padding:6px 10px">${y}${ys.length>1?` <span class="del" data-act="delyear|${y}">✕</span>`:''}</span>`;
@@ -1125,7 +1143,7 @@ document.addEventListener('input', e=>{
   const el=e.target;
   if(!el.dataset||!el.dataset.cell) return;
   const c=el.dataset.cell.split('|');
-  snapshot(false);
+  snapshot(false); markEdit();
   if(AUX.includes(c[0])){ applyAux(c, el); save(); rerender(); return; }
   if(el.classList.contains('num')){
     applyCellValue(c, parseNum(el.value)); save(); rerender();
@@ -1235,7 +1253,7 @@ document.addEventListener('click', e=>{
     case 'syncpush': pushRemote(true); toast('Envoyé au cloud'); return;
     default: return;
   }
-  save(); fullRender();
+  markEdit(); save(); fullRender();
 });
 
 // year nav
@@ -1248,8 +1266,6 @@ function addYear(after){
   const ys=Object.keys(state.years).map(Number).sort((a,b)=>a-b);
   const ny= after? ys[ys.length-1]+1 : ys[0]-1;
   if(state.years[ny]) return;
-  if(after && ny>ys[0]+5){ toast('Vision limitée à N+5'); return; }
-  if(!after && ys[ys.length-1]-ny>5){ toast('Vision limitée à 6 ans'); return; }
   state.years[ny]=makeYear();
   state.currentYear=ny; save(); fullRender(); toast('Année '+ny+' ajoutée');
 }
@@ -1280,9 +1296,19 @@ function doExport(){
 function doImport(){ document.getElementById('fileImport').click(); }
 document.getElementById('btnExport').onclick=doExport;
 document.getElementById('btnImport').onclick=doImport;
-document.getElementById('btnPrint').onclick=()=>window.print();
+document.getElementById('btnPrint').onclick=()=>{
+  const t=state.ui.tab;
+  const wide = ['revenus','foyer','reel','dash','invest'].includes(t) || t.startsWith('person:');
+  let st=document.getElementById('printpage'); if(!st){ st=document.createElement('style'); st.id='printpage'; document.head.appendChild(st); }
+  st.textContent='@page{size:A4 '+(wide?'landscape':'portrait')+';margin:8mm}';
+  window.print();
+};
 document.getElementById('btnUndo').onclick=undo;
-document.addEventListener('keydown', e=>{ if((e.metaKey||e.ctrlKey) && !e.shiftKey && (e.key==='z'||e.key==='Z')){ e.preventDefault(); undo(); } });
+document.getElementById('btnRedo').onclick=redo;
+document.addEventListener('keydown', e=>{
+  if((e.metaKey||e.ctrlKey) && (e.key==='z'||e.key==='Z')){ e.preventDefault(); if(e.shiftKey) redo(); else undo(); }
+  else if((e.metaKey||e.ctrlKey) && (e.key==='y'||e.key==='Y')){ e.preventDefault(); redo(); }
+});
 document.getElementById('fileImport').onchange=e=>{
   const f=e.target.files[0]; if(!f) return;
   const r=new FileReader();
