@@ -252,7 +252,7 @@ const EXC_NATURES = [
 function excNat(k){ return EXC_NATURES.find(n=>n.key===k)||EXC_NATURES[5]; }
 const CURRENCIES = ['EUR','USDT','USD','GBP','FCFA'];
 const FX_DEFAULT = {EUR:1, USDT:0.92, USD:0.92, GBP:1.17, FCFA:0.001524};
-const AUX = ['inv','asset','debt','deduc','dedm','fx','startcash','excm','excl','excn','excmt'];
+const AUX = ['inv','liq','asset','debt','deduc','dedm','fx','startcash','excm','excl','excn','excmt'];
 
 let uid = 1; const nid = ()=> 'i'+(uid++)+Date.now().toString(36).slice(-3);
 const arr12 = ()=> [0,0,0,0,0,0,0,0,0,0,0,0];
@@ -309,7 +309,10 @@ function makeYear(){
       'Juvens': emptyPerson(catsJuvens)
     },
     exceptional: [],
-    deductions: []
+    deductions: [],
+    investments: [],
+    liquidity: [],
+    realized: []
   };
 }
 function defaultState(){
@@ -346,12 +349,17 @@ function migrate(){
   Object.values(state.years).forEach(yr=>{
     if(!yr.exceptional) yr.exceptional=[];
     if(!yr.deductions) yr.deductions=[];
+    if(!yr.investments) yr.investments=[];
+    if(!yr.liquidity) yr.liquidity=[];
+    if(!yr.realized) yr.realized=[];
     Object.values(yr.persons||{}).forEach(P=> (P.cats||[]).forEach(l=>{
       if(/^d[îi]me$/i.test(String(l.name||'').trim()) && l.auto===undefined){ l.auto=true; l.rate=10; }
     }));
   });
-  // migration : déductions globales (ancienne version) → année courante
-  if(state.deductions && state.deductions.length){ const y=state.years[state.currentYear]; y.deductions=(y.deductions||[]).concat(state.deductions); state.deductions=[]; }
+  // migration : déductions/investissements globaux (ancienne version) → année courante
+  const yc=state.years[state.currentYear];
+  if(state.deductions && state.deductions.length){ yc.deductions=(yc.deductions||[]).concat(state.deductions); state.deductions=[]; }
+  if(state.investments && state.investments.length){ yc.investments=(yc.investments||[]).concat(state.investments); state.investments=[]; }
 }
 let saveTimer=null;
 function save(){
@@ -1087,31 +1095,73 @@ function renderParams(){
 /* =========================================================
    ONGLET INVESTISSEMENTS
    ========================================================= */
-function investCurrentEUR(){ return state.investments.reduce((s,i)=>s+toEUR(i.current,i.devise),0); }
+function invList(){ return Y().investments||(Y().investments=[]); }
+function liqList(){ return Y().liquidity||(Y().liquidity=[]); }
+function realizedList(){ return Y().realized||(Y().realized=[]); }
+function investCurrentEUR(){ return invList().reduce((s,i)=>s+toEUR(i.current,i.devise),0); }
+function liquidityEUR(){ return liqList().reduce((s,l)=>s+toEUR(l.value,l.devise),0); }
+function plLatente(){ return invList().reduce((s,i)=>s+(toEUR(i.current,i.devise)-toEUR(i.invested,i.devise)),0); }
+function plRealisee(){ return realizedList().reduce((s,r)=>s+(toEUR(r.sold,r.devise)-toEUR(r.invested,r.devise)),0); }
+function TODAY(){ return new Date().toISOString().slice(0,10); }
+function dateCell(val,cell){ return `<input type="date" class="cell" data-cell="${cell}" value="${val||''}" style="width:132px">`; }
+function investSorted(){
+  const s=state.ui.investSort||{key:'',dir:1}; const a=invList().slice();
+  if(s.key){ const val=(it)=>{ const inv=toEUR(it.invested,it.devise),cur=toEUR(it.current,it.devise);
+    if(s.key==='date') return it.date||''; if(s.key==='platform') return (it.platform||'').toLowerCase();
+    if(s.key==='pl') return cur-inv; if(s.key==='pct') return inv?(cur-inv)/inv:0; return 0; };
+    a.sort((x,y)=>{ const vx=val(x),vy=val(y); return vx<vy?-s.dir:vx>vy?s.dir:0; }); }
+  return a;
+}
 function renderInvest(){
-  let h=`<div class="card"><h2>Investissements 📈</h2>
-   <p class="hint">Suis tes placements par plateforme. Tout est converti en € selon les taux ci-dessous. Plus-value = valeur actuelle − investi.</p>`;
-  h+=`<div class="row" style="margin-bottom:10px"><span class="note">Taux de change → € :</span>`;
+  const sorted=state.ui.investSort&&state.ui.investSort.key;
+  const arr=(typeof investSorted==='function')?investSorted():invList();
+  const sa=state.ui.investSort||{key:'',dir:1};
+  const ar=(k)=> sa.key===k?(sa.dir>0?' ▲':' ▼'):'';
+  let h=`<div class="card"><h2>Investissements ${state.currentYear} 📈</h2>
+   <p class="hint">Placements par plateforme (valeur convertie en €). <b>Plus-value latente</b> = valeur actuelle − investi (encore détenu). <b>Vendre</b> fige la plus-value réalisée. Change d'année avec ◀ ▶ ; « Dupliquer » reporte tes placements sur l'année suivante.</p>${lastEditLine()}`;
+  h+=`<div class="row" style="margin-bottom:10px"><span class="note">Taux → € :</span>`;
   CURRENCIES.filter(d=>d!=='EUR').forEach(d=>{ h+=`<span class="note">1&nbsp;${d}&nbsp;=</span>${inCell(state.fx[d],'fx|'+d,'style="width:84px"')}<span class="note">€</span>`; });
   h+=`</div>`;
-  h+=`<div class="tablewrap"><table style="min-width:740px"><thead><tr><th>Plateforme</th><th>Actif</th><th>Devise</th><th>Investi</th><th>Valeur actuelle</th><th>+/- (€)</th><th>%</th></tr></thead><tbody>`;
-  let tInv=0,tCur=0;
-  state.investments.forEach(it=>{
-    const inv=toEUR(it.invested,it.devise), cur=toEUR(it.current,it.devise); tInv+=inv; tCur+=cur;
-    const pl=cur-inv, plp=inv?pl/inv:0; const cl=pl>=0?'good':'bad';
-    h+=`<tr class="sub"><td>${mvBtns('moveinv|'+it.id)} <span class="del" data-act="delinv|${it.id}">✕</span> ${txtCell(it.platform,'inv|'+it.id+'|platform')}</td><td>${txtCell(it.name,'inv|'+it.id+'|name')}</td><td>${selCell(it.devise||'EUR','inv|'+it.id+'|devise',CURRENCIES)}</td><td>${inCell(it.invested,'inv|'+it.id+'|invested')}</td><td>${inCell(it.current,'inv|'+it.id+'|current')}</td><td class="${cl}">${pl>=0?'+':''}${num(pl)}</td><td class="${cl}">${pct(plp)}</td></tr>`;
+  // KPIs
+  const tInv=invList().reduce((s,i)=>s+toEUR(i.invested,i.devise),0), tCur=investCurrentEUR();
+  const lat=plLatente(), rea=plRealisee(), liq=liquidityEUR();
+  h+=`<div class="kpis" style="margin-bottom:12px">${kpi('Investi (en cours)',eur(tInv))}${kpi('Valeur actuelle',eur(tCur))}${kpi('+/- latente',(lat>=0?'+':'')+eur(lat),lat>=0?'good':'bad')}${kpi('+/- réalisée',(rea>=0?'+':'')+eur(rea),rea>=0?'good':'bad')}${kpi('Liquidités',eur(liq))}${kpi('Total portefeuille',eur(tCur+liq))}</div>`;
+  // Table placements
+  h+=`<div class="tablewrap"><table style="min-width:820px"><thead><tr><th data-sort="date" style="cursor:pointer">Date${ar('date')}</th><th data-sort="platform" style="cursor:pointer">Plateforme${ar('platform')}</th><th>Actif</th><th>Devise</th><th>Investi</th><th>Valeur</th><th data-sort="pl" style="cursor:pointer">+/- €${ar('pl')}</th><th data-sort="pct" style="cursor:pointer">%${ar('pct')}</th><th></th></tr></thead><tbody>`;
+  arr.forEach(it=>{
+    const inv=toEUR(it.invested,it.devise),cur=toEUR(it.current,it.devise),pl=cur-inv,plp=inv?pl/inv:0,cl=pl>=0?'good':'bad';
+    h+=`<tr class="sub"><td>${sorted?'':mvBtns('moveinv|'+it.id)} <span class="del" data-act="delinv|${it.id}">✕</span> ${dateCell(it.date,'inv|'+it.id+'|date')}</td><td>${txtCell(it.platform,'inv|'+it.id+'|platform')}</td><td>${txtCell(it.name,'inv|'+it.id+'|name')}</td><td>${selCell(it.devise||'EUR','inv|'+it.id+'|devise',CURRENCIES)}</td><td>${inCell(it.invested,'inv|'+it.id+'|invested')}</td><td>${inCell(it.current,'inv|'+it.id+'|current')}</td><td class="${cl}">${pl>=0?'+':''}${num(pl)}</td><td class="${cl}">${pct(plp)}</td><td><span class="miniadd" data-act="sellinv|${it.id}">Vendre</span></td></tr>`;
   });
-  h+=`<tr><td colspan="7"><span class="miniadd" data-act="addinv">+ ajouter un placement</span></td></tr>`;
-  const tpl=tCur-tInv, tcl=tpl>=0?'good':'bad';
-  h+=`<tr class="grand"><td>Total (€)</td><td></td><td></td><td>${num(tInv)}</td><td>${num(tCur)}</td><td class="${tcl}">${tpl>=0?'+':''}${num(tpl)}</td><td class="${tcl}">${pct(tInv?tpl/tInv:0)}</td></tr>`;
+  h+=`<tr><td colspan="9"><span class="miniadd" data-act="addinv">+ ajouter un placement</span></td></tr>`;
+  const tpl=tCur-tInv,tcl=tpl>=0?'good':'bad';
+  h+=`<tr class="grand"><td>Total</td><td></td><td></td><td></td><td>${num(tInv)}</td><td>${num(tCur)}</td><td class="${tcl}">${tpl>=0?'+':''}${num(tpl)}</td><td class="${tcl}">${pct(tInv?tpl/tInv:0)}</td><td></td></tr>`;
   h+=`</tbody></table></div></div>`;
-  h+=`<div class="card"><div class="kpis">${kpi('Total investi',eur(tInv))}${kpi('Valeur actuelle',eur(tCur))}${kpi('Plus-value',(tpl>=0?'+':'')+eur(tpl),tcl)}</div>`;
-  const plats=[...new Set(state.investments.map(i=>i.platform||'—'))].filter(Boolean);
-  if(plats.length){
-    const alloc=plats.map(p=>state.investments.filter(i=>(i.platform||'—')===p).reduce((s,i)=>s+toEUR(i.current,i.devise),0));
-    h+=`<div class="chartbox"><h3>Répartition par plateforme (valeur actuelle)</h3>${pieChart(plats.map((p,i)=>({label:p,value:alloc[i]})))}</div>`;
+  // Liquidités
+  h+=`<div class="card"><h2>Liquidités par plateforme</h2><p class="hint">Saisis le solde disponible à une date ; « 📸 Nouveau relevé » archive l'ancien et calcule la variation.</p>
+   <div class="tablewrap"><table style="min-width:620px"><thead><tr><th>Plateforme</th><th>Devise</th><th>Solde actuel</th><th>Date</th><th>Précédent</th><th>Variation</th><th></th></tr></thead><tbody>`;
+  liqList().forEach(l=>{ const v=toEUR(l.value,l.devise),pv=toEUR(l.prev||0,l.devise),va=v-pv;
+    h+=`<tr class="sub"><td><span class="del" data-act="delliq|${l.id}">✕</span> ${txtCell(l.platform,'liq|'+l.id+'|platform')}</td><td>${selCell(l.devise||'EUR','liq|'+l.id+'|devise',CURRENCIES)}</td><td>${inCell(l.value,'liq|'+l.id+'|value')}</td><td>${dateCell(l.date,'liq|'+l.id+'|date')}</td><td class="note">${l.prevdate?num(l.prev||0)+' ('+l.prevdate+')':'—'}</td><td class="${va>0?'good':va<0?'bad':'neutral'}">${l.prevdate?(va>0?'+':'')+num(va):''}</td><td><span class="miniadd" data-act="liqreleve|${l.id}">📸 relevé</span></td></tr>`;
+  });
+  h+=`<tr><td colspan="7"><span class="miniadd" data-act="addliq">+ ajouter une plateforme</span></td></tr>`;
+  h+=`<tr class="grand"><td>Total liquidités (€)</td><td></td><td>${num(liq)}</td><td></td><td></td><td></td><td></td></tr></tbody></table></div></div>`;
+  // Ventes réalisées
+  if(realizedList().length){
+    h+=`<div class="card"><h2>Ventes réalisées ${state.currentYear}</h2><div class="tablewrap"><table style="min-width:620px"><thead><tr><th>Date</th><th>Plateforme</th><th>Actif</th><th>Investi</th><th>Vendu</th><th>+/- réalisé</th><th></th></tr></thead><tbody>`;
+    realizedList().forEach(r=>{ const g=toEUR(r.sold,r.devise)-toEUR(r.invested,r.devise);
+      h+=`<tr class="sub"><td>${esc(r.date||'')}</td><td>${esc(r.platform||'')}</td><td>${esc(r.name||'')}</td><td>${num(toEUR(r.invested,r.devise))}</td><td>${num(toEUR(r.sold,r.devise))}</td><td class="${g>=0?'good':'bad'}">${g>=0?'+':''}${num(g)}</td><td><span class="del" data-act="delreal|${r.id}">✕</span></td></tr>`; });
+    h+=`<tr class="grand"><td>Total réalisé</td><td></td><td></td><td></td><td></td><td class="${rea>=0?'good':'bad'}">${rea>=0?'+':''}${num(rea)}</td><td></td></tr></tbody></table></div></div>`;
   }
-  h+=`</div>`;
+  // Camemberts
+  const plats=[...new Set(invList().map(i=>i.platform||'—'))].filter(Boolean);
+  if(plats.length){
+    const alloc=plats.map(p=>invList().filter(i=>(i.platform||'—')===p).reduce((s,i)=>s+toEUR(i.current,i.devise),0));
+    h+=`<div class="card"><h2>Répartition</h2><div class="grid2">
+      <div><h3 style="font-size:14px;margin:0 0 6px">Placements par plateforme</h3>${pieChart(plats.map((p,i)=>({label:p,value:alloc[i]})))}</div>`;
+    const lp=[...new Set(liqList().map(l=>l.platform||'—'))].filter(Boolean);
+    if(lp.length){ const la=lp.map(p=>liqList().filter(l=>(l.platform||'—')===p).reduce((s,l)=>s+toEUR(l.value,l.devise),0));
+      h+=`<div><h3 style="font-size:14px;margin:0 0 6px">Liquidités par plateforme</h3>${pieChart(lp.map((p,i)=>({label:p,value:la[i]})))}</div>`; }
+    h+=`</div></div>`;
+  }
   return h;
 }
 
@@ -1268,7 +1318,8 @@ function applyTextValue(c, v){
 function applyAux(c, el){
   const v=el.value, n=parseNum(v);
   switch(c[0]){
-    case 'inv': { const it=state.investments.find(x=>x.id===c[1]); if(it){ it[c[2]] = (c[2]==='invested'||c[2]==='current')?n:v; } break; }
+    case 'inv': { const it=invList().find(x=>x.id===c[1]); if(it){ it[c[2]] = (c[2]==='invested'||c[2]==='current')?n:v; } break; }
+    case 'liq': { const it=liqList().find(x=>x.id===c[1]); if(it){ it[c[2]] = c[2]==='value'?n:v; } break; }
     case 'asset': { const it=state.assets.find(x=>x.id===c[1]); if(it){ it[c[2]] = c[2]==='value'?n:v; } break; }
     case 'debt': { const it=state.debts.find(x=>x.id===c[1]); if(it){ it[c[2]] = c[2]==='value'?n:v; } break; }
     case 'deduc': { const it=dedList().find(x=>x.id===c[1]); if(it){ it[c[2]] = (c[2]==='montant'||c[2]==='rate')?n:v; } break; }
@@ -1348,6 +1399,8 @@ document.addEventListener('click', e=>{
   if(mt && mt.dataset.month!==undefined){ state.ui.month=+mt.dataset.month; save(); rerender(); return; }
   if(mt && mt.dataset.dash){ state.ui.dashScope=mt.dataset.dash; save(); fullRender(); return; }
   if(mt && mt.dataset.reel){ state.ui.reelScope=mt.dataset.reel; save(); fullRender(); return; }
+  const sh=e.target.closest&&e.target.closest('[data-sort]');
+  if(sh){ const k=sh.dataset.sort, s=state.ui.investSort||{key:'',dir:1}; state.ui.investSort = s.key===k?{key:k,dir:-s.dir}:{key:k,dir:1}; save(); fullRender(); return; }
   const act=e.target.dataset&&e.target.dataset.act;
   if(!act) return;
   const c=act.split('|');
@@ -1366,7 +1419,7 @@ document.addEventListener('click', e=>{
     case 'movec': moveLine(Y().persons[c[1]].cats, c[2], c[3]==='up'?-1:1); break;
     case 'moveext': moveItem(Y().persons[c[1]].extras, c[2], c[3]==='up'?-1:1); break;
     case 'movepext': moveItem(Y().persons[c[1]].persoExtras||[], c[2], c[3]==='up'?-1:1); break;
-    case 'moveinv': moveItem(state.investments, c[1], c[2]==='up'?-1:1); break;
+    case 'moveinv': moveItem(invList(), c[1], c[2]==='up'?-1:1); break;
     case 'movegrpf': moveGroup(Y().foyer, c[1], c[2]==='up'?-1:1); break;
     case 'movegrpc': moveGroup(Y().persons[c[1]].cats, c[2], c[3]==='up'?-1:1); break;
     case 'reelcopyf': { const g=c[1], m=+c[2]; Y().foyer.filter(l=>l.group===g).forEach(l=>l.real[m]=l.planned[m]); toast('Réel = planifié'); break; }
@@ -1382,8 +1435,13 @@ document.addEventListener('click', e=>{
         } else { l.auto=true; if(!l.rate) l.rate=10; } } break; }
     case 'notef': openNote(()=>getLine('foyer',c[1])); return;
     case 'notec': openNote(()=>Y().persons[c[1]].cats.find(x=>x.id===c[2])); return;
-    case 'addinv': state.investments.push({id:nid(),platform:'Binance',name:'Nouvel actif',devise:'EUR',invested:0,current:0}); break;
-    case 'delinv': state.investments=state.investments.filter(x=>x.id!==c[1]); break;
+    case 'addinv': invList().push({id:nid(),date:TODAY(),platform:'Binance',name:'Nouvel actif',devise:'EUR',invested:0,current:0}); break;
+    case 'delinv': Y().investments=invList().filter(x=>x.id!==c[1]); break;
+    case 'sellinv': { const it=invList().find(x=>x.id===c[1]); if(it){ const sv=prompt('Montant encaissé à la vente (en '+(it.devise||'EUR')+') :', it.current); if(sv===null) return; realizedList().push({id:nid(),date:TODAY(),platform:it.platform,name:it.name,devise:it.devise,invested:it.invested,sold:parseNum(sv)}); Y().investments=invList().filter(x=>x.id!==it.id); toast('Vente enregistrée — pense à mettre à jour ta liquidité'); } break; }
+    case 'addliq': liqList().push({id:nid(),platform:'Fortuneo',devise:'EUR',value:0,date:TODAY(),prev:0,prevdate:''}); break;
+    case 'delliq': Y().liquidity=liqList().filter(x=>x.id!==c[1]); break;
+    case 'liqreleve': { const it=liqList().find(x=>x.id===c[1]); if(it){ it.prev=it.value; it.prevdate=it.date||TODAY(); it.date=TODAY(); toast('Ancien solde archivé — saisis le nouveau'); } break; }
+    case 'delreal': Y().realized=realizedList().filter(x=>x.id!==c[1]); break;
     case 'addasset': state.assets.push({id:nid(),name:'Livret / compte',devise:'EUR',value:0}); break;
     case 'delasset': state.assets=state.assets.filter(x=>x.id!==c[1]); break;
     case 'adddebt': state.debts.push({id:nid(),name:'Emprunt',devise:'EUR',value:0}); break;
@@ -1429,10 +1487,11 @@ function duplicateYear(){
   const ny=state.currentYear+1;
   if(state.years[ny]){ if(!confirm('Année '+ny+' existe déjà. Écraser avec une copie ?')) return; }
   const copy=JSON.parse(JSON.stringify(Y()));
-  // reset real
+  // reset réel + événements de l'année, mais on REPORTE les placements et les liquidités
   copy.foyer.forEach(l=>l.real=arr12());
   Object.values(copy.persons).forEach(P=>P.cats.forEach(c=>c.real=arr12()));
-  state.years[ny]=copy; state.currentYear=ny; save(); fullRender(); toast('Dupliqué vers '+ny);
+  copy.exceptional=[]; copy.deductions=[]; copy.realized=[];
+  state.years[ny]=copy; state.currentYear=ny; save(); fullRender(); toast('Dupliqué vers '+ny+' (placements & liquidités reportés)');
 }
 function delYear(y){
   if(Object.keys(state.years).length<=1){ toast('Au moins une année requise'); return; }
