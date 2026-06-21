@@ -1,0 +1,1364 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="theme-color" content="#0f766e">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Budget">
+<title>Budget Famille — Juvens & Madina</title>
+<style>
+  :root{
+    /* thème sombre (défaut) */
+    --bg1:#0b1220; --bg2:#0c1426;
+    --panel:#121b2e; --panel2:#0f1726; --line:#22304a;
+    --txt:#e6edf6; --muted:#93a4be; --accent:#14b8a6; --accent2:#0ea5e9;
+    --good:#22c55e; --bad:#ef4444; --neutral:#cbd5e1; --warn:#f59e0b;
+    --accentInk:#04211d; --cellfocus:#0a1626;
+    --glow1:rgba(20,184,166,.20); --glow2:rgba(14,165,233,.16); --glow3:rgba(139,92,246,.13);
+  }
+  :root[data-theme="light"]{
+    --bg1:#eef3fb; --bg2:#e4ebf7;
+    --panel:#ffffff; --panel2:#f3f7fd; --line:#d9e1ef;
+    --txt:#10203a; --muted:#5a6a85; --accent:#0d9488; --accent2:#0369a1;
+    --good:#15803d; --bad:#dc2626; --neutral:#1e293b; --warn:#b45309;
+    --accentInk:#ffffff; --cellfocus:#eaf2fc;
+    --glow1:rgba(13,148,136,.18); --glow2:rgba(2,132,199,.16); --glow3:rgba(124,58,237,.12);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:
+      radial-gradient(900px 620px at 10% -10%, var(--glow1), transparent 60%),
+      radial-gradient(820px 520px at 108% 2%, var(--glow2), transparent 55%),
+      radial-gradient(760px 760px at 50% 118%, var(--glow3), transparent 60%),
+      linear-gradient(180deg, var(--bg1), var(--bg2));
+    background-attachment:fixed;
+    color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-text-size-adjust:100%;
+    padding-bottom:60px;
+    transition:background .3s,color .3s;
+  }
+  header{
+    position:sticky;top:0;z-index:30;
+    background:color-mix(in srgb, var(--bg1) 86%, transparent);backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line);
+    padding:10px 14px;
+  }
+  .brand{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .brand h1{font-size:17px;margin:0;font-weight:700;letter-spacing:.2px}
+  .brand .sub{color:var(--muted);font-size:12px}
+  .spacer{flex:1}
+  .yearbar{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .yearbar .yr{font-weight:700;font-size:16px;min-width:64px;text-align:center}
+  .tabs{display:flex;gap:6px;overflow-x:auto;margin-top:10px;padding-bottom:2px;-webkit-overflow-scrolling:touch}
+  .tab{
+    white-space:nowrap;border:1px solid var(--line);background:var(--panel);
+    color:var(--muted);padding:8px 12px;border-radius:999px;font-size:13px;cursor:pointer;
+  }
+  .tab.active{background:var(--accent);color:var(--accentInk);border-color:var(--accent);font-weight:700}
+  button{font-family:inherit}
+  .btn{
+    border:1px solid var(--line);background:var(--panel);color:var(--txt);
+    padding:7px 11px;border-radius:9px;font-size:13px;cursor:pointer;
+  }
+  .btn:hover{border-color:var(--accent)}
+  .btn.primary{background:var(--accent);color:var(--accentInk);border-color:var(--accent);font-weight:700}
+  .btn.ghost{background:transparent}
+  .btn.sm{padding:3px 8px;font-size:12px;border-radius:7px}
+  .btn.danger{border-color:#5b2230;color:#fca5a5}
+  main{max-width:1200px;margin:0 auto;padding:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:14px}
+  .card h2{margin:0 0 4px;font-size:16px}
+  .card .hint{color:var(--muted);font-size:12.5px;margin:0 0 12px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+  .kpi{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:11px 13px}
+  .kpi .lbl{color:var(--muted);font-size:12px}
+  .kpi .val{font-size:20px;font-weight:700;margin-top:3px}
+  .tablewrap{overflow:auto;border:1px solid var(--line);border-radius:12px;max-height:74vh}
+  table{border-collapse:collapse;width:100%;font-size:13px;min-width:760px}
+  th,td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:5px 7px;text-align:right;white-space:nowrap}
+  th{background:var(--panel2);color:var(--muted);font-weight:600;position:sticky;top:0;z-index:5}
+  td:first-child,th:first-child{text-align:left;position:sticky;left:0;background:var(--panel);z-index:6;min-width:190px}
+  th:first-child{z-index:7}
+  tr.group td:first-child{font-weight:700;color:var(--accent2)}
+  tr.group td{background:var(--panel2)}
+  tr.total td{font-weight:700;background:color-mix(in srgb,var(--accent2) 12%,var(--panel))}
+  tr.grand td{font-weight:800;background:color-mix(in srgb,var(--accent) 18%,var(--panel))}
+  tr.sub td:first-child{padding-left:18px;color:var(--txt)}
+  input.cell{
+    width:78px;background:transparent;border:1px solid transparent;border-radius:6px;
+    color:var(--txt);text-align:right;padding:3px 5px;font-size:13px;
+  }
+  input.cell:focus{outline:none;border-color:var(--accent);background:var(--cellfocus)}
+  input.cell:hover{border-color:var(--line)}
+  input.txt{width:150px;text-align:left}
+  input.cell::placeholder{color:#46556e}
+  .good{color:var(--good)} .bad{color:var(--bad)} .neutral{color:var(--neutral)} .warn{color:var(--warn)}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;border:1px solid var(--line)}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin-top:8px}
+  .legend b{font-weight:700}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:780px){.grid2{grid-template-columns:1fr}}
+  .miniadd{color:var(--muted);font-size:12px;cursor:pointer;border:1px dashed var(--line);border-radius:7px;padding:3px 9px;background:transparent}
+  .miniadd:hover{border-color:var(--accent);color:var(--accent)}
+  select,input.field{background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:7px 9px;font-size:13px}
+  .monthtabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:12px}
+  .monthtab{border:1px solid var(--line);background:var(--panel2);color:var(--muted);padding:6px 11px;border-radius:8px;font-size:13px;cursor:pointer;white-space:nowrap}
+  .monthtab.active{background:var(--accent2);color:var(--accentInk);font-weight:700;border-color:var(--accent2)}
+  .del{color:#7c8aa5;cursor:pointer;font-size:13px;padding:0 4px}
+  .del:hover{color:var(--bad)}
+  .mv{color:#7c8aa5;cursor:pointer;font-size:12px;padding:0 1px;user-select:none}
+  .mv:hover{color:var(--accent)}
+  .noteicon{cursor:pointer;font-size:13px;opacity:.6;padding:0 3px}
+  .noteicon:hover{opacity:1}
+  .noteicon.has{opacity:1}
+  td.autocell{color:var(--muted);font-style:italic;background:color-mix(in srgb,var(--accent2) 7%,transparent)}
+  .dimebadge{cursor:pointer;border-color:var(--accent);color:var(--accent);margin-left:4px}
+  .dimebadge:hover{background:var(--accent);color:var(--accentInk)}
+  th{box-shadow:0 1px 0 var(--line)}
+  td.ratio{color:var(--muted);font-size:12px}
+  .progress{height:9px;border-radius:6px;background:var(--panel2);border:1px solid var(--line);overflow:hidden;margin-top:6px}
+  .progress>span{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2))}
+  .themebtn{font-size:15px;line-height:1}
+  svg .axis{stroke:var(--line)}
+  svg text{fill:var(--muted);font-size:11px}
+  .chartbox{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:14px}
+  .chartbox h3{margin:0 0 8px;font-size:14px}
+  .note{font-size:12px;color:var(--muted)}
+  .flexcol{display:flex;flex-direction:column;gap:2px}
+  .toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--accent);color:#04211d;padding:9px 16px;border-radius:10px;font-weight:600;font-size:13px;opacity:0;transition:.3s;z-index:99;pointer-events:none}
+  .toast.show{opacity:1}
+  .ctip{position:fixed;pointer-events:none;z-index:200;background:var(--panel);border:1px solid var(--accent);color:var(--txt);padding:5px 9px;border-radius:8px;font-size:12px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.35);opacity:0;transition:opacity .08s;white-space:nowrap;max-width:90vw;overflow:hidden;text-overflow:ellipsis}
+  .ctip.show{opacity:1}
+  svg rect[data-tip],svg circle{cursor:pointer}
+  @media(max-width:600px){
+    main{padding:10px}
+    .card{padding:11px}
+    .brand h1{font-size:16px}
+    .tab{padding:7px 10px;font-size:12px}
+    .kpi .val{font-size:18px}
+    th,td{padding:4px 6px;font-size:12px}
+    td:first-child,th:first-child{min-width:140px}
+    input.cell{width:62px}
+  }
+  @media print{
+    :root[data-theme="dark"]{--bg1:#fff;--bg2:#fff;--panel:#fff;--panel2:#f4f6fb;--line:#cfd8e6;--txt:#0b1320;--muted:#444;--accentInk:#fff;}
+    body{background:#fff !important;padding:0}
+    header{position:static;background:#fff;border:0}
+    .tabs,.yearbar,#btnExport,#btnImport,#btnPrint,#btnTheme,.miniadd,.del,.noteicon,.monthtabs{display:none !important}
+    .tablewrap{overflow:visible;max-height:none}
+    table{min-width:0 !important;font-size:10px}
+    .card{break-inside:avoid;border-color:#ccc}
+    @page{margin:10mm}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <span style="font-size:22px">💸</span>
+    <div>
+      <h1>Budget Famille</h1>
+      <div class="sub">Planification • Prorata • Suivi réel vs planifié</div>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn ghost sm" id="btnUndo" title="Annuler la dernière action (Cmd/Ctrl+Z)">↩</button>
+    <button class="btn ghost sm themebtn" id="btnTheme" title="Thème clair / sombre / auto">🌗</button>
+    <button class="btn ghost sm" id="btnPrint" title="Imprimer / PDF de l'onglet courant">🖨 PDF</button>
+    <button class="btn ghost sm" id="btnExport">⬇ Export</button>
+    <button class="btn ghost sm" id="btnImport">⬆ Import</button>
+    <input type="file" id="fileImport" accept="application/json" style="display:none">
+  </div>
+  <div class="yearbar">
+    <button class="btn sm" id="prevYear">◀</button>
+    <span class="yr" id="curYear">—</span>
+    <button class="btn sm" id="nextYear">▶</button>
+    <button class="btn sm" id="addPrev">+ année préc.</button>
+    <button class="btn sm" id="addNext">+ année suiv.</button>
+    <span class="note" id="yearsList"></span>
+  </div>
+  <div class="tabs" id="tabs"></div>
+</header>
+<main id="app"></main>
+<div class="toast" id="toast"></div>
+<div class="ctip" id="ctip"></div>
+
+<script>
+/* =========================================================
+   DONNÉES & MODÈLE
+   ========================================================= */
+const LS_KEY = 'budgetFamille_v1';
+const MONTHS = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
+const FOYER_GROUPS = [
+  'Loyer et charges','Courses','Abonnements','Déplacements',
+  'Provision frais de santé','Variables et Imprévus','Frais de déménagement',
+  'Loisirs','Épargne commune'
+];
+const GROUP_TYPE = {
+  'Loyer et charges':'fixe','Courses':'fixe','Abonnements':'fixe','Déplacements':'fixe',
+  'Variables et Imprévus':'variable','Frais de déménagement':'variable','Provision frais de santé':'variable',
+  'Loisirs':'loisir','Épargne commune':'epargne'
+};
+const TYPE_LABEL = {fixe:'Total charges fixes',variable:'Total variables',loisir:'Total loisirs',epargne:'Épargne commune'};
+const CURRENCIES = ['EUR','USDT','USD','GBP','FCFA'];
+const FX_DEFAULT = {EUR:1, USDT:0.92, USD:0.92, GBP:1.17, FCFA:0.001524};
+const AUX = ['inv','asset','debt','deduc','fx','startcash'];
+
+let uid = 1; const nid = ()=> 'i'+(uid++)+Date.now().toString(36).slice(-3);
+const arr12 = ()=> [0,0,0,0,0,0,0,0,0,0,0,0];
+
+function foyerSeed(){
+  const map = {
+    'Loyer et charges':['Loyer','Électricité','Eau','Assurance Habitation'],
+    'Courses':['Course et alimentation','Produits NARWAL'],
+    'Abonnements':['Box internet','Audible','Amazon Prime/Netflix','YouTube','Apple Cloud'],
+    'Déplacements':['Voiture','Parking Nantes','Abonnement transports'],
+    'Provision frais de santé':['Provision frais de santé'],
+    'Variables et Imprévus':['Frais bancaires','Imprévus et autres'],
+    'Frais de déménagement':['Frais de déménagement'],
+    'Loisirs':['Sorties diverses','Vacances','Noël + 31','Cadeau mariage','Péages'],
+    'Épargne commune':['Épargne de sécurité','Projets']
+  };
+  const out=[];
+  FOYER_GROUPS.forEach(g=> map[g].forEach(n=> out.push({id:nid(),group:g,name:n,planned:arr12(),real:arr12()})));
+  return out;
+}
+function catsMadina(){
+  const map = [
+    ['Obligatoire',['Dîme','Argent de poche']],
+    ['Soins corporels',['Savon + Gel nettoyant','Lait corps/visage/sérum','Lingettes','Parfums','Coiffure']],
+    ['Habillement',['Vêtements','Lingerie','Chaussures','Parfum','Maquillage']],
+    ['Soutien familial',['Papa','Maman','Belle-famille / Autres','Cadeaux / Mariages']],
+    ['Voiture',['Assurance voiture','Carburant','Frais d\'entretien']],
+    ['Divers',['Frais bancaires','Formations','Parfumerie','Autres']],
+    ['Abonnements',['Abonnement SFR','Body Minute','IA / Chat']],
+    ['Épargnes',['Épargne de sécurité','Épargne Projets','Épargne investissement','Autres']]
+  ];
+  const out=[]; map.forEach(([g,arr])=>arr.forEach(n=>out.push({id:nid(),group:g,name:n,planned:arr12(),real:arr12()}))); return out;
+}
+function catsJuvens(){
+  const map = [
+    ['Obligatoire',['Dîme','Offrandes / Dons']],
+    ['Dépenses perso',['Divers','Coiffure','Cosmétique','Loisir et autres','Autres achats','Imprévu','Snack']],
+    ['Soutien Madina',['Argent de poche Madina','Autres dépenses Madina']],
+    ['Abonnements',['Téléphone','IA / Numérique','Frais bancaire / assurances','Autres']],
+    ['Divertissements',['Repas midi','Shopping']],
+    ['Engagements',['Soutien familial','Remboursement emprunt']],
+    ['Épargnes',['Investissement','Épargne de sécurité']]
+  ];
+  const out=[]; map.forEach(([g,arr])=>arr.forEach(n=>out.push({id:nid(),group:g,name:n,planned:arr12(),real:arr12()}))); return out;
+}
+function emptyPerson(seed){
+  return { salary:arr12(), extras:[], persoExtras:[], cats: seed? seed() : [], epargneObjectif:0 };
+}
+function makeYear(){
+  return {
+    foyer: foyerSeed(),
+    persons: {
+      'Madina': emptyPerson(catsMadina),
+      'Juvens': emptyPerson(catsJuvens)
+    }
+  };
+}
+function defaultState(){
+  const y = new Date().getFullYear();
+  const s = { version:1, people:['Madina','Juvens'], currentYear:y, ui:{tab:'revenus', month:new Date().getMonth(), reelPerson:null, theme:'auto', dashScope:'couple', reelScope:'foyer'}, fx:Object.assign({},FX_DEFAULT), investments:[], assets:[], debts:[], deductions:[], startCash:0, years:{} };
+  s.years[y] = makeYear();
+  return s;
+}
+
+let state;
+function load(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw){ state = JSON.parse(raw); migrate(); return; }
+  }catch(e){ console.warn(e); }
+  state = defaultState(); migrate();
+}
+function migrate(){
+  if(!state.people) state.people=['Madina','Juvens'];
+  if(!state.ui) state.ui={tab:'revenus',month:new Date().getMonth(),reelPerson:null};
+  if(!state.ui.theme) state.ui.theme='auto';
+  if(!state.ui.dashScope) state.ui.dashScope='couple';
+  if(!state.ui.reelScope) state.ui.reelScope='foyer';
+  if(state.ui.tab==='graph') state.ui.tab='dash';
+  if(!state.fx) state.fx=Object.assign({},FX_DEFAULT);
+  if(!state.investments) state.investments=[];
+  if(!state.assets) state.assets=[];
+  if(!state.debts) state.debts=[];
+  if(!state.deductions) state.deductions=[];
+  if(state.startCash==null) state.startCash=0;
+  if(!state.years || !Object.keys(state.years).length){ state.years={}; const y=new Date().getFullYear(); state.years[y]=makeYear(); state.currentYear=y; }
+  if(!state.years[state.currentYear]) state.currentYear=Number(Object.keys(state.years).sort()[0]);
+  // Dîme auto 10% par défaut sur les lignes « Dîme » (sans écraser un choix existant)
+  Object.values(state.years).forEach(yr=> Object.values(yr.persons||{}).forEach(P=> (P.cats||[]).forEach(l=>{
+    if(/^d[îi]me$/i.test(String(l.name||'').trim()) && l.auto===undefined){ l.auto=true; l.rate=10; }
+  })));
+}
+let saveTimer=null;
+function save(){
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(()=>{ try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }catch(e){ toast('Erreur de sauvegarde'); } if(syncRef) pushRemote(); },150);
+}
+// Historique pour l'annulation (Cmd/Ctrl+Z)
+let undoStack=[], lastSnap=0;
+function snapshot(force){ const t=Date.now(); if(!force && t-lastSnap<700) return; lastSnap=t; undoStack.push(JSON.stringify(state)); if(undoStack.length>60) undoStack.shift(); }
+function undo(){ if(!undoStack.length){ toast('Rien à annuler'); return; } try{ state=JSON.parse(undoStack.pop()); migrate(); save(); applyTheme(); fullRender(); toast('Annulé ↩'); }catch(e){ toast('Annulation impossible'); } }
+
+/* =========================================================
+   CALCULS
+   ========================================================= */
+const Y = ()=> state.years[state.currentYear];
+function toEUR(v,dev){ return (v||0)*(state.fx[dev]||1); }
+function withYear(y,fn){ const cur=state.currentYear; state.currentYear=y; try{ return fn(); } finally{ state.currentYear=cur; } }
+// Revenu "couple" = salaire + autres entrées → sert au prorata et au total couple
+function personIncome(p,m){
+  const P=Y().persons[p]; if(!P) return 0;
+  let v = P.salary[m]||0;
+  (P.extras||[]).forEach(e=> v += (e.amounts[m]||0));
+  return v;
+}
+// Revenu perso (hors prorata) : argent de poche reçu, reste d'épargne, etc.
+function personPersoIncome(p,m){ const P=Y().persons[p]; if(!P) return 0; return (P.persoExtras||[]).reduce((s,e)=>s+(e.amounts[m]||0),0); }
+// Revenu total disponible pour le budget individuel
+function personFullIncome(p,m){ return personIncome(p,m)+personPersoIncome(p,m); }
+function incomeTotal(m){ return state.people.reduce((s,p)=>s+personIncome(p,m),0); }
+function prorata(p,m){ const t=incomeTotal(m); return t>0 ? personIncome(p,m)/t : 1/state.people.length; }
+function foyerGroupTotal(g,m,f){ return Y().foyer.filter(l=>l.group===g).reduce((s,l)=>s+(l[f][m]||0),0); }
+function foyerTotal(m,f){ return Y().foyer.reduce((s,l)=>s+(l[f][m]||0),0); }
+function foyerTypeTotal(type,m,f){ return Y().foyer.filter(l=>groupType(l.group)===type).reduce((s,l)=>s+(l[f][m]||0),0); }
+function persoTotal(p,m,f){ const P=Y().persons[p]; if(!P) return 0; return P.cats.reduce((s,c)=>s+catVal(p,c,m,f),0); }
+function communeShare(p,m,f){ return prorata(p,m)*foyerTotal(m,f); }
+function epargne(p,m,f){ return personFullIncome(p,m) - persoTotal(p,m,f) - communeShare(p,m,f); }
+function realizedMonth(m){
+  if(foyerTotal(m,'real')>0) return true;
+  return state.people.some(p=> persoTotal(p,m,'real')>0);
+}
+function epargneProj(p,m){ return realizedMonth(m)? epargne(p,m,'real') : epargne(p,m,'planned'); }
+
+/* helpers d'affichage */
+function num(n){ return (Math.round(n)||0).toLocaleString('fr-FR'); }
+function eur(n){ return num(n)+' €'; }
+function pct(x){ return (x*100).toFixed(1).replace('.',',')+' %'; }
+// Supporte les opérations type Excel : =, + - * / ( ) et la virgule décimale
+function parseNum(v){
+  if(v==null||v==='') return 0;
+  let s=String(v).trim().replace(/€/g,'').replace(/\s/g,'').replace(/,/g,'.').replace(/^=/,'');
+  if(s==='') return 0;
+  if(/[+\-*/()]/.test(s) && /^[0-9.+\-*/()]+$/.test(s)){
+    try{ const r=Function('"use strict";return ('+s+')')(); if(typeof r==='number'&&isFinite(r)) return r; }catch(e){}
+  }
+  return parseFloat(s)||0;
+}
+function expClass(real,planned){
+  if(planned===0){ return real<=0?'neutral':'bad'; }
+  const r=(real-planned)/Math.abs(planned);
+  if(Math.abs(r)<=0.02) return 'neutral';
+  return real<planned?'good':'bad';
+}
+function savClass(real,planned){
+  if(planned===0){ if(Math.abs(real)<1) return 'neutral'; return real>0?'good':'bad'; }
+  const r=(real-planned)/Math.abs(planned);
+  if(Math.abs(r)<=0.02) return 'neutral';
+  return real>planned?'good':'bad';
+}
+// Budget cible (objectif annuel) vs total planifié — vert = sous budget, rouge = dépassé
+function ecartClass(planned,budget){ if(!budget) return 'neutral'; const r=(planned-budget)/Math.abs(budget); if(Math.abs(r)<=0.02) return 'neutral'; return planned<budget?'good':'bad'; }
+function ecartCell(planned,budget){ if(!budget) return `<td class="neutral">—</td>`; const e=budget-planned; return `<td class="${ecartClass(planned,budget)}">${e>0?'+':''}${num(e)}</td>`; }
+function bcell(b){ return `<td>${b?num(b):''}</td>`; }
+function foyerGroupBudget(g){ return Y().foyer.filter(l=>l.group===g).reduce((s,l)=>s+(l.budget||0),0); }
+function foyerTypeBudget(tp){ return Y().foyer.filter(l=>groupType(l.group)===tp).reduce((s,l)=>s+(l.budget||0),0); }
+function foyerBudgetTotal(){ return Y().foyer.reduce((s,l)=>s+(l.budget||0),0); }
+function persoGroupBudget(p,g){ return Y().persons[p].cats.filter(l=>l.group===g).reduce((s,l)=>s+(l.budget||0),0); }
+function persoBudgetTotal(p){ return Y().persons[p].cats.reduce((s,l)=>s+(l.budget||0),0); }
+function ratioCell(annual, base){ return base? `<td class="ratio">${pct(annual/base)}</td>` : `<td class="ratio">—</td>`; }
+function noteIcon(act, note){ const has=note&&String(note).trim(); return `<span class="noteicon ${has?'has':''}" data-act="${act}" title="${has?esc(note):'Ajouter une note'}">📝</span>`; }
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function inCell(val, cell, extra=''){
+  return `<input class="cell num" inputmode="decimal" data-cell="${cell}" value="${val?String(val).replace(/"/g,''):''}" placeholder="0" ${extra}>`;
+}
+function txtCell(val, cell){
+  return `<input class="cell txt" data-cell="${cell}" value="${esc(val||'')}">`;
+}
+function selCell(val, cell, opts, extra=''){
+  return `<select class="cell" data-cell="${cell}" ${extra}>${opts.map(o=>`<option ${o===val?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
+}
+
+/* =========================================================
+   RENDU — barre & onglets
+   ========================================================= */
+function renderTopbar(){
+  document.getElementById('curYear').textContent = state.currentYear;
+  const ys = Object.keys(state.years).map(Number).sort((a,b)=>a-b);
+  document.getElementById('yearsList').textContent = '('+ys.length+' année'+(ys.length>1?'s':'')+' : '+ys.join(', ')+')';
+  const tabs = [
+    ['revenus','Revenus & Prorata'],
+    ['foyer','Budget Foyer'],
+    ...state.people.map(p=>['person:'+p,'Budget '+p]),
+    ['reel','Suivi réel'],
+    ['dash','Tableau de bord'],
+    ['invest','Investissements'],
+    ['patrimoine','Patrimoine'],
+    ['defisc','Défiscalisation'],
+    ['params','Paramètres']
+  ];
+  const cur = state.ui.tab;
+  if(!tabs.some(t=>t[0]===cur)) state.ui.tab='revenus';
+  document.getElementById('tabs').innerHTML = tabs.map(t=>
+    `<button class="tab ${t[0]===state.ui.tab?'active':''}" data-tab="${t[0]}">${esc(t[1])}</button>`
+  ).join('');
+}
+
+/* =========================================================
+   ONGLET REVENUS
+   ========================================================= */
+function renderRevenus(){
+  let h = `<div class="card"><h2>Revenus mensuels nets & autres entrées</h2>
+    <p class="hint">Saisis le salaire net de chaque mois et ajoute les revenus exceptionnels (primes, remboursements…). Le prorata de chacun est recalculé automatiquement.</p>`;
+  h += `<div class="tablewrap"><table><thead><tr><th>Personne / poste</th>${MONTHS.map(m=>`<th>${m}</th>`).join('')}<th>Total</th></tr></thead><tbody>`;
+  state.people.forEach(p=>{
+    const P=Y().persons[p];
+    h += `<tr class="group"><td>${esc(p)}</td>${MONTHS.map(()=>`<td></td>`).join('')}<td></td></tr>`;
+    let salT=0;
+    h += `<tr class="sub"><td>Salaire net</td>${MONTHS.map((_,m)=>{salT+=P.salary[m]||0;return `<td>${inCell(P.salary[m],'sal|'+p+'|'+m)}</td>`}).join('')}<td>${eur(salT)}</td></tr>`;
+    (P.extras||[]).forEach(e=>{
+      let t=0;
+      h += `<tr class="sub"><td>${mvBtns('moveext|'+p+'|'+e.id)} <span class="del" data-act="delext|${p}|${e.id}">✕</span> ${txtCell(e.name,'extname|'+p+'|'+e.id)}</td>${MONTHS.map((_,m)=>{t+=e.amounts[m]||0;return `<td>${inCell(e.amounts[m],'ext|'+p+'|'+e.id+'|'+m)}</td>`}).join('')}<td>${eur(t)}</td></tr>`;
+    });
+    h += `<tr><td><span class="miniadd" data-act="addext|${p}">+ autre entrée</span></td>${MONTHS.map(()=>`<td></td>`).join('')}<td></td></tr>`;
+    let totT=0;
+    h += `<tr class="total"><td>Total revenus ${esc(p)}</td>${MONTHS.map((_,m)=>{const v=personIncome(p,m);totT+=v;return `<td>${num(v)}</td>`}).join('')}<td>${eur(totT)}</td></tr>`;
+  });
+  // total couple + prorata
+  let coupT=0;
+  h += `<tr class="grand"><td>Total revenus couple</td>${MONTHS.map((_,m)=>{const v=incomeTotal(m);coupT+=v;return `<td>${num(v)}</td>`}).join('')}<td>${eur(coupT)}</td></tr>`;
+  state.people.forEach(p=>{
+    h += `<tr class="sub"><td>Prorata ${esc(p)}</td>${MONTHS.map((_,m)=>`<td>${pct(prorata(p,m))}</td>`).join('')}<td>—</td></tr>`;
+  });
+  h += `</tbody></table></div></div>`;
+
+  // KPI
+  const totalCouple = MONTHS.reduce((s,_,m)=>s+incomeTotal(m),0);
+  h += `<div class="card"><h2>Synthèse revenus ${state.currentYear}</h2><div class="kpis">`;
+  h += `<div class="kpi"><div class="lbl">Revenu annuel couple</div><div class="val">${eur(totalCouple)}</div></div>`;
+  state.people.forEach(p=>{
+    const t=MONTHS.reduce((s,_,m)=>s+personIncome(p,m),0);
+    h += `<div class="kpi"><div class="lbl">Revenu annuel ${esc(p)}</div><div class="val">${eur(t)}</div></div>`;
+  });
+  h += `<div class="kpi"><div class="lbl">Revenu moyen / mois</div><div class="val">${eur(totalCouple/12)}</div></div>`;
+  h += `</div></div>`;
+  return h;
+}
+
+/* =========================================================
+   ONGLET FOYER
+   ========================================================= */
+function renderFoyer(){
+  const base=coupleIncomeYear();
+  const E3='<td></td><td></td><td></td>';
+  let h = `<div class="card"><h2>Budget foyer ${state.currentYear} — planification annuelle</h2>
+  <p class="hint">Colonnes <b>Budget</b> (objectif annuel) • <b>Écart</b> (budget − planifié : 🟢 sous / 🔴 dépassé) • <b>Ratio</b> (part du revenu couple). 💡 Tape une formule (ex. <b>=1040*12</b>) puis <b>Entrée</b>. Recopie : <b>Ctrl/Cmd+Entrée</b> jusqu'à déc., <b>Maj+Entrée</b> sur l'année.</p>
+  <p class="hint" style="margin-top:-6px">Sur chaque ligne : <b>↑↓</b> déplacer • <b>✕</b> supprimer • <b>📝</b> note/commentaire. Sur une catégorie : <b>✏️</b> renommer • <b>🗑</b> supprimer toute la catégorie.</p>`;
+  h += `<div class="tablewrap"><table><thead><tr><th>Catégorie</th><th>Budget</th><th>Écart</th><th>Ratio</th>${MONTHS.map(m=>`<th>${m}</th>`).join('')}<th>Total an.</th></tr></thead><tbody>`;
+  foyerGroups().forEach(g=>{
+    const lines = Y().foyer.filter(l=>l.group===g);
+    let gT=0; const gm=MONTHS.map((_,m)=>{const v=foyerGroupTotal(g,m,'planned');gT+=v;return `<td>${num(v)}</td>`}).join(''); const gB=foyerGroupBudget(g);
+    h += `<tr class="group"><td><span class="mv" data-act="rengrpf|${esc(g)}" title="Renommer la catégorie">✏️</span><span class="del" data-act="delgrpf|${esc(g)}" title="Supprimer toute la catégorie">🗑</span> ${esc(g)} <span class="pill">${groupType(g)}</span></td>${bcell(gB)}${ecartCell(gT,gB)}${ratioCell(gT,base)}${gm}<td>${eur(gT)}</td></tr>`;
+    lines.forEach(l=>{
+      let t=0; const lm=MONTHS.map((_,m)=>{t+=l.planned[m]||0;return `<td>${inCell(l.planned[m],'fp|'+l.id+'|'+m)}</td>`}).join('');
+      h += `<tr class="sub"><td title="${l.note?esc(l.note):''}"><span class="mv" data-act="movef|${l.id}|up" title="Monter">↑</span><span class="mv" data-act="movef|${l.id}|down" title="Descendre">↓</span> <span class="del" data-act="delfoyer|${l.id}">✕</span> ${noteIcon('notef|'+l.id,l.note)} ${txtCell(l.name,'fname|'+l.id)}</td><td>${inCell(l.budget,'fb|'+l.id)}</td>${ecartCell(t,l.budget||0)}${ratioCell(t,base)}${lm}<td>${eur(t)}</td></tr>`;
+    });
+    h += `<tr><td><span class="miniadd" data-act="addfoyer|${g}">+ ligne dans « ${esc(g)} »</span></td>${E3}${MONTHS.map(()=>`<td></td>`).join('')}<td></td></tr>`;
+  });
+  h += `<tr><td><span class="miniadd" data-act="addfoyergroup">+ nouvelle catégorie</span></td>${E3}${MONTHS.map(()=>`<td></td>`).join('')}<td></td></tr>`;
+  ['fixe','variable','loisir','epargne'].forEach(tp=>{
+    let t=0; const tm=MONTHS.map((_,m)=>{const v=foyerTypeTotal(tp,m,'planned');t+=v;return `<td>${num(v)}</td>`}).join(''); const b=foyerTypeBudget(tp);
+    h += `<tr class="total"><td>${TYPE_LABEL[tp]}</td>${bcell(b)}${ecartCell(t,b)}${ratioCell(t,base)}${tm}<td>${eur(t)}</td></tr>`;
+  });
+  let ft=0; const fm=MONTHS.map((_,m)=>{const v=foyerTotal(m,'planned');ft+=v;return `<td>${num(v)}</td>`}).join(''); const fb=foyerBudgetTotal();
+  h += `<tr class="grand"><td>Total dépenses foyer</td>${bcell(fb)}${ecartCell(ft,fb)}${ratioCell(ft,base)}${fm}<td>${eur(ft)}</td></tr>`;
+  state.people.forEach(p=>{
+    let t=0; const pm=MONTHS.map((_,m)=>{const v=communeShare(p,m,'planned');t+=v;return `<td>${num(v)}</td>`}).join('');
+    h += `<tr class="sub"><td>Part ${esc(p)} (prorata)</td><td></td><td></td>${ratioCell(t,base)}${pm}<td>${eur(t)}</td></tr>`;
+  });
+  h += `</tbody></table></div></div>`;
+  return h;
+}
+
+/* =========================================================
+   ONGLET BUDGET INDIVIDUEL
+   ========================================================= */
+function renderPerson(p){
+  const P=Y().persons[p];
+  if(!P) return `<div class="card">Personne introuvable.</div>`;
+  const base=personIncomeYear(p);
+  const E3='<td></td><td></td><td></td>';
+  let h = `<div class="card"><h2>Budget ${esc(p)} — planification ${state.currentYear}</h2>
+  <p class="hint">Colonnes <b>Budget</b>/<b>Écart</b>/<b>Ratio</b> (part du revenu de ${esc(p)}). 💡 Formule (ex. <b>=200*12</b>) + <b>Entrée</b>. Recopie : <b>Ctrl/Cmd+Entrée</b> jusqu'à déc., <b>Maj+Entrée</b> sur l'année. Ligne : <b>↑↓</b> déplacer • <b>📝</b> note • <b>✕</b> suppr. ; catégorie : <b>✏️</b> renommer • <b>🗑</b> suppr. La <b>Dîme</b> est à 10% auto (badge <b>auto 10%</b>) — clique le badge pour saisir manuellement.</p>`;
+  h += `<div class="tablewrap"><table><thead><tr><th>Poste</th><th>Budget</th><th>Écart</th><th>Ratio</th>${MONTHS.map(m=>`<th>${m}</th>`).join('')}<th>Total an.</th></tr></thead><tbody>`;
+  // revenus
+  let rT=0;
+  h += `<tr class="group"><td>Revenus</td>${E3}${MONTHS.map(()=>`<td></td>`).join('')}<td></td></tr>`;
+  let salR=0; const salM=MONTHS.map((_,m)=>{const v=personIncome(p,m);salR+=v;return `<td>${num(v)}</td>`}).join('');
+  h += `<tr class="sub"><td>Salaire & autres (couple)</td>${E3}${salM}<td>${eur(salR)}</td></tr>`;
+  (P.persoExtras||[]).forEach(e=>{
+    let t=0; const em=MONTHS.map((_,m)=>{t+=e.amounts[m]||0;return `<td>${inCell(e.amounts[m],'pext|'+p+'|'+e.id+'|'+m)}</td>`}).join('');
+    h += `<tr class="sub"><td>${mvBtns('movepext|'+p+'|'+e.id)} <span class="del" data-act="delpext|${p}|${e.id}">✕</span> ${txtCell(e.name,'pextname|'+p+'|'+e.id)}</td>${E3}${em}<td>${eur(t)}</td></tr>`;
+  });
+  h += `<tr><td><span class="miniadd" data-act="addpext|${p}">+ revenu perso (hors prorata)</span></td>${E3}${MONTHS.map(()=>`<td></td>`).join('')}<td></td></tr>`;
+  const totM=MONTHS.map((_,m)=>{const v=personFullIncome(p,m);rT+=v;return `<td>${num(v)}</td>`}).join('');
+  h += `<tr class="total"><td>Total revenus ${esc(p)}</td>${E3}${totM}<td>${eur(rT)}</td></tr>`;
+  // perso groups
+  const groups = [...new Set(P.cats.map(c=>c.group))];
+  groups.forEach(g=>{
+    const lines=P.cats.filter(c=>c.group===g);
+    let gt=0; const gm=MONTHS.map((_,m)=>{const v=lines.reduce((s,l)=>s+catVal(p,l,m,'planned'),0);gt+=v;return `<td>${num(v)}</td>`}).join(''); const gb=persoGroupBudget(p,g);
+    h += `<tr class="group"><td><span class="mv" data-act="rengrpc|${p}|${esc(g)}" title="Renommer la catégorie">✏️</span><span class="del" data-act="delgrpc|${p}|${esc(g)}" title="Supprimer toute la catégorie">🗑</span> ${esc(g)}</td>${bcell(gb)}${ecartCell(gt,gb)}${ratioCell(gt,base)}${gm}<td>${eur(gt)}</td></tr>`;
+    lines.forEach(l=>{
+      let t=0; const lm=MONTHS.map((_,m)=>{const v=catVal(p,l,m,'planned');t+=v;return l.auto?`<td class="autocell" title="10% du revenu (auto)">${num(v)}</td>`:`<td>${inCell(l.planned[m],'cp|'+p+'|'+l.id+'|'+m)}</td>`}).join('');
+      const badge=(l.auto!==undefined)?` <span class="pill dimebadge" data-act="dimeauto|${p}|${l.id}" title="Basculer entre 10% auto et saisie manuelle">${l.auto?'auto '+(l.rate||10)+'%':'manuel ✎'}</span>`:'';
+      h += `<tr class="sub"><td title="${l.note?esc(l.note):''}"><span class="mv" data-act="movec|${p}|${l.id}|up" title="Monter">↑</span><span class="mv" data-act="movec|${p}|${l.id}|down" title="Descendre">↓</span> <span class="del" data-act="delcat|${p}|${l.id}">✕</span> ${noteIcon('notec|'+p+'|'+l.id,l.note)} ${txtCell(l.name,'cname|'+p+'|'+l.id)}${badge}</td><td>${inCell(l.budget,'cb|'+p+'|'+l.id)}</td>${ecartCell(t,l.budget||0)}${ratioCell(t,base)}${lm}<td>${eur(t)}</td></tr>`;
+    });
+    h += `<tr><td><span class="miniadd" data-act="addcat|${p}|${g}">+ ligne</span></td>${E3}${MONTHS.map(()=>`<td></td>`).join('')}<td></td></tr>`;
+  });
+  h += `<tr><td><span class="miniadd" data-act="addcatgroup|${p}">+ nouveau groupe</span></td>${E3}${MONTHS.map(()=>`<td></td>`).join('')}<td></td></tr>`;
+  let perT=0; const perM=MONTHS.map((_,m)=>{const v=persoTotal(p,m,'planned');perT+=v;return `<td>${num(v)}</td>`}).join(''); const perB=persoBudgetTotal(p);
+  h += `<tr class="total"><td>Total dépenses perso</td>${bcell(perB)}${ecartCell(perT,perB)}${ratioCell(perT,base)}${perM}<td>${eur(perT)}</td></tr>`;
+  // commune par groupe foyer proratisée
+  h += `<tr class="group"><td>Dépenses communes (part ${esc(p)})</td>${E3}${MONTHS.map(()=>`<td></td>`).join('')}<td></td></tr>`;
+  foyerGroups().forEach(g=>{
+    let t=0; const cm=MONTHS.map((_,m)=>{const v=prorata(p,m)*foyerGroupTotal(g,m,'planned');t+=v;return `<td>${num(v)}</td>`}).join('');
+    h += `<tr class="sub"><td>${esc(g)}</td><td></td><td></td>${ratioCell(t,base)}${cm}<td>${eur(t)}</td></tr>`;
+  });
+  let comT=0; const comM=MONTHS.map((_,m)=>{const v=communeShare(p,m,'planned');comT+=v;return `<td>${num(v)}</td>`}).join('');
+  h += `<tr class="total"><td>Total dépenses communes</td><td></td><td></td>${ratioCell(comT,base)}${comM}<td>${eur(comT)}</td></tr>`;
+  // épargne (avec objectif annuel)
+  let epT=0; const epObj=P.epargneObjectif||0; const epM=MONTHS.map((_,m)=>{const v=epargne(p,m,'planned');epT+=v;return `<td class="${v>=0?'good':'bad'}">${num(v)}</td>`}).join('');
+  h += `<tr class="grand"><td>Épargne mensuelle planifiée</td><td>${inCell(P.epargneObjectif,'epobj|'+p)}</td><td class="${savClass(epT,epObj)}">${epObj?((epT-epObj)>0?'+':'')+num(epT-epObj):'—'}</td>${ratioCell(epT,base)}${epM}<td>${eur(epT)}</td></tr>`;
+  h += `</tbody></table></div></div>`;
+
+  // Épargne réelle à date
+  const closed=[]; MONTHS.forEach((_,m)=>{ if(realizedMonth(m)) closed.push(m); });
+  let realCum=0, planSame=0; closed.forEach(m=>{ realCum+=epargne(p,m,'real'); planSame+=epargne(p,m,'planned'); });
+  let projAnnual=0; MONTHS.forEach((_,m)=>projAnnual+=epargneProj(p,m));
+  h += `<div class="card"><h2>Épargne réelle à date — ${esc(p)}</h2>
+  <p class="hint">Basée sur les mois où des dépenses réelles ont été saisies (onglet Suivi réel).</p><div class="kpis">`;
+  h += kpi('Mois clôturés', closed.length+' / 12');
+  h += kpi('Épargne réelle à date', eur(realCum), realCum>=0?'good':'bad');
+  h += kpi('vs planifié (mêmes mois)', (realCum-planSame>=0?'+':'')+eur(realCum-planSame), savClass(realCum,planSame));
+  h += kpi('Projection annuelle', eur(projAnnual), projAnnual>=0?'good':'bad');
+  h += `</div></div>`;
+
+  // KPIs
+  h += `<div class="card"><h2>Synthèse ${esc(p)} ${state.currentYear}</h2><div class="kpis">`;
+  h += `<div class="kpi"><div class="lbl">Revenus annuels</div><div class="val">${eur(rT)}</div></div>`;
+  h += `<div class="kpi"><div class="lbl">Dépenses perso</div><div class="val">${eur(perT)}</div></div>`;
+  h += `<div class="kpi"><div class="lbl">Part dépenses foyer</div><div class="val">${eur(comT)}</div></div>`;
+  h += `<div class="kpi"><div class="lbl">Épargne annuelle planifiée</div><div class="val ${epT>=0?'good':'bad'}">${eur(epT)}</div></div>`;
+  h += `</div></div>`;
+  return h;
+}
+
+/* =========================================================
+   ONGLET SUIVI RÉEL
+   ========================================================= */
+function reelFoyer(m){
+  let h=`<div class="card"><h2>Foyer — ${MONTHS[m]}</h2><div class="tablewrap"><table style="min-width:520px"><thead><tr><th>Poste</th><th>Planifié</th><th>Réel</th><th>Écart</th></tr></thead><tbody>`;
+  foyerGroups().forEach(g=>{
+    const lines=Y().foyer.filter(l=>l.group===g);
+    h += `<tr class="group"><td>${esc(g)}</td><td>${num(foyerGroupTotal(g,m,'planned'))}</td><td>${num(foyerGroupTotal(g,m,'real'))}</td><td></td></tr>`;
+    lines.forEach(l=>{
+      const pl=l.planned[m]||0, re=l.real[m]||0, ec=re-pl;
+      h += `<tr class="sub"><td>${esc(l.name)}</td><td>${num(pl)}</td><td>${inCell(l.real[m],'fr|'+l.id+'|'+m)}</td><td class="${expClass(re,pl)}">${ec>0?'+':''}${num(ec)}</td></tr>`;
+    });
+  });
+  const fpl=foyerTotal(m,'planned'), fre=foyerTotal(m,'real');
+  h += `<tr class="grand"><td>Total dépenses foyer</td><td>${num(fpl)}</td><td>${num(fre)}</td><td class="${expClass(fre,fpl)}">${(fre-fpl)>0?'+':''}${num(fre-fpl)}</td></tr>`;
+  h += `</tbody></table></div></div>`;
+  return h;
+}
+function reelPersonTbl(p,m){
+  const P=Y().persons[p];
+  let h=`<div class="card"><h2>${esc(p)} — ${MONTHS[m]}</h2><div class="tablewrap"><table style="min-width:520px"><thead><tr><th>Poste</th><th>Planifié</th><th>Réel</th><th>Écart</th></tr></thead><tbody>`;
+  [...new Set(P.cats.map(c=>c.group))].forEach(g=>{
+    const lines=P.cats.filter(c=>c.group===g);
+    const gp=lines.reduce((s,l)=>s+catVal(p,l,m,'planned'),0), gr=lines.reduce((s,l)=>s+catVal(p,l,m,'real'),0);
+    h += `<tr class="group"><td>${esc(g)}</td><td>${num(gp)}</td><td>${num(gr)}</td><td class="${expClass(gr,gp)}">${(gr-gp)>0?'+':''}${num(gr-gp)}</td></tr>`;
+    lines.forEach(l=>{
+      const pl=catVal(p,l,m,'planned'), re=catVal(p,l,m,'real'), ec=re-pl;
+      const cell = l.auto ? `<td class="autocell" title="10% auto">${num(re)}</td>` : `<td>${inCell(l.real[m],'cr|'+p+'|'+l.id+'|'+m)}</td>`;
+      h += `<tr class="sub"><td>${esc(l.name)}</td><td>${num(pl)}</td>${cell}<td class="${expClass(re,pl)}">${ec>0?'+':''}${num(ec)}</td></tr>`;
+    });
+  });
+  const pp=persoTotal(p,m,'planned'), pr=persoTotal(p,m,'real');
+  h += `<tr class="total"><td>Total dépenses perso</td><td>${num(pp)}</td><td>${num(pr)}</td><td class="${expClass(pr,pp)}">${(pr-pp)>0?'+':''}${num(pr-pp)}</td></tr>`;
+  const cp=communeShare(p,m,'planned'), cr=communeShare(p,m,'real');
+  h += `<tr class="total"><td>Part dépenses foyer (prorata)</td><td>${num(cp)}</td><td>${num(cr)}</td><td class="${expClass(cr,cp)}">${(cr-cp)>0?'+':''}${num(cr-cp)}</td></tr>`;
+  h += `<tr class="total"><td>Total dépenses (perso + foyer)</td><td>${num(pp+cp)}</td><td>${num(pr+cr)}</td><td class="${expClass(pr+cr,pp+cp)}">${((pr+cr)-(pp+cp))>0?'+':''}${num((pr+cr)-(pp+cp))}</td></tr>`;
+  const epP=epargne(p,m,'planned'), epR=epargne(p,m,'real');
+  h += `<tr class="grand"><td>Épargne ${MONTHS[m]}</td><td>${num(epP)}</td><td>${num(epR)}</td><td class="${savClass(epR,epP)}">${(epR-epP)>0?'+':''}${num(epR-epP)}</td></tr>`;
+  h += `</tbody></table></div><p class="note">Les lignes « auto » (ex. Dîme 10%) suivent automatiquement le réel = planifié ; passe-les en manuel dans le budget si besoin.</p></div>`;
+  return h;
+}
+function renderReel(){
+  const m=state.ui.month, scope=state.ui.reelScope||'foyer';
+  let h=`<div class="card"><h2>Suivi réel — ${MONTHS[m]} ${state.currentYear}</h2>
+  <p class="hint"><b>Planifié</b> = ce que tu avais prévu (budget). <b>Réel</b> = ce qui a été réellement dépensé/encaissé. <b>Projeté</b> (onglet Bilan) = réel pour les mois saisis + planifié pour les mois restants.</p>
+  <div class="legend"><span><b class="good">Vert</b> = moins que prévu</span><span><b class="bad">Rouge</b> = plus que prévu</span><span><b class="neutral">Noir</b> = comme prévu (±2 %)</span></div>
+  <div class="note" style="margin:6px 0 2px">Mois :</div>
+  <div class="monthtabs">${MONTHS.map((mm,i)=>`<button class="monthtab ${i===m?'active':''}" data-month="${i}">${mm}</button>`).join('')}</div>
+  <div class="note" style="margin:6px 0 2px">Vue :</div>
+  <div class="monthtabs">
+    <button class="monthtab ${scope==='foyer'?'active':''}" data-reel="foyer">🏠 Foyer</button>
+    ${state.people.map(p=>`<button class="monthtab ${scope===('person:'+p)?'active':''}" data-reel="person:${esc(p)}">${esc(p)}</button>`).join('')}
+    <button class="monthtab ${scope==='bilan'?'active':''}" data-reel="bilan">📊 Bilan annuel</button>
+  </div></div>`;
+  if(scope==='foyer') h+=reelFoyer(m);
+  else if(scope.startsWith('person:')) h+=reelPersonTbl(scope.slice(7),m);
+  else if(scope==='bilan') h+=renderProjection();
+  return h;
+}
+
+function renderProjection(){
+  let h = `<div class="card"><h2>Atterrissage annuel ${state.currentYear}</h2>
+  <p class="hint">Mois clôturés (avec saisie réelle) → réel ; mois restants → planifié. Projection de l'épargne de fin d'année vs plan initial.</p>`;
+  // KPIs couple
+  let planTot=0, projTot=0;
+  state.people.forEach(p=>{
+    MONTHS.forEach((_,m)=>{ planTot+=epargne(p,m,'planned'); projTot+=epargneProj(p,m); });
+  });
+  let foyerEpPlan=0, foyerEpProj=0;
+  MONTHS.forEach((_,m)=>{
+    foyerEpPlan += foyerTypeTotal('epargne',m,'planned');
+    foyerEpProj += realizedMonth(m)? foyerTypeTotal('epargne',m,'real') : foyerTypeTotal('epargne',m,'planned');
+  });
+  // total des dépenses (planifié vs projeté)
+  let depPlan=0, depProj=0;
+  MONTHS.forEach((_,m)=>{
+    let dp=foyerTotal(m,'planned'); state.people.forEach(p=>dp+=persoTotal(p,m,'planned')); depPlan+=dp;
+    const real=realizedMonth(m); let dr=foyerTotal(m,real?'real':'planned'); state.people.forEach(p=>dr+=persoTotal(p,m,real?'real':'planned')); depProj+=dr;
+  });
+  const diff=projTot-planTot;
+  h += `<div class="kpis">`;
+  h += `<div class="kpi"><div class="lbl">Total dépenses planifiées</div><div class="val">${eur(depPlan)}</div></div>`;
+  h += `<div class="kpi"><div class="lbl">Total dépenses projetées</div><div class="val ${depProj<=depPlan?'good':'bad'}">${eur(depProj)}</div></div>`;
+  h += `<div class="kpi"><div class="lbl">Épargne individuelle planifiée</div><div class="val">${eur(planTot)}</div></div>`;
+  h += `<div class="kpi"><div class="lbl">Épargne individuelle projetée</div><div class="val ${diff>=0?'good':'bad'}">${eur(projTot)}</div></div>`;
+  h += `<div class="kpi"><div class="lbl">Écart de fin d'année</div><div class="val ${savClass(projTot,planTot)}">${diff>=0?'+':''}${eur(diff)}</div></div>`;
+  h += `<div class="kpi"><div class="lbl">Épargne commune projetée</div><div class="val">${eur(foyerEpProj)} <span class="note">/ ${num(foyerEpPlan)} planifié</span></div></div>`;
+  h += `</div>`;
+
+  // tableau par mois
+  h += `<div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>Épargne mensuelle</th>${MONTHS.map(m=>`<th>${m}</th>`).join('')}<th>Total</th></tr></thead><tbody>`;
+  state.people.forEach(p=>{
+    let tp=0,tr=0;
+    h += `<tr class="sub"><td>${esc(p)} — planifié</td>${MONTHS.map((_,m)=>{const v=epargne(p,m,'planned');tp+=v;return `<td>${num(v)}</td>`}).join('')}<td>${eur(tp)}</td></tr>`;
+    h += `<tr class="sub"><td>${esc(p)} — réel/projeté</td>${MONTHS.map((_,m)=>{const v=epargneProj(p,m);tr+=v;const r=realizedMonth(m);return `<td class="${r?savClass(v,epargne(p,m,'planned')):''}">${num(v)}${r?'':'<span class="note">*</span>'}</td>`}).join('')}<td>${eur(tr)}</td></tr>`;
+  });
+  // couple cumulé
+  let cum=0; const cumPlan=[], cumProj=[];
+  MONTHS.forEach((_,m)=>{ let mp=0; state.people.forEach(p=>mp+=epargne(p,m,'planned')); cum+=mp; cumPlan.push(cum); });
+  cum=0; MONTHS.forEach((_,m)=>{ let mp=0; state.people.forEach(p=>mp+=epargneProj(p,m)); cum+=mp; cumProj.push(cum); });
+  h += `<tr class="total"><td>Couple — épargne cumulée planifiée</td>${cumPlan.map(v=>`<td>${num(v)}</td>`).join('')}<td>${eur(cumPlan[11])}</td></tr>`;
+  h += `<tr class="grand"><td>Couple — épargne cumulée projetée</td>${cumProj.map((v,m)=>`<td class="${savClass(v,cumPlan[m])}">${num(v)}</td>`).join('')}<td>${eur(cumProj[11])}</td></tr>`;
+  h += `</tbody></table></div><p class="note">* mois non encore clôturé : valeur planifiée.</p></div>`;
+  return h;
+}
+
+/* =========================================================
+   ONGLET TABLEAU DE BORD
+   ========================================================= */
+function coupleIncomeYear(){ return MONTHS.reduce((s,_,m)=>s+incomeTotal(m),0); }
+function commonEpargneProj(m){ return realizedMonth(m)?foyerTypeTotal('epargne',m,'real'):foyerTypeTotal('epargne',m,'planned'); }
+function coupleSavingProj(){ let s=0; MONTHS.forEach((_,m)=>{ state.people.forEach(p=>s+=epargneProj(p,m)); s+=commonEpargneProj(m); }); return s; }
+function personIncomeYear(p){ return MONTHS.reduce((s,_,m)=>s+personFullIncome(p,m),0); }
+function personSavingProj(p){ let s=0; MONTHS.forEach((_,m)=>{ s+=epargneProj(p,m)+prorata(p,m)*commonEpargneProj(m); }); return s; }
+function kpi(lbl,val,cls){ return `<div class="kpi"><div class="lbl">${lbl}</div><div class="val ${cls||''}">${val}</div></div>`; }
+function kpiObjectif(taux){
+  const cls=taux>=0.20?'good':taux>=0.10?'warn':'bad';
+  const w=Math.max(0,Math.min(100, taux/0.20*100));
+  return `<div class="kpi"><div class="lbl">Taux d'épargne / objectif 20 %</div><div class="val ${cls}">${pct(taux)}</div><div class="progress"><span style="width:${w}%"></span></div></div>`;
+}
+function renderDashboard(){
+  const scope=state.ui.dashScope||'couple';
+  let h=`<div class="card"><h2>Tableau de bord ${state.currentYear}</h2>
+    <div class="monthtabs">
+      <button class="monthtab ${scope==='couple'?'active':''}" data-dash="couple">👫 Couple</button>
+      ${state.people.map(p=>`<button class="monthtab ${scope===('person:'+p)?'active':''}" data-dash="person:${esc(p)}">${esc(p)}</button>`).join('')}
+    </div></div>`;
+  h += (scope==='couple') ? dashCouple() : dashPerson(scope.slice(7));
+  return h;
+}
+function dashCouple(){
+  const inc=coupleIncomeYear();
+  const dep=MONTHS.reduce((s,_,m)=>{let d=foyerTotal(m,'planned');state.people.forEach(p=>d+=persoTotal(p,m,'planned'));return s+d;},0);
+  const sav=coupleSavingProj(); const taux=inc?sav/inc:0;
+  let h=`<div class="card"><div class="kpis">`;
+  h+=kpi('Revenus annuels',eur(inc));
+  h+=kpi('Dépenses annuelles',eur(dep));
+  h+=kpi('Épargne projetée',eur(sav),sav>=0?'good':'bad');
+  h+=kpiObjectif(taux);
+  h+=`</div></div>`;
+
+  let cum=0; const cumPlan=[], cumProj=[];
+  MONTHS.forEach((_,m)=>{ let mp=0; state.people.forEach(p=>mp+=epargne(p,m,'planned')); cum+=mp; cumPlan.push(cum); });
+  cum=0; MONTHS.forEach((_,m)=>{ let mp=0; state.people.forEach(p=>mp+=epargneProj(p,m)); cum+=mp; cumProj.push(cum); });
+  h += `<div class="chartbox"><h3>Épargne couple cumulée — planifiée vs projetée</h3>${lineChart(MONTHS,[
+    {name:'Planifiée',values:cumPlan,color:'#0ea5e9'},{name:'Projetée',values:cumProj,color:'#14b8a6'}])}</div>`;
+  const mPlan=MONTHS.map((_,m)=>state.people.reduce((s,p)=>s+epargne(p,m,'planned'),0));
+  const mProj=MONTHS.map((_,m)=>state.people.reduce((s,p)=>s+epargneProj(p,m),0));
+  h += `<div class="chartbox"><h3>Épargne mensuelle du couple</h3>${barChart(MONTHS,[
+    {name:'Planifié',values:mPlan,color:'#0ea5e9'},{name:'Réel/projeté',values:mProj,color:'#14b8a6'}])}</div>`;
+  const fg=foyerGroups();
+  const gPlan=fg.map(g=>MONTHS.reduce((s,_,m)=>s+foyerGroupTotal(g,m,'planned'),0));
+  const gReal=fg.map(g=>MONTHS.reduce((s,_,m)=>s+foyerGroupTotal(g,m,'real'),0));
+  h += `<div class="chartbox"><h3>Dépenses foyer par catégorie (annuel)</h3>${barChart(fg.map(g=>g.length>10?g.slice(0,10)+'…':g),[
+    {name:'Planifié',values:gPlan,color:'#0ea5e9'},{name:'Réel',values:gReal,color:'#f59e0b'}],true)}</div>`;
+  const rev=MONTHS.map((_,m)=>incomeTotal(m));
+  const dpm=MONTHS.map((_,m)=>{ let d=foyerTotal(m,'planned'); state.people.forEach(p=>d+=persoTotal(p,m,'planned')); return d; });
+  h += `<div class="chartbox"><h3>Revenus vs dépenses (couple, planifié)</h3>${barChart(MONTHS,[
+    {name:'Revenus',values:rev,color:'#22c55e'},{name:'Dépenses',values:dpm,color:'#ef4444'}])}</div>`;
+
+  // Prévision de trésorerie
+  let bal=state.startCash||0; const tres=MONTHS.map((_,m)=>{ let mp=0; state.people.forEach(p=>mp+=epargneProj(p,m)); mp+=commonEpargneProj(m); bal+=mp; return bal; });
+  const neg=tres.findIndex(v=>v<0);
+  h+=`<div class="card"><h2>Prévision de trésorerie 💧</h2>
+   <p class="hint">Solde de départ + épargne cumulée, mois par mois — pour repérer un mois dans le rouge à l'avance.</p>
+   <div class="row" style="margin-bottom:8px"><span class="note">Solde de départ (€) :</span>${inCell(state.startCash,'startcash','style="width:120px"')}</div>
+   ${lineChart(MONTHS,[{name:'Solde projeté',values:tres,color:neg>=0?'#ef4444':'#22c55e'}])}
+   ${neg>=0?`<p class="bad note">⚠️ Solde négatif dès ${MONTHS[neg]} — prévois une réserve.</p>`:`<p class="good note">✓ Solde positif toute l'année.</p>`}</div>`;
+
+  // Répartition du revenu (repère 50/30/20)
+  const fixe=MONTHS.reduce((s,_,m)=>s+foyerTypeTotal('fixe',m,'planned'),0);
+  const varia=MONTHS.reduce((s,_,m)=>s+foyerTypeTotal('variable',m,'planned'),0);
+  const lois=MONTHS.reduce((s,_,m)=>s+foyerTypeTotal('loisir',m,'planned'),0);
+  const perso=state.people.reduce((sp,p)=>sp+MONTHS.reduce((s,_,m)=>s+persoTotal(p,m,'planned'),0),0);
+  const epc=coupleSavingProj();
+  h+=`<div class="card"><h2>Répartition du revenu (couple)</h2>
+   <p class="hint">Part de chaque poste dans le revenu. Repère classique <b>50/30/20</b> : ~50 % besoins, 30 % envies, 20 % épargne.</p>
+   ${barChart(['Charges fixes','Variables','Loisirs','Dépenses perso','Épargne'],[{name:'€ / an',values:[fixe,varia,lois,perso,epc],color:'#0ea5e9'}],true)}
+   <div class="kpis">${kpi('Charges fixes',pct(inc?fixe/inc:0))}${kpi('Variables',pct(inc?varia/inc:0))}${kpi('Loisirs',pct(inc?lois/inc:0))}${kpi('Épargne',pct(inc?epc/inc:0),inc&&epc/inc>=0.2?'good':'warn')}</div></div>`;
+
+  // Alertes budget
+  const al=[];
+  Y().foyer.forEach(l=>{ const a=l.planned.reduce((s,v)=>s+v,0); if(l.budget>0&&a>l.budget*1.1) al.push(['Foyer',l.name,a,l.budget]); });
+  state.people.forEach(p=>Y().persons[p].cats.forEach(l=>{ const a=l.planned.reduce((s,v)=>s+v,0); if(l.budget>0&&a>l.budget*1.1) al.push([p,l.name,a,l.budget]); }));
+  h+=`<div class="card"><h2>Alertes budget 🔔</h2>`;
+  if(!al.length) h+=`<p class="note good">Aucun dépassement (&gt; 110 % du budget cible). 👍 <span class="note">(définis des budgets cibles pour activer les alertes)</span></p>`;
+  else { h+=`<div class="tablewrap"><table style="min-width:420px"><thead><tr><th>Où</th><th>Poste</th><th>Planifié</th><th>Budget</th><th>Dépassement</th></tr></thead><tbody>`;
+    al.forEach(a=>{ h+=`<tr class="sub"><td>${esc(a[0])}</td><td>${esc(a[1])}</td><td>${num(a[2])}</td><td>${num(a[3])}</td><td class="bad">+${num(a[2]-a[3])}</td></tr>`; });
+    h+=`</tbody></table></div>`; }
+  h+=`</div>`;
+
+  // Comparaison N-1
+  const py=state.currentYear-1;
+  if(state.years[py]){
+    const tot=()=>({rev:coupleIncomeYear(), dep:MONTHS.reduce((s,_,m)=>{let d=foyerTotal(m,'planned');state.people.forEach(p=>d+=persoTotal(p,m,'planned'));return s+d;},0), ep:coupleSavingProj()});
+    const cur=tot(); const prev=withYear(py,tot);
+    const rowc=(lbl,a,b,upGood)=>{const d=a-b; const cls=d===0?'neutral':((d>0)===upGood?'good':'bad'); return `<tr class="sub"><td>${lbl}</td><td>${num(b)}</td><td>${num(a)}</td><td class="${cls}">${d>0?'+':''}${num(d)}</td></tr>`;};
+    h+=`<div class="card"><h2>Comparaison ${py} → ${state.currentYear}</h2><div class="tablewrap"><table style="min-width:440px"><thead><tr><th></th><th>${py}</th><th>${state.currentYear}</th><th>Évolution</th></tr></thead><tbody>`;
+    h+=rowc('Revenus',cur.rev,prev.rev,true)+rowc('Dépenses',cur.dep,prev.dep,false)+rowc('Épargne',cur.ep,prev.ep,true);
+    h+=`</tbody></table></div></div>`;
+  }
+  return h;
+}
+function dashPerson(p){
+  if(!Y().persons[p]) return `<div class="card">—</div>`;
+  const inc=personIncomeYear(p);
+  const perso=MONTHS.reduce((s,_,m)=>s+persoTotal(p,m,'planned'),0);
+  const part=MONTHS.reduce((s,_,m)=>s+communeShare(p,m,'planned'),0);
+  const sav=personSavingProj(p); const taux=inc?sav/inc:0;
+  let h=`<div class="card"><div class="kpis">`;
+  h+=kpi('Revenus annuels',eur(inc));
+  h+=kpi('Dépenses (perso + foyer)',eur(perso+part));
+  h+=kpi('Épargne projetée',eur(sav),sav>=0?'good':'bad');
+  h+=kpiObjectif(taux);
+  h+=`</div></div>`;
+  let cum=0; const cp=MONTHS.map((_,m)=>{cum+=epargne(p,m,'planned');return cum;});
+  cum=0; const cj=MONTHS.map((_,m)=>{cum+=epargneProj(p,m);return cum;});
+  h+=`<div class="chartbox"><h3>Épargne cumulée — ${esc(p)} (planifiée vs projetée)</h3>${lineChart(MONTHS,[
+    {name:'Planifiée',values:cp,color:'#0ea5e9'},{name:'Projetée',values:cj,color:'#14b8a6'}])}</div>`;
+  const mp=MONTHS.map((_,m)=>epargne(p,m,'planned'));
+  const mj=MONTHS.map((_,m)=>epargneProj(p,m));
+  h+=`<div class="chartbox"><h3>Épargne mensuelle — ${esc(p)}</h3>${barChart(MONTHS,[
+    {name:'Planifié',values:mp,color:'#0ea5e9'},{name:'Réel/projeté',values:mj,color:'#14b8a6'}])}</div>`;
+  const groups=[...new Set(Y().persons[p].cats.map(c=>c.group))];
+  const gp=groups.map(g=>MONTHS.reduce((s,_,m)=>s+Y().persons[p].cats.filter(c=>c.group===g).reduce((a,c)=>a+catVal(p,c,m,'planned'),0),0));
+  h+=`<div class="chartbox"><h3>Dépenses perso par poste (annuel)</h3>${barChart(groups.map(g=>g.length>12?g.slice(0,12)+'…':g),[
+    {name:'Planifié',values:gp,color:'#0ea5e9'}],true)}</div>`;
+  const rev=MONTHS.map((_,m)=>personFullIncome(p,m));
+  const dep=MONTHS.map((_,m)=>persoTotal(p,m,'planned')+communeShare(p,m,'planned'));
+  h+=`<div class="chartbox"><h3>Revenus vs dépenses — ${esc(p)}</h3>${barChart(MONTHS,[
+    {name:'Revenus',values:rev,color:'#22c55e'},{name:'Dépenses',values:dep,color:'#ef4444'}])}</div>`;
+  return h;
+}
+function isMobile(){ return (window.innerWidth||800) < 600; }
+function lineChart(labels, series){
+  const mob=isMobile(), W=mob?400:720, H=mob?250:208;
+  const all=series.flatMap(s=>s.values);
+  let max=Math.max(...all,0), min=Math.min(...all,0); if(max===min) max=min+1;
+  const yLabW=Math.max(num(max).length,num(min).length);
+  const padL=14+yLabW*7, padR=14, padT=mob?20:14, padB=24;
+  const plotW=W-padL-padR, plotH=H-padT-padB;
+  const X=i=> padL + (labels.length<=1?plotW/2:i*plotW/(labels.length-1));
+  const Yv=v=> padT + (max-v)/(max-min)*plotH;
+  const everyN=mob?2:1, fs=11;
+  let s='';
+  for(let g=0;g<=4;g++){ const val=max-(max-min)*g/4, yy=padT+plotH*g/4;
+    s+=`<line class="axis" x1="${padL}" y1="${yy}" x2="${W-padR}" y2="${yy}"/><text x="${padL-5}" y="${yy+3}" text-anchor="end" style="font-size:${fs}px">${num(val)}</text>`; }
+  if(min<0){ const zy=Yv(0); s+=`<line x1="${padL}" y1="${zy}" x2="${W-padR}" y2="${zy}" stroke="var(--muted)"/>`; }
+  labels.forEach((l,i)=>{ if(i%everyN===0) s+=`<text x="${X(i)}" y="${H-padB+15}" text-anchor="middle" style="font-size:${fs}px">${l}</text>`; });
+  series.forEach((se,si)=>{
+    const pts=se.values.map((v,i)=>`${X(i)},${Yv(v)}`).join(' ');
+    s+=`<polyline fill="none" stroke="${se.color}" stroke-width="2.5" points="${pts}"/>`;
+    se.values.forEach((v,i)=>{
+      s+=`<circle cx="${X(i)}" cy="${Yv(v)}" r="3.2" fill="${se.color}"/>`;
+      const dupe=series.slice(0,si).some(o=>num(o.values[i])===num(v));
+      if(i%everyN===0 && !dupe){ const dy=si%2===0?-7:13; s+=`<text x="${X(i)}" y="${Yv(v)+dy}" text-anchor="middle" style="fill:${se.color};font-size:10px;font-weight:600">${num(v)}</text>`; }
+    });
+  });
+  // zones de survol par mois (toute la hauteur) → info-bulle fiable
+  const gapw=labels.length>1?plotW/(labels.length-1):plotW;
+  labels.forEach((l,i)=>{ const tip=`${esc(l)} — ${series.map(se=>esc(se.name)+': '+num(se.values[i])+' €').join(' • ')}`;
+    s+=`<rect x="${X(i)-gapw/2}" y="${padT}" width="${gapw}" height="${plotH}" fill="transparent" data-tip="${tip}"/>`; });
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet">${s}</svg>${legend(series)}`;
+}
+function barChart(labels, series, horizontal=false){
+  const mob=isMobile(), W=mob?400:720, n=labels.length, ns=series.length, fs=11;
+  const all=series.flatMap(s=>s.values);
+  if(horizontal){
+    const max=Math.max(1,...all.map(v=>Math.abs(v)));
+    const labW=Math.min(mob?96:160, Math.max(4,...labels.map(l=>l.length))*6+8);
+    const valW=Math.max(4,...all.map(v=>num(v).length))*7+10;
+    const padL=labW+6, padR=valW+6, rowH=mob?34:30, H=n*rowH+12;
+    let s='';
+    labels.forEach((l,i)=>{
+      const yb=i*rowH+6; s+=`<text x="0" y="${yb+rowH/2+3}" style="font-size:${fs}px">${l}</text>`;
+      series.forEach((se,si)=>{
+        const val=se.values[i]||0, bw=Math.abs(val)/max*(W-padL-padR);
+        const hh=(rowH-6)/ns, yy=yb+si*hh;
+        s+=`<rect x="${padL}" y="${yy}" width="${bw}" height="${Math.max(0,hh-2)}" fill="${se.color}" rx="2" data-tip="${esc(se.name)} — ${esc(l)}: ${num(val)} €"/>`;
+        s+=`<text x="${padL+bw+4}" y="${yy+(hh-2)/2+3}" style="font-size:${fs-1}px;fill:var(--txt)">${num(val)}</text>`;
+      });
+    });
+    return `<svg viewBox="0 0 ${W} ${H}" width="100%">${s}</svg>${legend(series)}`;
+  }
+  let max=Math.max(0,...all), min=Math.min(0,...all); if(max===min) max=min+1;
+  const yLabW=Math.max(num(max).length,num(min).length);
+  const padL=14+yLabW*7, padR=12, padT=mob?18:14, padB=24, H=mob?240:208;
+  const plotW=W-padL-padR, plotH=H-padT-padB;
+  const Yv=v=> padT+(max-v)/(max-min)*plotH, zeroY=Yv(0);
+  const gw=plotW/n, bw=gw/(ns+1), everyN=mob?2:1;
+  let s='';
+  for(let g=0;g<=4;g++){ const val=max-(max-min)*g/4, yy=padT+plotH*g/4;
+    s+=`<line class="axis" x1="${padL}" y1="${yy}" x2="${W-padR}" y2="${yy}"/><text x="${padL-5}" y="${yy+3}" text-anchor="end" style="font-size:${fs}px">${num(val)}</text>`; }
+  if(min<0) s+=`<line x1="${padL}" y1="${zeroY}" x2="${W-padR}" y2="${zeroY}" stroke="var(--muted)"/>`;
+  labels.forEach((l,i)=>{
+    if(i%everyN===0) s+=`<text x="${padL+i*gw+gw/2}" y="${H-padB+15}" text-anchor="middle" style="font-size:${fs}px">${l}</text>`;
+    series.forEach((se,si)=>{
+      const val=se.values[i]||0, yv=Yv(val), x=padL+i*gw+bw*si+bw*0.5;
+      const top=Math.min(yv,zeroY), hh=Math.abs(yv-zeroY);
+      s+=`<rect x="${x}" y="${top}" width="${bw*0.9}" height="${hh}" fill="${se.color}" rx="2" data-tip="${esc(se.name)} — ${esc(l)}: ${num(val)} €"/>`;
+      if(i%everyN===0) s+=`<text x="${x+bw*0.45}" y="${val>=0?top-3:top+hh+11}" text-anchor="middle" style="fill:${se.color};font-size:9px;font-weight:600">${num(val)}</text>`;
+    });
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%">${s}</svg>${legend(series)}`;
+}
+function legend(series){
+  return `<div class="legend">${series.map(s=>`<span><b style="color:${s.color}">■</b> ${esc(s.name)}</span>`).join('')}</div>`;
+}
+
+/* =========================================================
+   ONGLET PARAMÈTRES
+   ========================================================= */
+function renderParams(){
+  const ys=Object.keys(state.years).map(Number).sort((a,b)=>a-b);
+  let h = `<div class="card"><h2>Personnes du couple</h2><p class="hint">Renomme les membres. Les budgets individuels s'adaptent.</p>`;
+  state.people.forEach((p,i)=>{
+    h += `<div class="row" style="margin-bottom:8px"><input class="field" data-cell="people|${i}" value="${esc(p)}" style="width:200px"><span class="note">budget individuel « ${esc(p)} »</span></div>`;
+  });
+  h += `</div>`;
+
+  h += `<div class="card"><h2>Gestion des années (vision N → N+5)</h2><p class="hint">Planifie sur plusieurs années. « Dupliquer » copie les montants planifiés de l'année courante (le réel est remis à zéro).</p>`;
+  h += `<div class="row">`;
+  ys.forEach(y=>{
+    h += `<span class="pill" style="display:inline-flex;gap:8px;align-items:center;padding:6px 10px">${y}${ys.length>1?` <span class="del" data-act="delyear|${y}">✕</span>`:''}</span>`;
+  });
+  h += `</div><div class="row" style="margin-top:12px">
+    <button class="btn" data-act="addnext2">+ Année ${(ys[ys.length-1]+1)}</button>
+    <button class="btn" data-act="addprev2">+ Année ${(ys[0]-1)}</button>
+    <button class="btn primary" data-act="duplicate">⧉ Dupliquer ${state.currentYear} → ${state.currentYear+1}</button>
+  </div></div>`;
+
+  h += `<div class="card"><h2>Sauvegarde & partage</h2>
+  <p class="hint">Tes données restent sur cet appareil (aucun serveur). Exporte un fichier pour sauvegarder ou partager avec ${esc(state.people.join(' / '))}.</p>
+  <div class="row">
+    <button class="btn" id="btnExport2">⬇ Exporter (JSON)</button>
+    <button class="btn" id="btnImport2">⬆ Importer (JSON)</button>
+    <button class="btn danger" data-act="reset">↺ Réinitialiser tout</button>
+  </div></div>`;
+
+  // Synchronisation temps réel
+  h += `<div class="card"><h2>Synchronisation à deux — temps réel 🔗</h2>`;
+  if(syncCfg.enabled){
+    h += `<p class="hint">Synchro active : les modifications de ${esc(state.people.join(' et '))} se mettent à jour automatiquement sur les deux appareils.</p>
+    <p>Code partagé : <b>${esc(syncCfg.code)}</b></p>
+    <p class="note" id="syncStatus">${esc(syncMsg||'…')}</p>
+    <div class="row"><button class="btn" data-act="syncpush">⬆ Forcer l'envoi</button><button class="btn danger" data-act="syncoff">Désactiver la synchro</button></div>`;
+  } else {
+    const sugg=syncCfg.code||('couple-'+Math.random().toString(36).slice(2,8));
+    h += `<p class="hint">Pour voir les mêmes données, à jour, sur ton téléphone et celui de Madina. Utilise une base <b>Firebase</b> gratuite (Google) :</p>
+    <ol class="note" style="line-height:1.8">
+      <li>Ouvre <b>console.firebase.google.com</b> → « Ajouter un projet » (gratuit, rapide).</li>
+      <li>Menu de gauche → <b>Realtime Database</b> → « Créer une base de données » → <b>mode test</b>.</li>
+      <li>⚙️ Paramètres du projet → « Vos applications » → icône <b>Web &lt;/&gt;</b> → enregistre l'app → copie l'objet <b>firebaseConfig</b> (avec <b>databaseURL</b>).</li>
+      <li>Colle-le ci-dessous, garde le code partagé secret, puis <b>Activer</b>. Refais exactement la même chose sur l'autre téléphone (même config, <b>même code</b>).</li>
+      <li>Pour que ça dure au-delà de 30 jours : Realtime Database → onglet <b>Règles</b> → colle puis publie :<br><code style="font-size:11px">{ "rules": { "budgets": { "$c": { ".read": true, ".write": true } } } }</code></li>
+    </ol>
+    <textarea class="field" id="syncConfig" style="width:100%;height:120px;font-family:monospace;font-size:12px" placeholder='{\n  "apiKey": "…",\n  "authDomain": "…",\n  "databaseURL": "https://…firebasedatabase.app",\n  "projectId": "…",\n  "appId": "…"\n}'></textarea>
+    <div class="row" style="margin-top:8px"><span class="note">Code partagé :</span><input class="field" id="syncCode" value="${esc(sugg)}" style="width:220px"><button class="btn primary" data-act="syncon">Activer la synchro</button></div>
+    <p class="note" id="syncStatus">${esc(syncMsg||'')}</p>
+    <p class="note">⚠️ Confidentialité : toute personne connaissant la config + le code peut lire/écrire le budget — garde le code secret. Les données sont hébergées sur <b>ton</b> projet Firebase, pas chez moi.</p>`;
+  }
+  h += `</div>`;
+
+  h += `<div class="card"><h2>Comment ça marche</h2>
+  <ul class="note" style="line-height:1.7">
+    <li><b>Prorata</b> : part de chacun = ses revenus du mois / revenus du couple. Les dépenses du foyer sont réparties selon ce prorata.</li>
+    <li><b>Épargne individuelle</b> = revenus − dépenses perso − part proratisée des dépenses du foyer.</li>
+    <li><b>Suivi réel</b> : compare réel vs planifié (vert/rouge/noir ±2%) et recalcule l'épargne.</li>
+    <li><b>Atterrissage</b> : mois saisis = réel, mois restants = planifié ⇒ épargne projetée de fin d'année.</li>
+    <li>💡 Sur mobile : ouvre ce fichier dans le navigateur puis « Ajouter à l'écran d'accueil ».</li>
+  </ul></div>`;
+  return h;
+}
+
+/* =========================================================
+   ONGLET INVESTISSEMENTS
+   ========================================================= */
+function investCurrentEUR(){ return state.investments.reduce((s,i)=>s+toEUR(i.current,i.devise),0); }
+function renderInvest(){
+  let h=`<div class="card"><h2>Investissements 📈</h2>
+   <p class="hint">Suis tes placements par plateforme. Tout est converti en € selon les taux ci-dessous. Plus-value = valeur actuelle − investi.</p>`;
+  h+=`<div class="row" style="margin-bottom:10px"><span class="note">Taux de change → € :</span>`;
+  CURRENCIES.filter(d=>d!=='EUR').forEach(d=>{ h+=`<span class="note">1&nbsp;${d}&nbsp;=</span>${inCell(state.fx[d],'fx|'+d,'style="width:84px"')}<span class="note">€</span>`; });
+  h+=`</div>`;
+  h+=`<div class="tablewrap"><table style="min-width:740px"><thead><tr><th>Plateforme</th><th>Actif</th><th>Devise</th><th>Investi</th><th>Valeur actuelle</th><th>+/- (€)</th><th>%</th></tr></thead><tbody>`;
+  let tInv=0,tCur=0;
+  state.investments.forEach(it=>{
+    const inv=toEUR(it.invested,it.devise), cur=toEUR(it.current,it.devise); tInv+=inv; tCur+=cur;
+    const pl=cur-inv, plp=inv?pl/inv:0; const cl=pl>=0?'good':'bad';
+    h+=`<tr class="sub"><td>${mvBtns('moveinv|'+it.id)} <span class="del" data-act="delinv|${it.id}">✕</span> ${txtCell(it.platform,'inv|'+it.id+'|platform')}</td><td>${txtCell(it.name,'inv|'+it.id+'|name')}</td><td>${selCell(it.devise||'EUR','inv|'+it.id+'|devise',CURRENCIES)}</td><td>${inCell(it.invested,'inv|'+it.id+'|invested')}</td><td>${inCell(it.current,'inv|'+it.id+'|current')}</td><td class="${cl}">${pl>=0?'+':''}${num(pl)}</td><td class="${cl}">${pct(plp)}</td></tr>`;
+  });
+  h+=`<tr><td colspan="7"><span class="miniadd" data-act="addinv">+ ajouter un placement</span></td></tr>`;
+  const tpl=tCur-tInv, tcl=tpl>=0?'good':'bad';
+  h+=`<tr class="grand"><td>Total (€)</td><td></td><td></td><td>${num(tInv)}</td><td>${num(tCur)}</td><td class="${tcl}">${tpl>=0?'+':''}${num(tpl)}</td><td class="${tcl}">${pct(tInv?tpl/tInv:0)}</td></tr>`;
+  h+=`</tbody></table></div></div>`;
+  h+=`<div class="card"><div class="kpis">${kpi('Total investi',eur(tInv))}${kpi('Valeur actuelle',eur(tCur))}${kpi('Plus-value',(tpl>=0?'+':'')+eur(tpl),tcl)}</div>`;
+  const plats=[...new Set(state.investments.map(i=>i.platform||'—'))].filter(Boolean);
+  if(plats.length){
+    const alloc=plats.map(p=>state.investments.filter(i=>(i.platform||'—')===p).reduce((s,i)=>s+toEUR(i.current,i.devise),0));
+    h+=`<div class="chartbox"><h3>Répartition par plateforme (valeur € )</h3>${barChart(plats,[{name:'Valeur',values:alloc,color:'#14b8a6'}],true)}</div>`;
+  }
+  h+=`</div>`;
+  return h;
+}
+
+/* =========================================================
+   ONGLET PATRIMOINE
+   ========================================================= */
+function renderPatrimoine(){
+  const investCur=investCurrentEUR();
+  const avo=state.assets.reduce((s,a)=>s+toEUR(a.value,a.devise),0);
+  const det=state.debts.reduce((s,a)=>s+toEUR(a.value,a.devise),0);
+  const net=avo+investCur-det;
+  let h=`<div class="card"><h2>Patrimoine net 🏦</h2>
+   <p class="hint">Avoirs liquides + placements − dettes. Multi-devises converties en € (taux dans l'onglet Investissements).</p>
+   <div class="kpis">${kpi('Avoirs liquides',eur(avo))}${kpi('Placements',eur(investCur))}${kpi('Dettes',eur(det),det>0?'bad':'')}${kpi('Patrimoine net',eur(net),net>=0?'good':'bad')}</div></div>`;
+  // avoirs
+  h+=`<div class="card"><h2>Avoirs liquides</h2><div class="tablewrap"><table style="min-width:460px"><thead><tr><th>Compte / livret</th><th>Devise</th><th>Valeur</th></tr></thead><tbody>`;
+  state.assets.forEach(a=>{ h+=`<tr class="sub"><td><span class="del" data-act="delasset|${a.id}">✕</span> ${txtCell(a.name,'asset|'+a.id+'|name')}</td><td>${selCell(a.devise||'EUR','asset|'+a.id+'|devise',CURRENCIES)}</td><td>${inCell(a.value,'asset|'+a.id+'|value')}</td></tr>`; });
+  h+=`<tr><td colspan="3"><span class="miniadd" data-act="addasset">+ ajouter un avoir</span></td></tr>`;
+  h+=`<tr class="grand"><td>Total avoirs (€)</td><td></td><td>${num(avo)}</td></tr></tbody></table></div></div>`;
+  // dettes
+  h+=`<div class="card"><h2>Dettes</h2><div class="tablewrap"><table style="min-width:460px"><thead><tr><th>Dette / emprunt</th><th>Devise</th><th>Reste dû</th></tr></thead><tbody>`;
+  state.debts.forEach(a=>{ h+=`<tr class="sub"><td><span class="del" data-act="deldebt|${a.id}">✕</span> ${txtCell(a.name,'debt|'+a.id+'|name')}</td><td>${selCell(a.devise||'EUR','debt|'+a.id+'|devise',CURRENCIES)}</td><td>${inCell(a.value,'debt|'+a.id+'|value')}</td></tr>`; });
+  h+=`<tr><td colspan="3"><span class="miniadd" data-act="adddebt">+ ajouter une dette</span></td></tr>`;
+  h+=`<tr class="grand"><td>Total dettes (€)</td><td></td><td>${num(det)}</td></tr></tbody></table></div></div>`;
+  // fonds d'urgence
+  const depAn=MONTHS.reduce((s,_,m)=>{let d=foyerTotal(m,'planned');state.people.forEach(p=>d+=persoTotal(p,m,'planned'));return s+d;},0);
+  const moisDep=depAn/12; const mois=moisDep?avo/moisDep:0; const cls=mois>=6?'good':mois>=3?'warn':'bad';
+  h+=`<div class="card"><h2>Fonds d'urgence 🛟</h2>
+   <p class="hint">Nombre de mois de dépenses couverts par tes avoirs liquides (objectif : 3 à 6 mois).</p>
+   <div class="kpis">${kpi('Dépenses moy. / mois',eur(moisDep))}${kpi('Mois couverts',mois.toFixed(1).replace('.',',')+' mois',cls)}${kpi('Cible 6 mois',eur(moisDep*6))}</div>
+   <div class="progress"><span style="width:${Math.max(0,Math.min(100,mois/6*100))}%"></span></div></div>`;
+  return h;
+}
+
+/* =========================================================
+   ONGLET DÉFISCALISATION
+   ========================================================= */
+function renderDefisc(){
+  let h=`<div class="card"><h2>Défiscalisation — dons & dîmes 🧾</h2>
+   <p class="hint">En France, les dons à des organismes reconnus donnent droit à une réduction d'impôt (souvent 66 %, parfois 75 %), dans la limite de 20 % du revenu imposable. ⚠️ L'aide directe à la famille (ex. envois au Burkina) n'est en général <b>pas</b> déductible, sauf via un organisme agréé — saisis 0 % dans ce cas pour la suivre sans réduction.</p>`;
+  h+=`<div class="tablewrap"><table style="min-width:580px"><thead><tr><th>Libellé</th><th>Montant annuel</th><th>Taux</th><th>Réduction estimée</th></tr></thead><tbody>`;
+  let tot=0,red=0;
+  state.deductions.forEach(d=>{ const r=(d.montant||0)*((d.rate||0)/100); tot+=d.montant||0; red+=r;
+    h+=`<tr class="sub"><td><span class="del" data-act="deldeduc|${d.id}">✕</span> ${txtCell(d.label,'deduc|'+d.id+'|label')}</td><td>${inCell(d.montant,'deduc|'+d.id+'|montant')}</td><td>${inCell(d.rate,'deduc|'+d.id+'|rate','style="width:58px"')} %</td><td class="good">${num(r)} €</td></tr>`; });
+  h+=`<tr><td colspan="4"><span class="miniadd" data-act="adddeduc">+ ajouter une ligne</span> &nbsp; <span class="miniadd" data-act="sumdimes">↻ importer dîmes & dons du budget ${state.currentYear}</span></td></tr>`;
+  h+=`<tr class="grand"><td>Total</td><td>${num(tot)}</td><td></td><td class="good">${num(red)} €</td></tr></tbody></table></div>`;
+  h+=`<div class="kpis" style="margin-top:12px">${kpi('Total dons / dîmes',eur(tot))}${kpi('Réduction d\'impôt estimée',eur(red),'good')}${kpi('Coût net après impôt',eur(tot-red))}</div></div>`;
+  return h;
+}
+
+/* =========================================================
+   RENDU PRINCIPAL + focus restore
+   ========================================================= */
+function renderTab(){
+  const t=state.ui.tab;
+  let html='';
+  if(t==='revenus') html=renderRevenus();
+  else if(t==='foyer') html=renderFoyer();
+  else if(t.startsWith('person:')) html=renderPerson(t.slice(7));
+  else if(t==='reel') html=renderReel();
+  else if(t==='dash') html=renderDashboard();
+  else if(t==='invest') html=renderInvest();
+  else if(t==='patrimoine') html=renderPatrimoine();
+  else if(t==='defisc') html=renderDefisc();
+  else if(t==='params') html=renderParams();
+  document.getElementById('app').innerHTML=html;
+}
+function rerender(){
+  const a=document.activeElement;
+  const key=a&&a.dataset&&a.dataset.cell?a.dataset.cell:null;
+  const ss=a&&typeof a.selectionStart==='number'?a.selectionStart:null;
+  const raw=a&&'value'in a?a.value:null;
+  renderTopbar(); renderTab();
+  if(key){
+    const el=document.querySelector('[data-cell="'+key.replace(/"/g,'\\"')+'"]');
+    if(el){
+      el.focus();
+      // garde le texte exactement tel que tapé (ex: "12," en cours de décimale)
+      if(raw!=null && el.classList.contains('num')) el.value=raw;
+      try{ if(ss!=null) el.setSelectionRange(ss,ss);}catch(e){}
+    }
+  }
+}
+function fullRender(){ renderTopbar(); renderTab(); }
+
+/* =========================================================
+   ÉVÉNEMENTS
+   ========================================================= */
+function getLine(arrName, id){ return Y()[arrName].find(l=>l.id===id); }
+// Déplace une ligne d'un cran (dir=-1 monter, +1 descendre) en restant dans sa catégorie
+function moveLine(arr, id, dir){
+  const i=arr.findIndex(l=>l.id===id); if(i<0) return;
+  const g=arr[i].group; let j=i+dir;
+  while(j>=0 && j<arr.length && arr[j].group!==g) j+=dir;
+  if(j<0||j>=arr.length||arr[j].group!==g) return; // pas de voisin dans la même catégorie
+  const t=arr[i]; arr[i]=arr[j]; arr[j]=t;
+}
+// Déplacement simple dans une liste à plat (revenus, placements…)
+function moveItem(arr, id, dir){
+  const i=arr.findIndex(x=>x.id===id); if(i<0) return; const j=i+dir;
+  if(j<0||j>=arr.length) return; const t=arr[i]; arr[i]=arr[j]; arr[j]=t;
+}
+// Catégories foyer réellement présentes (ordre standard puis personnalisées)
+function foyerGroups(){
+  const present=[...new Set(Y().foyer.map(l=>l.group))];
+  return [...FOYER_GROUPS.filter(g=>present.includes(g)), ...present.filter(g=>!FOYER_GROUPS.includes(g))];
+}
+function groupType(g){ const l=Y().foyer.find(x=>x.group===g && x.type); return (l&&l.type)||GROUP_TYPE[g]||'variable'; }
+// Valeur effective d'une ligne perso : si auto (ex. Dîme), rate% du revenu calculé à la volée ;
+// sinon la saisie. Les lignes auto n'écrasent JAMAIS la saisie stockée (l.planned/l.real préservés).
+function catVal(p,l,m,f){ if(l.auto) return Math.round((l.rate||10)/100*personFullIncome(p,m)); return l[f][m]||0; }
+function mvBtns(act){ return `<span class="mv" data-act="${act}|up" title="Monter">↑</span><span class="mv" data-act="${act}|down" title="Descendre">↓</span>`; }
+
+// Applique une valeur numérique à la cellule décrite par c. Renvoie true si c'est une cellule mensuelle (remplissable).
+function applyCellValue(c, v){
+  switch(c[0]){
+    case 'sal': Y().persons[c[1]].salary[+c[2]]=v; return true;
+    case 'ext': { const ex=Y().persons[c[1]].extras.find(x=>x.id===c[2]); if(ex) ex.amounts[+c[3]]=v; return true; }
+    case 'pext': { const ex=(Y().persons[c[1]].persoExtras||[]).find(x=>x.id===c[2]); if(ex) ex.amounts[+c[3]]=v; return true; }
+    case 'fp': { const l=getLine('foyer',c[1]); if(l) l.planned[+c[2]]=v; return true; }
+    case 'fr': { const l=getLine('foyer',c[1]); if(l) l.real[+c[2]]=v; return true; }
+    case 'fb': { const l=getLine('foyer',c[1]); if(l) l.budget=v; return false; }
+    case 'cp': { const l=Y().persons[c[1]].cats.find(x=>x.id===c[2]); if(l) l.planned[+c[3]]=v; return true; }
+    case 'cr': { const l=Y().persons[c[1]].cats.find(x=>x.id===c[2]); if(l) l.real[+c[3]]=v; return true; }
+    case 'cb': { const l=Y().persons[c[1]].cats.find(x=>x.id===c[2]); if(l) l.budget=v; return false; }
+    case 'epobj': { Y().persons[c[1]].epargneObjectif=v; return false; }
+  }
+  return false;
+}
+function applyTextValue(c, v){
+  switch(c[0]){
+    case 'extname': { const ex=Y().persons[c[1]].extras.find(x=>x.id===c[2]); if(ex) ex.name=v; break; }
+    case 'pextname': { const ex=(Y().persons[c[1]].persoExtras||[]).find(x=>x.id===c[2]); if(ex) ex.name=v; break; }
+    case 'fname': { const l=getLine('foyer',c[1]); if(l) l.name=v; break; }
+    case 'cname': { const l=Y().persons[c[1]].cats.find(x=>x.id===c[2]); if(l) l.name=v; break; }
+    case 'people': { const old=state.people[+c[1]]; const nw=v.trim()||old; if(nw!==old){ state.people[+c[1]]=nw; Object.values(state.years).forEach(yr=>{ yr.persons[nw]=yr.persons[old]; delete yr.persons[old]; }); if(state.ui.tab==='person:'+old) state.ui.tab='person:'+nw; } return true; }
+  }
+  return false;
+}
+
+// Champs auxiliaires : investissements, avoirs, dettes, défisc, taux de change
+function applyAux(c, el){
+  const v=el.value, n=parseNum(v);
+  switch(c[0]){
+    case 'inv': { const it=state.investments.find(x=>x.id===c[1]); if(it){ it[c[2]] = (c[2]==='invested'||c[2]==='current')?n:v; } break; }
+    case 'asset': { const it=state.assets.find(x=>x.id===c[1]); if(it){ it[c[2]] = c[2]==='value'?n:v; } break; }
+    case 'debt': { const it=state.debts.find(x=>x.id===c[1]); if(it){ it[c[2]] = c[2]==='value'?n:v; } break; }
+    case 'deduc': { const it=state.deductions.find(x=>x.id===c[1]); if(it){ it[c[2]] = (c[2]==='montant'||c[2]==='rate')?n:v; } break; }
+    case 'fx': state.fx[c[1]]=n; break;
+    case 'startcash': state.startCash=n; break;
+  }
+}
+document.addEventListener('input', e=>{
+  const el=e.target;
+  if(!el.dataset||!el.dataset.cell) return;
+  const c=el.dataset.cell.split('|');
+  snapshot(false);
+  if(AUX.includes(c[0])){ applyAux(c, el); save(); rerender(); return; }
+  if(el.classList.contains('num')){
+    applyCellValue(c, parseNum(el.value)); save(); rerender();
+  } else if(el.classList.contains('txt')||c[0]==='people'){
+    const wasPeople=applyTextValue(c, el.value); save(); if(wasPeople) rerender();
+  }
+});
+// Au blur d'une cellule formule, on remplace le texte par le résultat calculé ; selects auxiliaires
+document.addEventListener('change', e=>{
+  const el=e.target;
+  if(!el.dataset||!el.dataset.cell) return;
+  const c=el.dataset.cell.split('|');
+  if(AUX.includes(c[0])){ applyAux(c, el); save(); rerender(); return; }
+  if(el.classList.contains('num')){
+    el.value = el.value.trim()==='' ? '' : String(parseNum(el.value));
+    rerender();
+  }
+});
+// Entrée = valider et afficher le résultat (sans recopier).
+// Ctrl/Cmd+Entrée = recopier jusqu'à décembre ; Maj+Entrée = sur toute l'année.
+document.addEventListener('keydown', e=>{
+  if(e.key!=='Enter') return;
+  const el=e.target;
+  if(!el.dataset||!el.dataset.cell||!el.classList.contains('num')) return;
+  const c=el.dataset.cell.split('|');
+  const last=c[c.length-1];
+  const isMonthCell = /^\d+$/.test(last) && ['sal','ext','pext','fp','fr','cp','cr'].includes(c[0]);
+  const fill = e.ctrlKey||e.metaKey||e.altKey||e.shiftKey;
+  e.preventDefault();
+  const v=parseNum(el.value);
+  if(isMonthCell && fill){
+    const start = e.shiftKey?0:+last;
+    for(let mm=start; mm<=11; mm++){ const c2=c.slice(); c2[c2.length-1]=String(mm); applyCellValue(c2, v); }
+    save(); rerender();
+    toast(e.shiftKey?'Recopié sur toute l\'année':'Recopié jusqu\'à décembre');
+  } else {
+    // valider : remplacer la formule par sa valeur, puis descendre à la cellule du dessous (même mois)
+    el.value=String(v); save(); const curCell=el.dataset.cell; rerender();
+    if(/^\d+$/.test(last)){
+      const col=[...document.querySelectorAll('input.cell.num[data-cell$="|'+last+'"]')];
+      const i=col.findIndex(x=>x.dataset.cell===curCell);
+      const nx=col[i+1];
+      if(nx){ nx.focus(); if(nx.select) nx.select(); }
+    }
+  }
+});
+
+document.addEventListener('click', e=>{
+  const tb=e.target.closest('.tab');
+  if(tb){ state.ui.tab=tb.dataset.tab; save(); fullRender(); return; }
+  const mt=e.target.closest('.monthtab');
+  if(mt && mt.dataset.month!==undefined){ state.ui.month=+mt.dataset.month; save(); rerender(); return; }
+  if(mt && mt.dataset.dash){ state.ui.dashScope=mt.dataset.dash; save(); fullRender(); return; }
+  if(mt && mt.dataset.reel){ state.ui.reelScope=mt.dataset.reel; save(); fullRender(); return; }
+  const act=e.target.dataset&&e.target.dataset.act;
+  if(!act) return;
+  const c=act.split('|');
+  snapshot(true);
+  switch(c[0]){
+    case 'addext': Y().persons[c[1]].extras.push({id:nid(),name:'Prime / autre',amounts:arr12()}); break;
+    case 'delext': Y().persons[c[1]].extras=Y().persons[c[1]].extras.filter(x=>x.id!==c[2]); break;
+    case 'addpext': { const P=Y().persons[c[1]]; P.persoExtras=P.persoExtras||[]; P.persoExtras.push({id:nid(),name:'Revenu perso',amounts:arr12()}); break; }
+    case 'delpext': { const P=Y().persons[c[1]]; P.persoExtras=(P.persoExtras||[]).filter(x=>x.id!==c[2]); break; }
+    case 'addfoyer': Y().foyer.push({id:nid(),group:c[1],name:'Nouvelle ligne',planned:arr12(),real:arr12()}); break;
+    case 'delfoyer': if(confirm('Supprimer cette ligne ?')) Y().foyer=Y().foyer.filter(x=>x.id!==c[1]); break;
+    case 'addcat': Y().persons[c[1]].cats.push({id:nid(),group:c[2],name:'Nouvelle ligne',planned:arr12(),real:arr12()}); break;
+    case 'addcatgroup': { const g=prompt('Nom du nouveau groupe :'); if(g) Y().persons[c[1]].cats.push({id:nid(),group:g,name:'Nouvelle ligne',planned:arr12(),real:arr12()}); break; }
+    case 'delcat': if(confirm('Supprimer cette ligne ?')) Y().persons[c[1]].cats=Y().persons[c[1]].cats.filter(x=>x.id!==c[2]); break;
+    case 'movef': moveLine(Y().foyer, c[1], c[2]==='up'?-1:1); break;
+    case 'movec': moveLine(Y().persons[c[1]].cats, c[2], c[3]==='up'?-1:1); break;
+    case 'moveext': moveItem(Y().persons[c[1]].extras, c[2], c[3]==='up'?-1:1); break;
+    case 'movepext': moveItem(Y().persons[c[1]].persoExtras||[], c[2], c[3]==='up'?-1:1); break;
+    case 'moveinv': moveItem(state.investments, c[1], c[2]==='up'?-1:1); break;
+    case 'delgrpf': { const g=c.slice(1).join('|'); if(confirm('Supprimer toute la catégorie « '+g+' » du foyer ?')) Y().foyer=Y().foyer.filter(l=>l.group!==g); break; }
+    case 'delgrpc': { const p=c[1], g=c.slice(2).join('|'); if(confirm('Supprimer toute la catégorie « '+g+' » de '+p+' ?')) Y().persons[p].cats=Y().persons[p].cats.filter(l=>l.group!==g); break; }
+    case 'rengrpf': { const old=c.slice(1).join('|'); const nw=prompt('Renommer la catégorie foyer :', old); if(nw&&nw.trim()&&nw!==old){ const tp=groupType(old); Y().foyer.forEach(l=>{ if(l.group===old){ l.type=tp; l.group=nw.trim(); } }); } break; }
+    case 'rengrpc': { const p=c[1], old=c.slice(2).join('|'); const nw=prompt('Renommer la catégorie :', old); if(nw&&nw.trim()&&nw!==old){ Y().persons[p].cats.forEach(l=>{ if(l.group===old) l.group=nw.trim(); }); } break; }
+    case 'addfoyergroup': { const g=prompt('Nom de la nouvelle catégorie foyer :'); if(g&&g.trim()){ const tp=(prompt('Type ? fixe / variable / loisir / epargne','variable')||'variable').toLowerCase().trim(); Y().foyer.push({id:nid(),group:g.trim(),name:'Nouvelle ligne',planned:arr12(),real:arr12(),budget:0,type:['fixe','variable','loisir','epargne'].includes(tp)?tp:'variable'}); } break; }
+    case 'dimeauto': { const p=c[1], l=Y().persons[p].cats.find(x=>x.id===c[2]); if(l){ if(l.auto){ // → manuel : amorce avec le 10% calculé seulement si vide (ne jamais écraser une saisie)
+          if(l.planned.every(v=>!v)){ for(let mm=0;mm<12;mm++) l.planned[mm]=Math.round((l.rate||10)/100*personFullIncome(p,mm)); }
+          l.auto=false;
+        } else { l.auto=true; if(!l.rate) l.rate=10; } } break; }
+    case 'notef': { const l=getLine('foyer',c[1]); if(l){ const n=prompt('Note pour « '+l.name+' » :', l.note||''); if(n!==null) l.note=n; } break; }
+    case 'notec': { const l=Y().persons[c[1]].cats.find(x=>x.id===c[2]); if(l){ const n=prompt('Note pour « '+l.name+' » :', l.note||''); if(n!==null) l.note=n; } break; }
+    case 'addinv': state.investments.push({id:nid(),platform:'Binance',name:'Nouvel actif',devise:'EUR',invested:0,current:0}); break;
+    case 'delinv': state.investments=state.investments.filter(x=>x.id!==c[1]); break;
+    case 'addasset': state.assets.push({id:nid(),name:'Livret / compte',devise:'EUR',value:0}); break;
+    case 'delasset': state.assets=state.assets.filter(x=>x.id!==c[1]); break;
+    case 'adddebt': state.debts.push({id:nid(),name:'Emprunt',devise:'EUR',value:0}); break;
+    case 'deldebt': state.debts=state.debts.filter(x=>x.id!==c[1]); break;
+    case 'adddeduc': state.deductions.push({id:nid(),label:'Don / dîme',montant:0,rate:66}); break;
+    case 'deldeduc': state.deductions=state.deductions.filter(x=>x.id!==c[1]); break;
+    case 'sumdimes': {
+      const re=/d[îi]me|offrande|don/i; let s=0;
+      Y().foyer.forEach(l=>{ if(re.test(l.name)) s+=l.planned.reduce((a,v)=>a+v,0); });
+      state.people.forEach(p=>Y().persons[p].cats.forEach(l=>{ if(re.test(l.name)) for(let mm=0;mm<12;mm++) s+=catVal(p,l,mm,'planned'); }));
+      state.deductions.push({id:nid(),label:'Dîmes & dons '+state.currentYear,montant:Math.round(s),rate:66});
+      toast('Importé : '+eur(s)); break;
+    }
+    case 'addnext2': addYear(true); break;
+    case 'addprev2': addYear(false); break;
+    case 'duplicate': duplicateYear(); break;
+    case 'delyear': delYear(+c[1]); break;
+    case 'reset': if(confirm('Effacer TOUTES les données ?')){ state=defaultState(); save(); fullRender(); toast('Réinitialisé'); } return;
+    case 'syncon': { const cfg=parseFirebaseConfig(document.getElementById('syncConfig').value); const code=(document.getElementById('syncCode').value||'').trim(); if(!cfg||!cfg.databaseURL){ toast('Config Firebase invalide (databaseURL manquant)'); return; } if(!code){ toast('Choisis un code partagé'); return; } syncCfg.config=cfg; syncCfg.code=code; syncCfg.enabled=true; saveSyncCfg(); fullRender(); initSync(true); toast('Synchro en cours…'); return; }
+    case 'syncoff': if(confirm('Désactiver la synchro sur cet appareil ?')) disableSync(); return;
+    case 'syncpush': pushRemote(true); toast('Envoyé au cloud'); return;
+    default: return;
+  }
+  save(); fullRender();
+});
+
+// year nav
+document.getElementById('prevYear').onclick=()=>{ const ys=Object.keys(state.years).map(Number).sort((a,b)=>a-b); const i=ys.indexOf(state.currentYear); if(i>0){ state.currentYear=ys[i-1]; save(); fullRender(); } };
+document.getElementById('nextYear').onclick=()=>{ const ys=Object.keys(state.years).map(Number).sort((a,b)=>a-b); const i=ys.indexOf(state.currentYear); if(i<ys.length-1){ state.currentYear=ys[i+1]; save(); fullRender(); } };
+document.getElementById('addPrev').onclick=()=>addYear(false);
+document.getElementById('addNext').onclick=()=>addYear(true);
+
+function addYear(after){
+  const ys=Object.keys(state.years).map(Number).sort((a,b)=>a-b);
+  const ny= after? ys[ys.length-1]+1 : ys[0]-1;
+  if(state.years[ny]) return;
+  if(after && ny>ys[0]+5){ toast('Vision limitée à N+5'); return; }
+  if(!after && ys[ys.length-1]-ny>5){ toast('Vision limitée à 6 ans'); return; }
+  state.years[ny]=makeYear();
+  state.currentYear=ny; save(); fullRender(); toast('Année '+ny+' ajoutée');
+}
+function duplicateYear(){
+  const ny=state.currentYear+1;
+  if(state.years[ny]){ if(!confirm('Année '+ny+' existe déjà. Écraser avec une copie ?')) return; }
+  const copy=JSON.parse(JSON.stringify(Y()));
+  // reset real
+  copy.foyer.forEach(l=>l.real=arr12());
+  Object.values(copy.persons).forEach(P=>P.cats.forEach(c=>c.real=arr12()));
+  state.years[ny]=copy; state.currentYear=ny; save(); fullRender(); toast('Dupliqué vers '+ny);
+}
+function delYear(y){
+  if(Object.keys(state.years).length<=1){ toast('Au moins une année requise'); return; }
+  if(!confirm('Supprimer l\'année '+y+' ?')) return;
+  delete state.years[y];
+  if(state.currentYear===y) state.currentYear=Number(Object.keys(state.years).sort()[0]);
+  save(); fullRender();
+}
+
+/* export / import */
+function doExport(){
+  const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='budget-famille-'+new Date().toISOString().slice(0,10)+'.json'; a.click();
+  URL.revokeObjectURL(a.href); toast('Exporté');
+}
+function doImport(){ document.getElementById('fileImport').click(); }
+document.getElementById('btnExport').onclick=doExport;
+document.getElementById('btnImport').onclick=doImport;
+document.getElementById('btnPrint').onclick=()=>window.print();
+document.getElementById('btnUndo').onclick=undo;
+document.addEventListener('keydown', e=>{ if((e.metaKey||e.ctrlKey) && !e.shiftKey && (e.key==='z'||e.key==='Z')){ e.preventDefault(); undo(); } });
+document.getElementById('fileImport').onchange=e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{ try{ const d=JSON.parse(r.result); if(!d.years) throw 0; state=d; migrate(); save(); fullRender(); toast('Importé'); }catch(err){ toast('Fichier invalide'); } };
+  r.readAsText(f); e.target.value='';
+};
+document.addEventListener('click',e=>{
+  if(e.target.id==='btnExport2') doExport();
+  if(e.target.id==='btnImport2') doImport();
+});
+
+function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),1600); }
+
+/* thème clair / sombre / auto */
+function prefersLight(){ return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches; }
+function applyTheme(){
+  const mode=(state.ui&&state.ui.theme)||'auto';
+  const resolved = mode==='auto' ? (prefersLight()?'light':'dark') : mode;
+  document.documentElement.dataset.theme=resolved;
+  const meta=document.querySelector('meta[name=theme-color]'); if(meta) meta.content = resolved==='light'?'#eef3fb':'#0b1220';
+  const b=document.getElementById('btnTheme'); if(b) b.textContent = mode==='auto'?'🌗':(mode==='light'?'☀️':'🌙');
+}
+document.getElementById('btnTheme').onclick=()=>{
+  const order=['auto','light','dark']; const cur=(state.ui.theme)||'auto';
+  state.ui.theme=order[(order.indexOf(cur)+1)%3]; save(); applyTheme();
+  toast('Thème : '+(state.ui.theme==='auto'?'automatique':state.ui.theme==='light'?'clair':'sombre'));
+};
+if(window.matchMedia){ window.matchMedia('(prefers-color-scheme: light)').addEventListener('change',()=>{ if((state.ui.theme||'auto')==='auto') applyTheme(); }); }
+
+/* info-bulle graphiques (survol + tactile) */
+(function(){
+  const tip=document.getElementById('ctip');
+  function show(txt,x,y){ tip.textContent=txt; tip.classList.add('show'); const w=tip.offsetWidth||120;
+    tip.style.left=Math.max(6,Math.min(x+12, window.innerWidth-w-8))+'px'; tip.style.top=Math.max(6,y-34)+'px'; }
+  document.addEventListener('pointermove', e=>{ const t=e.target.closest&&e.target.closest('[data-tip]'); if(t) show(t.getAttribute('data-tip'),e.clientX,e.clientY); else tip.classList.remove('show'); });
+  document.addEventListener('pointerdown', e=>{ const t=e.target.closest&&e.target.closest('[data-tip]'); if(t){ show(t.getAttribute('data-tip'),e.clientX,e.clientY); clearTimeout(tip._t); tip._t=setTimeout(()=>tip.classList.remove('show'),1800); } });
+})();
+/* re-rendu sur changement de taille (adaptation mobile des graphiques) */
+let rzTimer=null;
+window.addEventListener('resize', ()=>{ clearTimeout(rzTimer); rzTimer=setTimeout(()=>{ if(['dash','invest','patrimoine'].includes(state.ui.tab)) renderTab(); },200); });
+
+/* =========================================================
+   SYNCHRONISATION TEMPS RÉEL (Firebase, optionnelle)
+   ========================================================= */
+const SYNC_KEY='budgetFamille_sync';
+let syncCfg={enabled:false,config:null,code:'',device:null,lastRev:0};
+let syncRef=null, myRev=0, pushTimer=null, syncMsg='';
+function loadSyncCfg(){ try{ const r=localStorage.getItem(SYNC_KEY); if(r) syncCfg=Object.assign(syncCfg,JSON.parse(r)); }catch(e){} if(!syncCfg.device) syncCfg.device='d'+Math.random().toString(36).slice(2,10); myRev=syncCfg.lastRev||0; }
+function saveSyncCfg(){ try{ localStorage.setItem(SYNC_KEY, JSON.stringify(syncCfg)); }catch(e){} }
+function setSyncMsg(s){ syncMsg=s; const el=document.getElementById('syncStatus'); if(el) el.textContent=s; }
+function loadScript(src){ return new Promise((res,rej)=>{ const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=()=>rej(new Error('Échec de chargement Firebase (connexion ?)')); document.head.appendChild(s); }); }
+function parseFirebaseConfig(txt){ if(!txt) return null; try{ return JSON.parse(txt); }catch(e){} const m=txt.match(/\{[\s\S]*\}/); if(m){ try{ return Function('return ('+m[0]+')')(); }catch(e){} } return null; }
+async function ensureFirebase(){ if(window.firebase&&firebase.database) return; await loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js'); await loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js'); }
+function adoptRemote(r){ myRev=r.rev||Date.now(); syncCfg.lastRev=myRev; saveSyncCfg(); state=r.state; migrate(); try{localStorage.setItem(LS_KEY,JSON.stringify(state));}catch(e){} applyTheme(); fullRender(); }
+function onRemote(r){ if(!r||!r.state) return; if(r.device===syncCfg.device) return; if((r.rev||0)<=myRev) return; adoptRemote(r); toast('🔄 Mis à jour depuis l\'autre appareil'); }
+function pushRemote(now){ if(!syncRef) return; clearTimeout(pushTimer); const go=()=>{ myRev=Date.now(); syncCfg.lastRev=myRev; saveSyncCfg(); syncRef.set({rev:myRev,device:syncCfg.device,state}).then(()=>setSyncMsg('✅ Synchronisé '+new Date().toLocaleTimeString('fr-FR'))).catch(e=>setSyncMsg('⚠️ '+e.message)); }; if(now) go(); else pushTimer=setTimeout(go,500); }
+async function initSync(seed){
+  if(!syncCfg.enabled||!syncCfg.config||!syncCfg.code) return;
+  try{
+    setSyncMsg('Connexion…'); await ensureFirebase();
+    if(!firebase.apps.length) firebase.initializeApp(syncCfg.config);
+    syncRef=firebase.database().ref('budgets/'+syncCfg.code);
+    if(seed){ const snap=await syncRef.once('value'); const r=snap.val();
+      if(r&&r.state){ if(confirm('Des données existent déjà dans le cloud pour ce code.\n\nOK = charger ces données sur cet appareil.\nAnnuler = remplacer le cloud par les données de CET appareil.')) adoptRemote(r); else pushRemote(true); }
+      else pushRemote(true);
+    }
+    syncRef.on('value', snap=> onRemote(snap.val()));
+    setSyncMsg('✅ Connecté ('+syncCfg.code+')');
+  }catch(e){ setSyncMsg('⚠️ '+e.message); toast('Synchro : '+e.message); }
+}
+function disableSync(){ try{ if(syncRef) syncRef.off(); }catch(e){} syncRef=null; syncCfg.enabled=false; saveSyncCfg(); setSyncMsg('Désactivée'); fullRender(); }
+
+/* boot */
+load(); loadSyncCfg(); applyTheme(); fullRender(); if(syncCfg.enabled) initSync(false);
+/* PWA : installable + hors-ligne + mise à jour auto (uniquement en ligne, pas en fichier local) */
+if('serviceWorker' in navigator && location.protocol.startsWith('http')){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
+</script>
+</body>
+</html>
