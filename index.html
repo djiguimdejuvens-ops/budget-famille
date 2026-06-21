@@ -1336,9 +1336,27 @@ function setSyncMsg(s){ syncMsg=s; const el=document.getElementById('syncStatus'
 function loadScript(src){ return new Promise((res,rej)=>{ const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=()=>rej(new Error('Échec de chargement Firebase (connexion ?)')); document.head.appendChild(s); }); }
 function parseFirebaseConfig(txt){ if(!txt) return null; try{ return JSON.parse(txt); }catch(e){} const m=txt.match(/\{[\s\S]*\}/); if(m){ try{ return Function('return ('+m[0]+')')(); }catch(e){} } return null; }
 async function ensureFirebase(){ if(window.firebase&&firebase.database) return; await loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js'); await loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js'); }
-function adoptRemote(r){ myRev=r.rev||Date.now(); syncCfg.lastRev=myRev; saveSyncCfg(); state=r.state; migrate(); try{localStorage.setItem(LS_KEY,JSON.stringify(state));}catch(e){} applyTheme(); fullRender(); }
-function onRemote(r){ if(!r||!r.state) return; if(r.device===syncCfg.device) return; if((r.rev||0)<=myRev) return; adoptRemote(r); toast('🔄 Mis à jour depuis l\'autre appareil'); }
-function pushRemote(now){ if(!syncRef) return; clearTimeout(pushTimer); const go=()=>{ myRev=Date.now(); syncCfg.lastRev=myRev; saveSyncCfg(); syncRef.set({rev:myRev,device:syncCfg.device,state}).then(()=>setSyncMsg('✅ Synchronisé '+new Date().toLocaleTimeString('fr-FR'))).catch(e=>setSyncMsg('⚠️ '+e.message)); }; if(now) go(); else pushTimer=setTimeout(go,500); }
+let lastPushedData='';
+// On ne synchronise QUE les données ; la navigation (onglet, mois, année, thème) reste locale à chaque appareil.
+function syncData(){ const {ui, currentYear, ...d}=state; return d; }
+function applyRemoteData(data){
+  if(!data) return;
+  const {ui, currentYear, ...d}=data;            // on ignore la navigation reçue
+  state=Object.assign({}, state, d);             // on remplace seulement les données partagées
+  if(!state.years[state.currentYear]) state.currentYear=Number(Object.keys(state.years).sort()[0]);
+  migrate(); try{localStorage.setItem(LS_KEY,JSON.stringify(state));}catch(e){}
+  lastPushedData=JSON.stringify(syncData());
+  applyTheme(); fullRender();
+}
+function adoptRemote(r){ myRev=r.rev||Date.now(); syncCfg.lastRev=myRev; saveSyncCfg(); applyRemoteData(r.state); }
+function onRemote(r){ if(!r||!r.state) return; if(r.device===syncCfg.device) return; if((r.rev||0)<=myRev) return; myRev=r.rev; syncCfg.lastRev=myRev; saveSyncCfg(); applyRemoteData(r.state); toast('🔄 Données mises à jour'); }
+function pushRemote(now){
+  if(!syncRef) return;
+  if(JSON.stringify(syncData())===lastPushedData) return;   // rien à envoyer si seules la navigation/le thème ont changé
+  clearTimeout(pushTimer);
+  const go=()=>{ const d=syncData(); lastPushedData=JSON.stringify(d); myRev=Date.now(); syncCfg.lastRev=myRev; saveSyncCfg(); syncRef.set({rev:myRev,device:syncCfg.device,state:d}).then(()=>setSyncMsg('✅ Synchronisé '+new Date().toLocaleTimeString('fr-FR'))).catch(e=>setSyncMsg('⚠️ '+e.message)); };
+  if(now) go(); else pushTimer=setTimeout(go,500);
+}
 async function initSync(seed){
   if(!syncCfg.enabled||!syncCfg.config||!syncCfg.code) return;
   try{
