@@ -941,20 +941,28 @@ function dashPerson(p){
   return h;
 }
 function isMobile(){ return (window.innerWidth||800) < 600; }
+// Graduations "rondes" à intervalles réguliers (1/2/2.5/5 × 10^n)
+function niceScale(min,max,ticks){
+  ticks=ticks||4;
+  if(!(max>min)){ max=(min||0)+1; }
+  const range=max-min, rawStep=range/ticks, mag=Math.pow(10,Math.floor(Math.log10(rawStep))), norm=rawStep/mag;
+  const step=(norm<=1?1:norm<=2?2:norm<=2.5?2.5:norm<=5?5:10)*mag;
+  return {min:Math.floor(min/step)*step, max:Math.ceil(max/step)*step, step};
+}
+function yTicks(ns){ const t=[]; for(let v=ns.min; v<=ns.max+ns.step*1e-6; v+=ns.step) t.push(Math.round(v*1e6)/1e6); return t; }
 function lineChart(labels, series){
   const mob=isMobile(), W=mob?400:720, H=mob?250:208;
   const all=series.flatMap(s=>s.values);
-  let max=Math.max(...all,0), min=Math.min(...all,0); if(max===min) max=min+1;
-  const yLabW=Math.max(num(max).length,num(min).length);
+  const ns=niceScale(Math.min(...all,0), Math.max(...all,0)); const ticks=yTicks(ns);
+  const yLabW=Math.max(...ticks.map(t=>num(t).length));
   const padL=14+yLabW*7, padR=14, padT=mob?20:14, padB=24;
   const plotW=W-padL-padR, plotH=H-padT-padB;
   const X=i=> padL + (labels.length<=1?plotW/2:i*plotW/(labels.length-1));
-  const Yv=v=> padT + (max-v)/(max-min)*plotH;
+  const Yv=v=> padT + (ns.max-v)/(ns.max-ns.min)*plotH;
   const everyN=mob?2:1, fs=11;
   let s='';
-  for(let g=0;g<=4;g++){ const val=max-(max-min)*g/4, yy=padT+plotH*g/4;
-    s+=`<line class="axis" x1="${padL}" y1="${yy}" x2="${W-padR}" y2="${yy}"/><text x="${padL-5}" y="${yy+3}" text-anchor="end" style="font-size:${fs}px">${num(val)}</text>`; }
-  if(min<0){ const zy=Yv(0); s+=`<line x1="${padL}" y1="${zy}" x2="${W-padR}" y2="${zy}" stroke="var(--muted)"/>`; }
+  ticks.forEach(val=>{ const yy=Yv(val); s+=`<line class="axis" x1="${padL}" y1="${yy.toFixed(1)}" x2="${W-padR}" y2="${yy.toFixed(1)}"/><text x="${padL-5}" y="${(yy+3).toFixed(1)}" text-anchor="end" style="font-size:${fs}px">${num(val)}</text>`; });
+  if(ns.min<0){ const zy=Yv(0); s+=`<line x1="${padL}" y1="${zy}" x2="${W-padR}" y2="${zy}" stroke="var(--muted)"/>`; }
   labels.forEach((l,i)=>{ if(i%everyN===0) s+=`<text x="${X(i)}" y="${H-padB+15}" text-anchor="middle" style="font-size:${fs}px">${l}</text>`; });
   series.forEach((se,si)=>{
     const pts=se.values.map((v,i)=>`${X(i)},${Yv(v)}`).join(' ');
@@ -991,16 +999,15 @@ function barChart(labels, series, horizontal=false){
     });
     return `<svg viewBox="0 0 ${W} ${H}" width="100%">${s}</svg>${legend(series)}`;
   }
-  let max=Math.max(0,...all), min=Math.min(0,...all); if(max===min) max=min+1;
-  const yLabW=Math.max(num(max).length,num(min).length);
+  const nsc=niceScale(Math.min(0,...all), Math.max(0,...all)); const ticks=yTicks(nsc);
+  const yLabW=Math.max(...ticks.map(t=>num(t).length));
   const padL=14+yLabW*7, padR=12, padT=mob?18:14, padB=24, H=mob?240:208;
   const plotW=W-padL-padR, plotH=H-padT-padB;
-  const Yv=v=> padT+(max-v)/(max-min)*plotH, zeroY=Yv(0);
+  const Yv=v=> padT+(nsc.max-v)/(nsc.max-nsc.min)*plotH, zeroY=Yv(0);
   const gw=plotW/n, bw=gw/(ns+1), everyN=mob?2:1;
   let s='';
-  for(let g=0;g<=4;g++){ const val=max-(max-min)*g/4, yy=padT+plotH*g/4;
-    s+=`<line class="axis" x1="${padL}" y1="${yy}" x2="${W-padR}" y2="${yy}"/><text x="${padL-5}" y="${yy+3}" text-anchor="end" style="font-size:${fs}px">${num(val)}</text>`; }
-  if(min<0) s+=`<line x1="${padL}" y1="${zeroY}" x2="${W-padR}" y2="${zeroY}" stroke="var(--muted)"/>`;
+  ticks.forEach(val=>{ const yy=Yv(val); s+=`<line class="axis" x1="${padL}" y1="${yy.toFixed(1)}" x2="${W-padR}" y2="${yy.toFixed(1)}"/><text x="${padL-5}" y="${(yy+3).toFixed(1)}" text-anchor="end" style="font-size:${fs}px">${num(val)}</text>`; });
+  if(nsc.min<0) s+=`<line x1="${padL}" y1="${zeroY}" x2="${W-padR}" y2="${zeroY}" stroke="var(--muted)"/>`;
   labels.forEach((l,i)=>{
     if(i%everyN===0) s+=`<text x="${padL+i*gw+gw/2}" y="${H-padB+15}" text-anchor="middle" style="font-size:${fs}px">${l}</text>`;
     series.forEach((se,si)=>{
