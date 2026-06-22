@@ -414,7 +414,8 @@ function communeShare(p,m,f){ return prorata(p,m)*foyerTotal(m,f); }
 function epargne(p,m,f){ return personFullIncome(p,m) - persoTotal(p,m,f) - communeShare(p,m,f); }
 function realizedMonth(m){
   if(foyerTotal(m,'real')>0) return true;
-  return state.people.some(p=> persoTotal(p,m,'real')>0);
+  // on ignore les lignes auto (ex. Dîme 10%) qui renvoient une valeur même sans saisie réelle
+  return state.people.some(p=> (Y().persons[p].cats||[]).some(l=> !l.auto && (l.real[m]||0)>0));
 }
 function epargneProj(p,m){ return realizedMonth(m)? epargne(p,m,'real') : epargne(p,m,'planned'); }
 
