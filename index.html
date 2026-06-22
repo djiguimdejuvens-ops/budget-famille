@@ -198,7 +198,7 @@
     <span style="font-size:22px">💸</span>
     <div>
       <h1>Budget Famille</h1>
-      <div class="sub">Accueil • Catégories repliables • Objectifs • Suivi réel</div>
+      <div class="sub">Accueil • Catégories repliables • Objectifs • Suivi réel <span id="buildTag" class="note" style="opacity:.65"></span></div>
     </div>
     <div class="spacer"></div>
     <button class="btn ghost sm" id="btnUndo" title="Annuler (Cmd/Ctrl+Z)">↩</button>
@@ -237,6 +237,7 @@
    DONNÉES & MODÈLE
    ========================================================= */
 const LS_KEY = 'budgetFamille_v1';
+const BUILD = '2026-06-22.2';   // version de code — doit être identique sur tous les appareils
 const MONTHS = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
 const FOYER_GROUPS = [
   'Logement & charges','Courses & quotidien','Transport','Abonnements & services',
@@ -1116,6 +1117,12 @@ function renderParams(){
   }
   h += `</div>`;
 
+  h += `<div class="card"><h2>Version & mise à jour 🔄</h2>
+  <p class="hint">Pour voir les <b>mêmes chiffres</b> sur le téléphone et le Mac, les deux doivent tourner la <b>même version</b>. Compare la version ci-dessous sur chaque appareil : si elles diffèrent, force la mise à jour sur celui qui est en retard.</p>
+  <p>Version installée sur cet appareil : <b>${BUILD}</b></p>
+  <div class="row"><button class="btn primary" data-act="forceupdate">🔄 Forcer la mise à jour (vider le cache)</button></div>
+  <p class="note">Vide le cache de l'appli puis recharge la dernière version en ligne. ⚠️ Ça ne touche <b>pas</b> tes données (elles restent sur l'appareil).</p></div>`;
+
   h += `<div class="card"><h2>Comment ça marche</h2>
   <ul class="note" style="line-height:1.7">
     <li><b>Prorata</b> : part de chacun = ses revenus du mois / revenus du couple. Les dépenses du foyer sont réparties selon ce prorata.</li>
@@ -1581,6 +1588,10 @@ document.addEventListener('click', e=>{
     case 'duplicate': duplicateYear(); break;
     case 'delyear': delYear(+c[1]); break;
     case 'reset': if(confirm('Effacer TOUTES les données ?')){ state=defaultState(); save(); fullRender(); toast('Réinitialisé'); } return;
+    case 'forceupdate': { toast('Mise à jour…'); const tasks=[];
+      if('serviceWorker' in navigator){ tasks.push(navigator.serviceWorker.getRegistrations().then(rs=>Promise.all(rs.map(r=>r.unregister()))).catch(()=>{})); }
+      if(window.caches){ tasks.push(caches.keys().then(ks=>Promise.all(ks.map(k=>caches.delete(k)))).catch(()=>{})); }
+      Promise.all(tasks).then(()=>location.reload()); return; }
     case 'syncon': { const cfg=parseFirebaseConfig(document.getElementById('syncConfig').value); const code=(document.getElementById('syncCode').value||'').trim(); if(!cfg||!cfg.databaseURL){ toast('Config Firebase invalide (databaseURL manquant)'); return; } if(!code){ toast('Choisis un code partagé'); return; } syncCfg.config=cfg; syncCfg.code=code; syncCfg.enabled=true; saveSyncCfg(); fullRender(); initSync(true); toast('Synchro en cours…'); return; }
     case 'syncoff': if(confirm('Désactiver la synchro sur cet appareil ?')) disableSync(); return;
     case 'syncpush': pushRemote(true); toast('Envoyé au cloud'); return;
@@ -1800,6 +1811,7 @@ function disableSync(){ try{ if(syncRef) syncRef.off(); }catch(e){} syncRef=null
 
 /* boot */
 load(); loadSyncCfg(); applyTheme(); fullRender(); if(syncCfg.enabled) initSync(false);
+{ const bt=document.getElementById('buildTag'); if(bt) bt.textContent='· v'+BUILD; }
 /* PWA : installable + hors-ligne + mise à jour auto (uniquement en ligne, pas en fichier local) */
 if('serviceWorker' in navigator && location.protocol.startsWith('http')){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
 </script>
