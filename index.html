@@ -135,6 +135,14 @@
   .bigkpi .val{font-size:26px;font-weight:800;margin-top:4px}
   .bigkpi .vsplan{font-size:12px;font-weight:700;margin-top:5px}
   .bigkpi .vsplan.neutral{color:var(--muted);font-weight:500}
+  /* Barre d'opérateurs pour saisir des calculs au clavier numérique (mobile) */
+  .opbar{position:fixed;left:0;right:0;bottom:0;z-index:300;display:none;gap:6px;padding:7px 8px;background:var(--panel2);border-top:1px solid var(--line);box-shadow:0 -6px 18px rgba(0,0,0,.22);overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .opbar.show{display:flex}
+  .opbar button{flex:1 0 auto;min-width:44px;height:46px;font-size:19px;font-weight:800;border:1px solid var(--line);border-radius:11px;background:var(--panel);color:var(--txt);cursor:pointer;touch-action:manipulation}
+  .opbar button:active{background:var(--accent);color:var(--accentInk)}
+  .opbar button.ok{background:var(--accent);color:var(--accentInk);border-color:var(--accent)}
+  .opbar .ophint{flex:0 0 auto;align-self:center;color:var(--muted);font-size:11px;padding:0 6px;white-space:nowrap}
+  @media(min-width:760px){ .opbar{max-width:560px;margin:0 auto;border-radius:14px 14px 0 0} }
   .goalbar{height:12px;border-radius:8px;background:var(--panel2);border:1px solid var(--line);overflow:hidden;margin-top:6px}
   .goalbar>span{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2))}
   .v2badge{background:var(--accent);color:var(--accentInk);font-weight:700;border-radius:999px;padding:2px 9px;font-size:11px;margin-left:6px}
@@ -225,6 +233,18 @@
 <main id="app"></main>
 <div class="toast" id="toast"></div>
 <div class="ctip" id="ctip"></div>
+<div class="opbar" id="opbar" aria-hidden="true">
+  <span class="ophint">calcul :</span>
+  <button type="button" data-op="(">(</button>
+  <button type="button" data-op=")">)</button>
+  <button type="button" data-op="/">÷</button>
+  <button type="button" data-op="*">×</button>
+  <button type="button" data-op="-">−</button>
+  <button type="button" data-op="+">+</button>
+  <button type="button" data-op=",">,</button>
+  <button type="button" data-op="back">⌫</button>
+  <button type="button" data-op="ok" class="ok">✓</button>
+</div>
 <div class="modal" id="noteModal"><div class="modalbox">
   <h3 id="noteTitle">Note</h3>
   <textarea id="noteText" placeholder="Saisis ta remarque… (Entrée = nouvelle ligne)"></textarea>
@@ -239,7 +259,7 @@
    DONNÉES & MODÈLE
    ========================================================= */
 const LS_KEY = 'budgetFamille_v1';
-const BUILD = '2026-06-22.3';   // version de code — doit être identique sur tous les appareils
+const BUILD = '2026-06-22.4';   // version de code — doit être identique sur tous les appareils
 const MONTHS = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
 const FOYER_GROUPS = [
   'Logement & charges','Courses & quotidien','Transport','Abonnements & services',
@@ -267,7 +287,7 @@ function excNat(k){ return EXC_NATURES.find(n=>n.key===k)||EXC_NATURES.find(n=>n
 function excSumKey(k){ return excList().filter(e=>e.nature===k).reduce((s,e)=>s+(e.montant||0),0); }
 const CURRENCIES = ['EUR','USDT','USD','GBP','FCFA'];
 const FX_DEFAULT = {EUR:1, USDT:0.92, USD:0.92, GBP:1.17, FCFA:0.001524};
-const AUX = ['inv','liq','asset','debt','deduc','dedm','fx','startcash','excm','excl','excn','excmt','goal'];
+const AUX = ['inv','liq','asset','debt','deduc','dedm','fx','startcash','excm','excl','excn','excmt','goal','simep','simrate'];
 
 let uid = 1; const nid = ()=> 'i'+(uid++)+Date.now().toString(36).slice(-3);
 const arr12 = ()=> [0,0,0,0,0,0,0,0,0,0,0,0];
@@ -423,7 +443,9 @@ function realizedMonth(m){
 function epargneProj(p,m){ return realizedMonth(m)? epargne(p,m,'real') : epargne(p,m,'planned'); }
 
 /* helpers d'affichage */
-function num(n){ return (Math.round(n)||0).toLocaleString('fr-FR'); }
+// Règle d'arrondi : en dessous de 50 → 1 décimale maxi ; à partir de 50 → nombre entier
+function roundRule(n){ n=Number(n)||0; return Math.abs(n)<50 ? Math.round(n*10)/10 : Math.round(n); }
+function num(n){ n=Number(n)||0; if(Math.abs(n)<50){ const r=Math.round(n*10)/10; return (Number.isInteger(r)?String(r):r.toFixed(1)).replace('.',','); } return Math.round(n).toLocaleString('fr-FR'); }
 function eur(n){ return num(n)+' €'; }
 function pct(x){ return (x*100).toFixed(1).replace('.',',')+' %'; }
 // Supporte les opérations type Excel : =, + - * / ( ) et la virgule décimale
@@ -1236,6 +1258,17 @@ function renderPatrimoine(){
    <p class="hint">Nombre de mois de <b>dépenses de vie</b> (hors épargne/placements) couverts par tes avoirs liquides (objectif : 3 à 6 mois).</p>
    <div class="kpis">${kpi('Dépenses de vie / mois',eur(moisDep))}${kpi('Mois couverts',mois.toFixed(1).replace('.',',')+' mois',cls)}${kpi('Cible 6 mois',eur(moisDep*6))}</div>
    <div class="progress"><span style="width:${Math.max(0,Math.min(100,mois/6*100))}%"></span></div></div>`;
+  // Simulateur patrimoine 5 ans
+  const rate=(state.simRate!=null?state.simRate:5), ep=(state.simEp!=null?state.simEp:Math.round(coupleSavingProj()));
+  const r=rate/100, projN=(yy)=> Math.abs(r)<1e-9 ? net+ep*yy : net*Math.pow(1+r,yy)+ep*((Math.pow(1+r,yy)-1)/r);
+  h+=`<div class="card"><h2>Simulateur patrimoine 📈</h2>
+   <p class="hint">Projection de ton patrimoine net si tu épargnes ce montant chaque année et le places à ce rendement moyen. Modifie les hypothèses pour tester des scénarios.</p>
+   <div class="row" style="gap:16px;flex-wrap:wrap;align-items:center">
+     <span class="note">Épargne / an :</span>${inCell(ep,'simep|x','style="width:96px"')}<span class="note">€</span>
+     <span class="note">&nbsp;&nbsp;Rendement / an :</span>${inCell(rate,'simrate|x','style="width:64px"')}<span class="note">%</span>
+   </div>
+   <div class="kpis" style="margin-top:12px">${kpi('Aujourd\'hui',eur(net))}${kpi('Dans 1 an',eur(projN(1)),projN(1)>=net?'good':'bad')}${kpi('Dans 3 ans',eur(projN(3)),projN(3)>=net?'good':'bad')}${kpi('Dans 5 ans',eur(projN(5)),projN(5)>=net?'good':'bad')}</div>
+   <p class="note" style="margin-top:8px">${ep<0?'⚠️ Épargne annuelle négative : à ce rythme le patrimoine baisse. Ajuste tes dépenses ou teste un autre montant ci-dessus.':'Hypothèse : épargne réinvestie chaque année au rendement indiqué (intérêts composés).'} L'épargne par défaut = ton atterrissage ${state.currentYear} (${eur(Math.round(coupleSavingProj()))}).</p></div>`;
   return h;
 }
 
@@ -1275,6 +1308,22 @@ function vsPlan(eff, plan, higherGood){ const d=Math.round(eff-plan);
   if(Math.abs(d)<1) return `<div class="vsplan neutral">= prévu (dans les clous)</div>`;
   const good = higherGood ? d>0 : d<0;
   return `<div class="vsplan ${good?'good':'bad'}">${(d>0?'+':'')+eur(d)} vs prévu</div>`; }
+// Lignes de dépenses (hors épargne/placements) du périmètre, avec accès planifié/réel par mois
+function spendLines(scope){
+  if(scope==='foyer'){
+    const arr=Y().foyer.filter(l=>groupType(l.group)!=='epargne').map(l=>({name:l.name, planned:m=>l.planned[m]||0, real:m=>l.real[m]||0}));
+    state.people.forEach(p=>{ const P=Y().persons[p]; if(P) P.cats.filter(l=>!isSavingCat(l.group)).forEach(l=>arr.push({name:p+' — '+l.name, planned:m=>catVal(p,l,m,'planned'), real:m=>catVal(p,l,m,'real')})); });
+    return arr;
+  }
+  const p=scope.slice(7); const P=Y().persons[p]; if(!P) return [];
+  return P.cats.filter(l=>!isSavingCat(l.group)).map(l=>({name:l.name, planned:m=>catVal(p,l,m,'planned'), real:m=>catVal(p,l,m,'real')}));
+}
+// Reste à dépenser sur le mois m
+function resteAdepenser(scope,m){ const realized=realizedMonth(m); let pl=0,re=0; spendLines(scope).forEach(l=>{ pl+=l.planned(m); if(realized) re+=l.real(m); }); return {planned:pl, real:re, reste:pl-re}; }
+// Catégories en dépassement (cumul des mois réellement saisis) → « à surveiller »
+function alertesDepassement(scope){ const lines=spendLines(scope); const rms=[]; for(let m=0;m<12;m++) if(realizedMonth(m)) rms.push(m);
+  return lines.map(l=>{ let re=0,pl=0; rms.forEach(m=>{ re+=l.real(m); pl+=l.planned(m); }); return {name:l.name, over:re-pl, real:re, planned:pl}; })
+    .filter(x=>x.over>1).sort((a,b)=>b.over-a.over); }
 function renderHome(){
   const scope=state.ui.homeScope||'foyer';
   const cm=Math.min(11, state.currentYear===new Date().getFullYear()? new Date().getMonth() : (state.ui.month||0));
@@ -1316,6 +1365,21 @@ function renderHome(){
      <div class="bigkpi"><div class="lbl">Dépenses ${MONTHS[cm]}</div><div class="val">${eur(depM)}</div>${vsPlan(depM,depMP,false)}</div>
      ${showPatr?`<div class="bigkpi"><div class="lbl">Patrimoine net</div><div class="val">${eur(net)}</div></div><div class="bigkpi"><div class="lbl">Fonds d'urgence (hors épargne)</div><div class="val ${mois>=6?'good':mois>=3?'warn':'bad'}">${mois.toFixed(1).replace('.',',')} mois</div></div>`:''}
    </div></div>`;
+  // À surveiller : dépassements cumulés sur les mois saisis
+  const alerts=alertesDepassement(scope);
+  h+=`<div class="card"><h2>À surveiller 🔎</h2>`;
+  if(alerts.length){
+    h+=`<p class="hint">Catégories qui dépassent leur budget (cumul des mois saisis) — à regarder en priorité.</p>`;
+    alerts.slice(0,3).forEach(a=>{ h+=`<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px"><span>⚠️ ${esc(a.name)}</span><span class="bad" style="font-weight:800">+${eur(a.over)} <span class="note" style="font-weight:500">(réel ${num(a.real)} / prévu ${num(a.planned)})</span></span></div>`; });
+  } else { h+=`<p class="note">✅ Rien à signaler : aucune catégorie ne dépasse son budget sur les mois saisis.</p>`; }
+  h+=`</div>`;
+  // Reste à dépenser ce mois
+  const ra=resteAdepenser(scope,cm), usedPct=ra.planned?Math.min(100,Math.round(ra.real/ra.planned*100)):0, over=ra.reste<0;
+  h+=`<div class="card"><h2>Reste à dépenser en ${MONTHS[cm]} 💳</h2>
+   <p class="hint">Prévu ${eur(ra.planned)} · déjà dépensé ${eur(ra.real)}${realizedMonth(cm)?'':' — aucune dépense réelle saisie pour ce mois'}.</p>
+   <div class="val ${over?'bad':'good'}" style="font-size:26px;font-weight:800">${eur(ra.reste)}</div>
+   <div class="goalbar" style="margin-top:8px"><span style="width:${over?100:usedPct}%${over?';background:var(--bad)':''}"></span></div>
+   <p class="note">${over?'⚠️ Budget du mois dépassé de '+eur(-ra.reste):usedPct+' % du budget du mois utilisé'}</p></div>`;
   h+=`<div class="card"><h2>Raccourcis</h2><div class="row">
      <button class="btn primary" data-go="reel">✍️ Saisir le mois</button>
      <button class="btn" data-go="foyer">Budget foyer</button>
@@ -1422,6 +1486,7 @@ function mvBtns(act){ return `<span class="mv" data-act="${act}|up" title="Monte
 
 // Applique une valeur numérique à la cellule décrite par c. Renvoie true si c'est une cellule mensuelle (remplissable).
 function applyCellValue(c, v){
+  v=roundRule(v);   // applique la règle d'arrondi à la saisie (montants € uniquement)
   switch(c[0]){
     case 'sal': Y().persons[c[1]].salary[+c[2]]=v; return true;
     case 'ext': { const ex=Y().persons[c[1]].extras.find(x=>x.id===c[2]); if(ex) ex.amounts[+c[3]]=v; return true; }
@@ -1459,6 +1524,8 @@ function applyAux(c, el){
     case 'dedm': { const it=dedList().find(x=>x.id===c[1]); if(it) it.month=Math.max(0,MONTHS.indexOf(v)); break; }
     case 'fx': state.fx[c[1]]=n; break;
     case 'startcash': state.startCash=n; break;
+    case 'simep': state.simEp=n; break;
+    case 'simrate': state.simRate=n; break;
     case 'goal': { const it=(state.goals||[]).find(x=>x.id===c[1]); if(it){ it[c[2]] = (c[2]==='target'||c[2]==='current')?n:v; } break; }
     case 'excm': { const it=excList().find(x=>x.id===c[1]); if(it) it.month=Math.max(0,MONTHS.indexOf(v)); break; }
     case 'excl': { const it=excList().find(x=>x.id===c[1]); if(it) it.label=v; break; }
@@ -1491,7 +1558,7 @@ document.addEventListener('change', e=>{
   const c=el.dataset.cell.split('|');
   if(AUX.includes(c[0])){ applyAux(c, el); save(); rerender(); return; }
   if(el.classList.contains('num')){
-    el.value = el.value.trim()==='' ? '' : String(parseNum(el.value));
+    el.value = el.value.trim()==='' ? '' : String(roundRule(parseNum(el.value)));
     rerender();
   }
 });
@@ -1516,7 +1583,7 @@ document.addEventListener('keydown', e=>{
     // valider : écrire la valeur, remplacer la formule par son résultat, puis descendre à la cellule du dessous (même mois)
     if(AUX.includes(c[0])) applyAux(c, el); else applyCellValue(c, v);
     markEdit();
-    el.value = el.value.trim()===''?'':String(v); save(); const curCell=el.dataset.cell; rerender();
+    el.value = el.value.trim()===''?'':String(AUX.includes(c[0])?v:roundRule(v)); save(); const curCell=el.dataset.cell; rerender();
     if(/^\d+$/.test(last)){
       const col=[...document.querySelectorAll('input.cell.num[data-cell$="|'+last+'"]')].filter(x=>x.offsetParent!==null);
       const i=col.findIndex(x=>x.dataset.cell===curCell);
@@ -1525,6 +1592,36 @@ document.addEventListener('keydown', e=>{
     } else { toast('Validé ✓'); }
   }
 });
+
+/* Barre de calcul (mobile) : insère + − × ÷ ( ) , dans la cellule chiffre active.
+   Le clavier numérique du téléphone n'a pas d'opérateurs → ces boutons les ajoutent.
+   On réutilise le flux de saisie existant (event 'input' → calcul + re-rendu qui préserve la frappe). */
+function applyOp(el, op){
+  if(!el) return; el.focus({preventScroll:true});
+  let s=el.selectionStart, e=el.selectionEnd; if(s==null){ s=e=el.value.length; }
+  if(op==='back'){
+    if(s!==e){ el.value=el.value.slice(0,s)+el.value.slice(e); el.setSelectionRange(s,s); }
+    else if(s>0){ el.value=el.value.slice(0,s-1)+el.value.slice(s); el.setSelectionRange(s-1,s-1); }
+  } else { el.value=el.value.slice(0,s)+op+el.value.slice(e); const p=s+op.length; el.setSelectionRange(p,p); }
+  el.dispatchEvent(new Event('input',{bubbles:true}));
+}
+(function(){
+  const bar=document.getElementById('opbar'); if(!bar) return;
+  const coarse = !!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
+  let hideT=null;
+  const activeNum=()=>{ const a=document.activeElement; return isNumCell(a)?a:null; };
+  function place(){ const vv=window.visualViewport; if(vv){ bar.style.top=(vv.offsetTop+vv.height-bar.offsetHeight)+'px'; bar.style.bottom='auto'; } else { bar.style.top='auto'; bar.style.bottom='0'; } }
+  function show(){ if(!(coarse || window.innerWidth<760)) return; bar.classList.add('show'); place(); }
+  function hide(){ bar.classList.remove('show'); }
+  document.addEventListener('focusin', e=>{ if(isNumCell(e.target)){ clearTimeout(hideT); show(); } });
+  document.addEventListener('focusout', e=>{ if(isNumCell(e.target)){ hideT=setTimeout(hide,250); } });
+  if(window.visualViewport){ ['resize','scroll'].forEach(ev=>visualViewport.addEventListener(ev,()=>{ if(bar.classList.contains('show')) place(); })); }
+  bar.addEventListener('pointerdown', e=>{ const b=e.target.closest('button'); if(!b) return; e.preventDefault(); clearTimeout(hideT);
+    const el=activeNum(); if(!el) return;
+    if(b.dataset.op==='ok'){ el.blur(); hide(); return; }
+    applyOp(el, b.dataset.op);
+  });
+})();
 
 document.addEventListener('click', e=>{
   const tb=e.target.closest('.tab');
