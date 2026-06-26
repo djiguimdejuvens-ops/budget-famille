@@ -133,6 +133,8 @@
   .bigkpi{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
   .bigkpi .lbl{color:var(--muted);font-size:12.5px}
   .bigkpi .val{font-size:26px;font-weight:800;margin-top:4px}
+  .bigkpi .vsplan{font-size:12px;font-weight:700;margin-top:5px}
+  .bigkpi .vsplan.neutral{color:var(--muted);font-weight:500}
   .goalbar{height:12px;border-radius:8px;background:var(--panel2);border:1px solid var(--line);overflow:hidden;margin-top:6px}
   .goalbar>span{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2))}
   .v2badge{background:var(--accent);color:var(--accentInk);font-weight:700;border-radius:999px;padding:2px 9px;font-size:11px;margin-left:6px}
@@ -237,7 +239,7 @@
    DONNÉES & MODÈLE
    ========================================================= */
 const LS_KEY = 'budgetFamille_v1';
-const BUILD = '2026-06-22.2';   // version de code — doit être identique sur tous les appareils
+const BUILD = '2026-06-22.3';   // version de code — doit être identique sur tous les appareils
 const MONTHS = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
 const FOYER_GROUPS = [
   'Logement & charges','Courses & quotidien','Transport','Abonnements & services',
@@ -1263,6 +1265,16 @@ function isSavingCat(g){ return /épargne|epargne|investiss/i.test(g||''); }
 // Dépenses de VIE de l'année (hors épargne/placements) — pour le fonds d'urgence
 function livingAnnual(){ let t=0; MONTHS.forEach((_,m)=>{ t+=foyerTotal(m,'planned')-foyerTypeTotal('epargne',m,'planned'); state.people.forEach(p=>Y().persons[p].cats.forEach(l=>{ if(!isSavingCat(l.group)) t+=catVal(p,l,m,'planned'); })); }); return t; }
 function personEpMonth(p,m){ return epargneProj(p,m)+prorata(p,m)*commonEpargneProj(m); }
+// Contreparties « prévues » (planifié pur) pour comparer réel/projeté vs plan dans l'Accueil
+function commonEpargnePlan(m){ return foyerTypeTotal('epargne',m,'planned'); }
+function coupleSavingPlan(){ let s=0; MONTHS.forEach((_,m)=>{ state.people.forEach(p=>s+=epargne(p,m,'planned')); s+=commonEpargnePlan(m); }); return s; }
+function personEpMonthPlan(p,m){ return epargne(p,m,'planned')+prorata(p,m)*commonEpargnePlan(m); }
+function personSavingPlan(p){ let s=0; MONTHS.forEach((_,m)=>{ s+=personEpMonthPlan(p,m); }); return s; }
+// Petite ligne « vs prévu » colorée (vert = mieux que prévu, rouge = moins bien). higherGood=false pour les dépenses.
+function vsPlan(eff, plan, higherGood){ const d=Math.round(eff-plan);
+  if(Math.abs(d)<1) return `<div class="vsplan neutral">= prévu (dans les clous)</div>`;
+  const good = higherGood ? d>0 : d<0;
+  return `<div class="vsplan ${good?'good':'bad'}">${(d>0?'+':'')+eur(d)} vs prévu</div>`; }
 function renderHome(){
   const scope=state.ui.homeScope||'foyer';
   const cm=Math.min(11, state.currentYear===new Date().getFullYear()? new Date().getMonth() : (state.ui.month||0));
@@ -1273,30 +1285,35 @@ function renderHome(){
      <button class="monthtab ${scope==='foyer'?'active':''}" data-home="foyer">👫 Foyer</button>
      ${state.people.map(p=>`<button class="monthtab ${scope===('person:'+p)?'active':''}" data-home="person:${esc(p)}">${esc(p)}</button>`).join('')}
    </div></div>`;
-  let epM,cumM1,sav,inc,revM,depM,showPatr=false,net=0,mois=0;
+  let epM,cumM1,sav,inc,revM,depM,showPatr=false,net=0,mois=0,epMP=0,cumM1P=0,savP=0,depMP=0;
   if(scope==='foyer'){
     epM=commonEpargneProj(cm); state.people.forEach(p=>epM+=epargneProj(p,cm));
+    epMP=commonEpargnePlan(cm); state.people.forEach(p=>epMP+=epargne(p,cm,'planned'));
     cumM1=0; for(let m=0;m<cm;m++){ cumM1+=commonEpargneProj(m); state.people.forEach(p=>cumM1+=epargneProj(p,m)); }
-    sav=coupleSavingProj(); inc=coupleIncomeYear();
+    cumM1P=0; for(let m=0;m<cm;m++){ cumM1P+=commonEpargnePlan(m); state.people.forEach(p=>cumM1P+=epargne(p,m,'planned')); }
+    sav=coupleSavingProj(); inc=coupleIncomeYear(); savP=coupleSavingPlan();
     revM=incomeTotal(cm); depM=foyerTotal(cm,f); state.people.forEach(p=>depM+=persoTotal(p,cm,f));
+    depMP=foyerTotal(cm,'planned'); state.people.forEach(p=>depMP+=persoTotal(p,cm,'planned'));
     const avo=state.assets.reduce((s,a)=>s+toEUR(a.value,a.devise),0), det=state.debts.reduce((s,a)=>s+toEUR(a.value,a.devise),0);
     net=avo+investCurrentEUR()+liquidityEUR()-det; const md=livingAnnual()/12; mois=md?avo/md:0; showPatr=true;
   } else {
     const p=scope.slice(7);
-    epM=personEpMonth(p,cm);
+    epM=personEpMonth(p,cm); epMP=personEpMonthPlan(p,cm);
     cumM1=0; for(let m=0;m<cm;m++) cumM1+=personEpMonth(p,m);
-    sav=personSavingProj(p); inc=personIncomeYear(p);
+    cumM1P=0; for(let m=0;m<cm;m++) cumM1P+=personEpMonthPlan(p,m);
+    sav=personSavingProj(p); inc=personIncomeYear(p); savP=personSavingPlan(p);
     revM=personFullIncome(p,cm); depM=persoTotal(p,cm,f)+communeShare(p,cm,f);
+    depMP=persoTotal(p,cm,'planned')+communeShare(p,cm,'planned');
   }
   const taux=inc?sav/inc:0, tauxCls=taux>=0.20?'good':taux>=0.10?'warn':'bad', w=Math.max(0,Math.min(100,taux/0.20*100));
   const m1lbl = cm>0? 'Épargne cumulée à fin '+MONTHS[cm-1] : 'Épargne cumulée (avant '+MONTHS[cm]+')';
   h+=`<div class="card"><div class="bigkpis">
-     <div class="bigkpi"><div class="lbl">${m1lbl} <span class="note">(figé)</span></div><div class="val ${cumM1>=0?'good':'bad'}">${(cumM1>=0?'+':'')+eur(cumM1)}</div></div>
-     <div class="bigkpi"><div class="lbl">Épargne ${MONTHS[cm]} (en cours)</div><div class="val ${epM>=0?'good':'bad'}">${(epM>=0?'+':'')+eur(epM)}</div></div>
-     <div class="bigkpi"><div class="lbl">Taux d'épargne / objectif 20 %</div><div class="val ${tauxCls}">${pct(taux)}</div><div class="goalbar"><span style="width:${w}%"></span></div></div>
-     <div class="bigkpi"><div class="lbl">Atterrissage épargne ${state.currentYear}</div><div class="val ${sav>=0?'good':'bad'}">${(sav>=0?'+':'')+eur(sav)}</div></div>
+     <div class="bigkpi"><div class="lbl">${m1lbl} <span class="note">(figé)</span></div><div class="val ${cumM1>=0?'good':'bad'}">${(cumM1>=0?'+':'')+eur(cumM1)}</div>${vsPlan(cumM1,cumM1P,true)}</div>
+     <div class="bigkpi"><div class="lbl">Épargne ${MONTHS[cm]} (en cours)</div><div class="val ${epM>=0?'good':'bad'}">${(epM>=0?'+':'')+eur(epM)}</div>${vsPlan(epM,epMP,true)}</div>
+     <div class="bigkpi"><div class="lbl">Taux d'épargne / objectif 20 %</div><div class="val ${tauxCls}">${pct(taux)}</div><div class="goalbar"><span style="width:${w}%"></span></div><div class="vsplan ${taux>=0.20?'good':'neutral'}">prévu ${pct(inc?savP/inc:0)}</div></div>
+     <div class="bigkpi"><div class="lbl">Atterrissage épargne ${state.currentYear}</div><div class="val ${sav>=0?'good':'bad'}">${(sav>=0?'+':'')+eur(sav)}</div>${vsPlan(sav,savP,true)}</div>
      <div class="bigkpi"><div class="lbl">Revenus ${MONTHS[cm]}</div><div class="val">${eur(revM)}</div></div>
-     <div class="bigkpi"><div class="lbl">Dépenses ${MONTHS[cm]}</div><div class="val">${eur(depM)}</div></div>
+     <div class="bigkpi"><div class="lbl">Dépenses ${MONTHS[cm]}</div><div class="val">${eur(depM)}</div>${vsPlan(depM,depMP,false)}</div>
      ${showPatr?`<div class="bigkpi"><div class="lbl">Patrimoine net</div><div class="val">${eur(net)}</div></div><div class="bigkpi"><div class="lbl">Fonds d'urgence (hors épargne)</div><div class="val ${mois>=6?'good':mois>=3?'warn':'bad'}">${mois.toFixed(1).replace('.',',')} mois</div></div>`:''}
    </div></div>`;
   h+=`<div class="card"><h2>Raccourcis</h2><div class="row">
