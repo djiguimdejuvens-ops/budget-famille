@@ -136,6 +136,20 @@
   .bigkpi .vsplan{font-size:12px;font-weight:700;margin-top:5px}
   .bigkpi .vsplan.neutral{color:var(--muted);font-weight:500}
   .card.hl-epargne{box-shadow:inset 4px 0 0 var(--accent)}
+  .bigkpi.clickable{cursor:pointer;transition:border-color .15s,transform .1s}
+  .bigkpi.clickable:hover{border-color:var(--accent)}
+  .bigkpi.clickable:active{transform:scale(.99)}
+  .recapbox{max-width:580px;width:92vw;max-height:84vh;overflow:auto}
+  .recaplegend{font-size:12px;color:var(--muted);margin:4px 0 12px}
+  .recaplegend .dot{display:inline-block;width:10px;height:10px;border-radius:3px;vertical-align:middle}
+  .recaplegend .dot.rev{background:var(--good)} .recaplegend .dot.dep{background:var(--muted)}
+  .recaprow{display:grid;grid-template-columns:46px 1fr auto;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line)}
+  .recaprow.tot{border-top:2px solid var(--accent);font-weight:700;margin-top:6px}
+  .recapm{font-weight:600;font-size:13px}
+  .recapbars{display:flex;flex-direction:column;gap:3px}
+  .rbar{height:9px;border-radius:5px;min-width:2px}
+  .rbar.rev{background:var(--good)} .rbar.dep{background:var(--muted)}
+  .recapvals{font-size:12.5px;white-space:nowrap;text-align:right}
   /* Barre d'opérateurs pour saisir des calculs au clavier numérique (mobile) */
   .opbar{position:fixed;left:0;right:0;bottom:0;z-index:300;display:none;gap:6px;padding:7px 8px;background:var(--panel2);border-top:1px solid var(--line);box-shadow:0 -6px 18px rgba(0,0,0,.22);overflow-x:auto;-webkit-overflow-scrolling:touch}
   .opbar.show{display:flex}
@@ -254,13 +268,17 @@
     <button class="btn primary" id="noteSave">Enregistrer</button>
   </div>
 </div></div>
+<div class="modal" id="recapModal"><div class="modalbox recapbox">
+  <div class="row" style="justify-content:space-between;align-items:center"><h3 id="recapTitle">Récap mensuel</h3><button class="btn sm" id="recapClose">✕ Fermer</button></div>
+  <div id="recapBody"></div>
+</div></div>
 
 <script>
 /* =========================================================
    DONNÉES & MODÈLE
    ========================================================= */
 const LS_KEY = 'budgetFamille_v1';
-const BUILD = '2026-06-22.5';   // version de code — doit être identique sur tous les appareils
+const BUILD = '2026-06-22.6';   // version de code — doit être identique sur tous les appareils
 const MONTHS = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
 const FOYER_GROUPS = [
   'Logement & charges','Courses & quotidien','Transport','Abonnements & services',
@@ -1370,6 +1388,16 @@ function resteAdepenser(scope,m){ const realized=realizedMonth(m); let pl=0,re=0
 function alertesDepassement(scope){ const lines=spendLines(scope); const rms=[]; for(let m=0;m<12;m++) if(realizedMonth(m)) rms.push(m);
   return lines.map(l=>{ let re=0,pl=0; rms.forEach(m=>{ re+=l.real(m); pl+=l.planned(m); }); return {name:l.name, over:re-pl, real:re, planned:pl}; })
     .filter(x=>x.over>1).sort((a,b)=>b.over-a.over); }
+// Récap mensuel revenus/dépenses pour un périmètre (réel si mois saisi, sinon projeté/planifié)
+function recapRows(scope){
+  return MONTHS.map((mm,m)=>{
+    let rev, ep; // ep = épargne réelle/projetée du modèle ; dep = revenus − épargne (cohérent : revenus = dépenses + épargne)
+    if(scope==='foyer'){ rev=incomeTotal(m); ep=commonEpargneProj(m); state.people.forEach(p=>ep+=epargneProj(p,m)); }
+    else { const p=scope.slice(7); rev=personFullIncome(p,m); ep=personEpMonth(p,m); }
+    return {m, name:mm, rev, dep:rev-ep, ep, realized:realizedMonth(m)};
+  });
+}
+function totauxADate(scope){ let rev=0,dep=0; recapRows(scope).forEach(r=>{ if(r.realized){ rev+=r.rev; dep+=r.dep; } }); return {rev,dep}; }
 function renderHome(){
   const scope=state.ui.homeScope||'foyer';
   const cm=Math.min(11, state.currentYear===new Date().getFullYear()? new Date().getMonth() : (state.ui.month||0));
@@ -1401,6 +1429,7 @@ function renderHome(){
     depMP=persoTotal(p,cm,'planned')+communeShare(p,cm,'planned');
   }
   const taux=inc?sav/inc:0, tauxCls=taux>=0.20?'good':taux>=0.10?'warn':'bad', w=Math.max(0,Math.min(100,taux/0.20*100));
+  const {rev:adRev, dep:adDep}=totauxADate(scope);
   const m1lbl = cm>0? 'Épargne cumulée à fin '+MONTHS[cm-1] : 'Épargne cumulée (avant '+MONTHS[cm]+')';
   h+=`<div class="card"><div class="bigkpis">
      <div class="bigkpi"><div class="lbl">${m1lbl} <span class="note">(figé)</span></div><div class="val ${cumM1>=0?'good':'bad'}">${(cumM1>=0?'+':'')+eur(cumM1)}</div>${vsPlan(cumM1,cumM1P,true)}</div>
@@ -1409,6 +1438,8 @@ function renderHome(){
      <div class="bigkpi"><div class="lbl">Atterrissage épargne ${state.currentYear}</div><div class="val ${sav>=0?'good':'bad'}">${(sav>=0?'+':'')+eur(sav)}</div>${vsPlan(sav,savP,true)}</div>
      <div class="bigkpi"><div class="lbl">Revenus ${MONTHS[cm]}</div><div class="val">${eur(revM)}</div></div>
      <div class="bigkpi"><div class="lbl">Dépenses ${MONTHS[cm]}</div><div class="val">${eur(depM)}</div>${vsPlan(depM,depMP,false)}</div>
+     <div class="bigkpi clickable" data-recap="${scope}"><div class="lbl">Revenus à date 🔎</div><div class="val">${eur(adRev)}</div><div class="vsplan neutral">clique → détail mois par mois</div></div>
+     <div class="bigkpi clickable" data-recap="${scope}"><div class="lbl">Dépenses à date 🔎</div><div class="val">${eur(adDep)}</div><div class="vsplan neutral">clique → détail mois par mois</div></div>
      ${showPatr?`<div class="bigkpi"><div class="lbl">Patrimoine net</div><div class="val">${eur(net)}</div></div><div class="bigkpi"><div class="lbl">Fonds d'urgence (hors épargne)</div><div class="val ${mois>=6?'good':mois>=3?'warn':'bad'}">${mois.toFixed(1).replace('.',',')} mois</div></div>`:''}
    </div></div>`;
   // À surveiller : dépassements cumulés sur les mois saisis
@@ -1682,6 +1713,8 @@ document.addEventListener('click', e=>{
   if(mt && mt.dataset.breal!==undefined){ state.ui.budgetReal=!state.ui.budgetReal; save(); fullRender(); return; }
   const sh=e.target.closest&&e.target.closest('[data-sort]');
   if(sh){ const k=sh.dataset.sort, s=state.ui.investSort||{key:'',dir:1}; state.ui.investSort = s.key===k?{key:k,dir:-s.dir}:{key:k,dir:1}; save(); fullRender(); return; }
+  const rc=e.target.closest&&e.target.closest('[data-recap]');
+  if(rc){ openRecap(rc.dataset.recap); return; }
   const go=e.target.closest&&e.target.closest('[data-go]');
   if(go){ let t=go.dataset.go; if(t==='foyer'){ state.ui.tab='budget'; state.ui.budgetScope='foyer'; } else if(t.startsWith('person:')){ state.ui.tab='budget'; state.ui.budgetScope=t; } else { state.ui.tab=t; } save(); fullRender(); return; }
   const col=e.target.closest&&e.target.closest('[data-col]');
@@ -1878,6 +1911,21 @@ function closeNote(){ document.getElementById('noteModal').classList.remove('sho
 document.getElementById('noteCancel').onclick=closeNote;
 document.getElementById('noteSave').onclick=()=>{ if(noteGetter){ const o=noteGetter(); if(o){ snapshot(true); o.note=document.getElementById('noteText').value; markEdit(); save(); fullRender(); } } closeNote(); };
 document.getElementById('noteModal').addEventListener('click', e=>{ if(e.target.id==='noteModal') closeNote(); });
+// Récap mensuel revenus/dépenses (modale)
+function openRecap(scope){
+  const rows=recapRows(scope); const max=Math.max(1,...rows.map(r=>Math.max(r.rev,r.dep)));
+  const title = scope==='foyer'?'Foyer':esc(scope.slice(7));
+  let b=`<div class="recaplegend"><span class="dot rev"></span> Revenus &nbsp; <span class="dot dep"></span> Dépenses &nbsp; <span class="note">épargne = revenus − dépenses · * = mois projeté (non saisi)</span></div>`;
+  rows.forEach(r=>{ b+=`<div class="recaprow"><div class="recapm">${r.name}${r.realized?'':'<span class="note">*</span>'}</div><div class="recapbars"><div class="rbar rev" style="width:${Math.round(r.rev/max*100)}%"></div><div class="rbar dep" style="width:${Math.round(r.dep/max*100)}%"></div></div><div class="recapvals"><span class="good">${num(r.rev)}</span> <span class="note">/</span> ${num(r.dep)} <span class="note">→</span> <b class="${r.ep>=0?'good':'bad'}">${(r.ep>=0?'+':'')+num(r.ep)}</b></div></div>`; });
+  const ad=totauxADate(scope), adep=ad.rev-ad.dep;
+  b+=`<div class="recaprow tot"><div class="recapm">À date</div><div class="recapbars"></div><div class="recapvals"><span class="good">${eur(ad.rev)}</span> <span class="note">/</span> ${eur(ad.dep)} <span class="note">→</span> <b class="${adep>=0?'good':'bad'}">${(adep>=0?'+':'')+eur(adep)}</b></div></div>`;
+  document.getElementById('recapTitle').textContent='Récap mensuel '+state.currentYear+' — '+title;
+  document.getElementById('recapBody').innerHTML=b;
+  document.getElementById('recapModal').classList.add('show');
+}
+function closeRecap(){ document.getElementById('recapModal').classList.remove('show'); }
+document.getElementById('recapClose').onclick=closeRecap;
+document.getElementById('recapModal').addEventListener('click', e=>{ if(e.target.id==='recapModal') closeRecap(); });
 document.addEventListener('keydown', e=>{
   if((e.metaKey||e.ctrlKey) && (e.key==='z'||e.key==='Z')){ e.preventDefault(); if(e.shiftKey) redo(); else undo(); }
   else if((e.metaKey||e.ctrlKey) && (e.key==='y'||e.key==='Y')){ e.preventDefault(); redo(); }
