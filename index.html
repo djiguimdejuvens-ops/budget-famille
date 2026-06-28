@@ -135,6 +135,7 @@
   .bigkpi .val{font-size:26px;font-weight:800;margin-top:4px}
   .bigkpi .vsplan{font-size:12px;font-weight:700;margin-top:5px}
   .bigkpi .vsplan.neutral{color:var(--muted);font-weight:500}
+  .card.hl-epargne{box-shadow:inset 4px 0 0 var(--accent)}
   /* Barre d'opérateurs pour saisir des calculs au clavier numérique (mobile) */
   .opbar{position:fixed;left:0;right:0;bottom:0;z-index:300;display:none;gap:6px;padding:7px 8px;background:var(--panel2);border-top:1px solid var(--line);box-shadow:0 -6px 18px rgba(0,0,0,.22);overflow-x:auto;-webkit-overflow-scrolling:touch}
   .opbar.show{display:flex}
@@ -259,7 +260,7 @@
    DONNÉES & MODÈLE
    ========================================================= */
 const LS_KEY = 'budgetFamille_v1';
-const BUILD = '2026-06-22.4';   // version de code — doit être identique sur tous les appareils
+const BUILD = '2026-06-22.5';   // version de code — doit être identique sur tous les appareils
 const MONTHS = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
 const FOYER_GROUPS = [
   'Logement & charges','Courses & quotidien','Transport','Abonnements & services',
@@ -373,6 +374,12 @@ function migrate(){
   if(!state.ui.collapsed) state.ui.collapsed={};
   if(!state.goals) state.goals=[];
   if(state.ui.tab==='graph') state.ui.tab='dash';
+  // Onglet Budget unifié : on redirige les anciens onglets Foyer / Budget X vers le nouvel onglet 'budget'
+  if(!state.ui.budgetScope) state.ui.budgetScope='foyer';
+  if(!state.ui.budgetView) state.ui.budgetView='year';
+  if(state.ui.budgetMonth==null) state.ui.budgetMonth=new Date().getMonth();
+  if(state.ui.tab==='foyer'){ state.ui.tab='budget'; state.ui.budgetScope='foyer'; }
+  else if(typeof state.ui.tab==='string' && state.ui.tab.startsWith('person:')){ state.ui.budgetScope=state.ui.tab; state.ui.tab='budget'; }
   if(!state.fx) state.fx=Object.assign({},FX_DEFAULT);
   if(!state.investments) state.investments=[];
   if(!state.assets) state.assets=[];
@@ -503,8 +510,7 @@ function renderTopbar(){
     ['home','🏠 Accueil'],
     ['reel','Saisie du mois'],
     ['revenus','Revenus & Prorata'],
-    ['foyer','Budget Foyer'],
-    ...state.people.map(p=>['person:'+p,'Budget '+p]),
+    ['budget','💰 Budget'],
     ['objectifs','🎯 Objectifs'],
     ['except','Exceptionnel'],
     ['dash','Tableau de bord'],
@@ -564,36 +570,68 @@ function renderRevenus(){
 /* =========================================================
    ONGLET FOYER
    ========================================================= */
-function renderFoyer(){
+/* =========================================================
+   ONGLET BUDGET UNIFIÉ (Foyer / Juvens / Madina ; Année ou Mois)
+   ========================================================= */
+function renderBudget(){
+  const scope = state.ui.budgetScope||'foyer';
+  const view = state.ui.budgetView||'year';
+  const m = Math.min(11, state.ui.budgetMonth!=null? state.ui.budgetMonth : (state.currentYear===new Date().getFullYear()?new Date().getMonth():0));
+  const showReal = !!state.ui.budgetReal;
+  let h = `<div class="card"><h2>Budget ${state.currentYear} 💰</h2>
+   <p class="hint">Choisis la vue (Foyer / chacun), puis <b>Année</b> (planification sur 12 mois) ou <b>Mois</b> (planifié vs réel d'un mois précis).</p>
+   <div class="monthtabs">
+     <button class="monthtab ${scope==='foyer'?'active':''}" data-bscope="foyer">👫 Foyer</button>
+     ${state.people.map(p=>`<button class="monthtab ${scope===('person:'+p)?'active':''}" data-bscope="person:${esc(p)}">${esc(p)}</button>`).join('')}
+   </div>
+   <div class="monthtabs" style="margin-top:8px">
+     <button class="monthtab ${view==='year'?'active':''}" data-bview="year">📅 Vue année</button>
+     <button class="monthtab ${view==='month'?'active':''}" data-bview="month">🗓️ Vue mois</button>
+     ${view==='year'?`<button class="monthtab ${showReal?'active':''}" data-breal title="Afficher / masquer les colonnes Réel à date">${showReal?'✓ Réel affiché':'+ Afficher le réel'}</button>`:''}
+     <button class="monthtab" data-collapseall="${scope}">▶ Tout replier / déplier</button>
+   </div>
+   ${view==='month'?`<div class="note" style="margin:8px 0 2px">Mois :</div><div class="monthtabs">${MONTHS.map((mm,i)=>`<button class="monthtab ${i===m?'active':''}" data-bmonth="${i}">${mm}</button>`).join('')}</div>`:''}
+   ${lastEditLine()}</div>`;
+  if(view==='month') h += (scope==='foyer'? reelFoyer(m) : reelPersonTbl(scope.slice(7), m));
+  else h += (scope==='foyer'? renderFoyer(showReal) : renderPerson(scope.slice(7), showReal));
+  return h;
+}
+function renderFoyer(showReal){
   const base=coupleIncomeYear();
-  const E3='<td></td><td></td><td></td>';
-  let h = `<div class="card"><h2>Budget foyer ${state.currentYear} — planification annuelle</h2>
-  <p class="hint">Colonnes <b>Budget</b> (objectif annuel) • <b>Écart</b> (budget − planifié : 🟢 sous / 🔴 dépassé) • <b>Ratio</b> (part du revenu couple). 💡 Tape une formule (ex. <b>=1040*12</b>) puis <b>Entrée</b>. Recopie : <b>Ctrl/Cmd+Entrée</b> jusqu'à déc., <b>Maj+Entrée</b> sur l'année.</p>
-  <p class="hint" style="margin-top:-6px">Catégories <b>repliables</b> (clique ▶/▼). Ligne : <b>↑↓</b> déplacer • <b>✕</b> suppr • <b>📝</b> note. Catégorie : <b>▲▼</b> ordre • <b>✏️</b> renommer • <b>🗑</b> suppr.</p>${lastEditLine()}
-  <div class="row" style="margin-bottom:8px"><button class="btn sm" data-collapseall="foyer">▶ Tout replier / déplier</button></div>`;
-  h += `<div class="tablewrap"><table class="planif"><thead><tr><th>Catégorie</th><th>Budget</th><th>Écart</th><th>Ratio</th>${MONTHS.map(m=>`<th>${m}</th>`).join('')}<th>Total an.</th></tr></thead><tbody>`;
+  const RH = showReal?'<th>Réel à date</th><th>Écart réel</th>':'';
+  const months=[]; for(let mm=0;mm<12;mm++) if(realizedMonth(mm)) months.push(mm);
+  const realCols=(rtd,ptd,saving)=>{ if(!showReal) return ''; const ec=rtd-ptd, cls=saving?savClass(rtd,ptd):expClass(rtd,ptd); return `<td>${num(rtd)}</td><td class="${cls}">${ec>0?'+':''}${num(ec)}</td>`; };
+  const E3='<td></td><td></td><td></td>'; const E2=showReal?'<td></td><td></td>':'';
+  let h = `<div class="card"><h2>Foyer — planification annuelle ${state.currentYear}</h2>
+  <p class="hint">Colonnes <b>Budget</b> (objectif annuel) • <b>Écart</b> (budget − planifié : 🟢 sous / 🔴 dépassé) • <b>Ratio</b> (part du revenu couple)${showReal?' • <b>Réel à date</b> (cumul des mois saisis) + <b>Écart réel</b>':''}. 💡 Formule (ex. <b>=1040*12</b>) + <b>Entrée</b> ; recopie <b>Ctrl/Cmd+Entrée</b>. Catégories repliables ▶/▼.</p>`;
+  h += `<div class="tablewrap"><table class="planif"><thead><tr><th>Catégorie</th><th>Budget</th><th>Écart</th><th>Ratio</th>${MONTHS.map(m=>`<th>${m}</th>`).join('')}<th>Total an.</th>${RH}</tr></thead><tbody>`;
   foyerGroups().forEach(g=>{
     const lines = Y().foyer.filter(l=>l.group===g); const col=state.ui.collapsed['foyer|'+g];
     let gT=0; const gm=MONTHS.map((_,m)=>{const v=foyerGroupTotal(g,m,'planned');gT+=v;return `<td>${num(v)}</td>`}).join(''); const gB=foyerGroupBudget(g);
-    h += `<tr class="group"><td><span class="colcaret" data-col="foyer|${esc(g)}">${col?'▶':'▼'}</span><span class="mv" data-act="movegrpf|${esc(g)}|up" title="Monter la catégorie">▲</span><span class="mv" data-act="movegrpf|${esc(g)}|down" title="Descendre la catégorie">▼</span><span class="mv" data-act="rengrpf|${esc(g)}" title="Renommer la catégorie">✏️</span><span class="del" data-act="delgrpf|${esc(g)}" title="Supprimer toute la catégorie">🗑</span> ${esc(g)} <span class="pill">${groupType(g)}</span></td>${bcell(gB)}${ecartCell(gT,gB)}${ratioCell(gT,base)}${gm}<td>${eur(gT)}</td></tr>`;
+    let gRtd=0,gPtd=0; months.forEach(mm=>{ gRtd+=foyerGroupTotal(g,mm,'real'); gPtd+=foyerGroupTotal(g,mm,'planned'); });
+    h += `<tr class="group"><td><span class="colcaret" data-col="foyer|${esc(g)}">${col?'▶':'▼'}</span><span class="mv" data-act="movegrpf|${esc(g)}|up" title="Monter la catégorie">▲</span><span class="mv" data-act="movegrpf|${esc(g)}|down" title="Descendre la catégorie">▼</span><span class="mv" data-act="rengrpf|${esc(g)}" title="Renommer la catégorie">✏️</span><span class="del" data-act="delgrpf|${esc(g)}" title="Supprimer toute la catégorie">🗑</span> ${esc(g)} <span class="pill">${groupType(g)}</span></td>${bcell(gB)}${ecartCell(gT,gB)}${ratioCell(gT,base)}${gm}<td>${eur(gT)}</td>${realCols(gRtd,gPtd,groupType(g)==='epargne')}</tr>`;
     if(!col){
       lines.forEach(l=>{
         let t=0; const lm=MONTHS.map((_,m)=>{t+=l.planned[m]||0;return `<td>${inCell(l.planned[m],'fp|'+l.id+'|'+m)}</td>`}).join('');
-        h += `<tr class="sub"><td title="${l.note?esc(l.note):''}"><span class="mv" data-act="movef|${l.id}|up" title="Monter">↑</span><span class="mv" data-act="movef|${l.id}|down" title="Descendre">↓</span> <span class="del" data-act="delfoyer|${l.id}">✕</span> ${noteIcon('notef|'+l.id,l.note)} ${txtCell(l.name,'fname|'+l.id)}</td><td>${inCell(l.budget,'fb|'+l.id)}</td>${ecartCell(t,l.budget||0)}${ratioCell(t,base)}${lm}<td>${eur(t)}</td></tr>`;
+        let lr=0,lp=0; months.forEach(mm=>{ lr+=l.real[mm]||0; lp+=l.planned[mm]||0; });
+        h += `<tr class="sub"><td title="${l.note?esc(l.note):''}"><span class="mv" data-act="movef|${l.id}|up" title="Monter">↑</span><span class="mv" data-act="movef|${l.id}|down" title="Descendre">↓</span> <span class="del" data-act="delfoyer|${l.id}">✕</span> ${noteIcon('notef|'+l.id,l.note)} ${txtCell(l.name,'fname|'+l.id)}</td><td>${inCell(l.budget,'fb|'+l.id)}</td>${ecartCell(t,l.budget||0)}${ratioCell(t,base)}${lm}<td>${eur(t)}</td>${realCols(lr,lp,groupType(l.group)==='epargne')}</tr>`;
       });
-      h += `<tr><td><span class="miniadd" data-act="addfoyer|${g}">+ ligne dans « ${esc(g)} »</span></td>${E3}${MONTHS.map(()=>`<td></td>`).join('')}<td></td></tr>`;
+      h += `<tr><td><span class="miniadd" data-act="addfoyer|${g}">+ ligne dans « ${esc(g)} »</span></td>${E3}${MONTHS.map(()=>`<td></td>`).join('')}<td></td>${E2}</tr>`;
     }
   });
-  h += `<tr><td><span class="miniadd" data-act="addfoyergroup">+ nouvelle catégorie</span></td>${E3}${MONTHS.map(()=>`<td></td>`).join('')}<td></td></tr>`;
+  h += `<tr><td><span class="miniadd" data-act="addfoyergroup">+ nouvelle catégorie</span></td>${E3}${MONTHS.map(()=>`<td></td>`).join('')}<td></td>${E2}</tr>`;
   ['fixe','variable','loisir','epargne'].forEach(tp=>{
     let t=0; const tm=MONTHS.map((_,m)=>{const v=foyerTypeTotal(tp,m,'planned');t+=v;return `<td>${num(v)}</td>`}).join(''); const b=foyerTypeBudget(tp);
-    h += `<tr class="total"><td>${TYPE_LABEL[tp]}</td>${bcell(b)}${ecartCell(t,b)}${ratioCell(t,base)}${tm}<td>${eur(t)}</td></tr>`;
+    let trd=0,tpd=0; months.forEach(mm=>{ trd+=foyerTypeTotal(tp,mm,'real'); tpd+=foyerTypeTotal(tp,mm,'planned'); });
+    h += `<tr class="total"><td>${TYPE_LABEL[tp]}</td>${bcell(b)}${ecartCell(t,b)}${ratioCell(t,base)}${tm}<td>${eur(t)}</td>${realCols(trd,tpd,tp==='epargne')}</tr>`;
   });
   let ft=0; const fm=MONTHS.map((_,m)=>{const v=foyerTotal(m,'planned');ft+=v;return `<td>${num(v)}</td>`}).join(''); const fb=foyerBudgetTotal();
-  h += `<tr class="grand"><td>Total dépenses foyer</td>${bcell(fb)}${ecartCell(ft,fb)}${ratioCell(ft,base)}${fm}<td>${eur(ft)}</td></tr>`;
+  let frd=0,fpd=0; months.forEach(mm=>{ frd+=foyerTotal(mm,'real'); fpd+=foyerTotal(mm,'planned'); });
+  h += `<tr class="grand"><td>Total dépenses foyer</td>${bcell(fb)}${ecartCell(ft,fb)}${ratioCell(ft,base)}${fm}<td>${eur(ft)}</td>${realCols(frd,fpd,false)}</tr>`;
   state.people.forEach(p=>{
     let t=0; const pm=MONTHS.map((_,m)=>{const v=communeShare(p,m,'planned');t+=v;return `<td>${num(v)}</td>`}).join('');
-    h += `<tr class="sub"><td>Part ${esc(p)} (prorata)</td><td></td><td></td>${ratioCell(t,base)}${pm}<td>${eur(t)}</td></tr>`;
+    let prd=0,ppd=0; months.forEach(mm=>{ prd+=communeShare(p,mm,'real'); ppd+=communeShare(p,mm,'planned'); });
+    h += `<tr class="sub"><td>Part ${esc(p)} (prorata)</td><td></td><td></td>${ratioCell(t,base)}${pm}<td>${eur(t)}</td>${realCols(prd,ppd,false)}</tr>`;
   });
   h += `</tbody></table></div></div>`;
   return h;
@@ -602,69 +640,76 @@ function renderFoyer(){
 /* =========================================================
    ONGLET BUDGET INDIVIDUEL
    ========================================================= */
-function renderPerson(p){
+function renderPerson(p, showReal){
   const P=Y().persons[p];
   if(!P) return `<div class="card">Personne introuvable.</div>`;
   const base=personIncomeYear(p);
-  const E3='<td></td><td></td><td></td>';
-  let h = `<div class="card"><h2>Budget ${esc(p)} — planification ${state.currentYear}</h2>
-  <p class="hint">Colonnes <b>Budget</b>/<b>Écart</b>/<b>Ratio</b> (part du revenu de ${esc(p)}). 💡 Formule (ex. <b>=200*12</b>) + <b>Entrée</b>. Recopie : <b>Ctrl/Cmd+Entrée</b> jusqu'à déc., <b>Maj+Entrée</b> sur l'année. Ligne : <b>↑↓</b> déplacer • <b>📝</b> note • <b>✕</b> suppr. ; catégorie : <b>✏️</b> renommer • <b>🗑</b> suppr. La <b>Dîme</b> est à 10% auto (badge <b>auto 10%</b>) — clique le badge pour saisir manuellement.</p>${lastEditLine()}
-  <div class="row" style="margin-bottom:8px"><button class="btn sm" data-collapseall="person:${esc(p)}">▶ Tout replier / déplier</button></div>`;
-  h += `<div class="tablewrap"><table class="planif"><thead><tr><th>Poste</th><th>Budget</th><th>Écart</th><th>Ratio</th>${MONTHS.map(m=>`<th>${m}</th>`).join('')}<th>Total an.</th></tr></thead><tbody>`;
+  const RH = showReal?'<th>Réel à date</th><th>Écart réel</th>':'';
+  const months=[]; for(let mm=0;mm<12;mm++) if(realizedMonth(mm)) months.push(mm);
+  const realCols=(rtd,ptd,saving)=>{ if(!showReal) return ''; const ec=rtd-ptd, cls=saving?savClass(rtd,ptd):expClass(rtd,ptd); return `<td>${num(rtd)}</td><td class="${cls}">${ec>0?'+':''}${num(ec)}</td>`; };
+  const E3='<td></td><td></td><td></td>'; const E2=showReal?'<td></td><td></td>':'';
+  let h = `<div class="card"><h2>${esc(p)} — planification annuelle ${state.currentYear}</h2>
+  <p class="hint">Colonnes <b>Budget</b>/<b>Écart</b>/<b>Ratio</b> (part du revenu de ${esc(p)})${showReal?' • <b>Réel à date</b> + <b>Écart réel</b>':''}. 💡 Formule (ex. <b>=200*12</b>) + <b>Entrée</b>. La <b>Dîme</b> est à 10% auto (clique le badge pour saisir manuellement).</p>`;
+  h += `<div class="tablewrap"><table class="planif"><thead><tr><th>Poste</th><th>Budget</th><th>Écart</th><th>Ratio</th>${MONTHS.map(m=>`<th>${m}</th>`).join('')}<th>Total an.</th>${RH}</tr></thead><tbody>`;
   // revenus
   let rT=0;
-  h += `<tr class="group"><td>Revenus</td>${E3}${MONTHS.map(()=>`<td></td>`).join('')}<td></td></tr>`;
+  h += `<tr class="group"><td>Revenus</td>${E3}${MONTHS.map(()=>`<td></td>`).join('')}<td></td>${E2}</tr>`;
   let salR=0; const salM=MONTHS.map((_,m)=>{const v=personIncome(p,m);salR+=v;return `<td>${num(v)}</td>`}).join('');
-  h += `<tr class="sub"><td>Salaire & autres (couple)</td>${E3}${salM}<td>${eur(salR)}</td></tr>`;
+  h += `<tr class="sub"><td>Salaire & autres (couple)</td>${E3}${salM}<td>${eur(salR)}</td>${E2}</tr>`;
   (P.persoExtras||[]).forEach(e=>{
     let t=0; const em=MONTHS.map((_,m)=>{t+=e.amounts[m]||0;return `<td>${inCell(e.amounts[m],'pext|'+p+'|'+e.id+'|'+m)}</td>`}).join('');
-    h += `<tr class="sub"><td>${mvBtns('movepext|'+p+'|'+e.id)} <span class="del" data-act="delpext|${p}|${e.id}">✕</span> ${txtCell(e.name,'pextname|'+p+'|'+e.id)}</td>${E3}${em}<td>${eur(t)}</td></tr>`;
+    h += `<tr class="sub"><td>${mvBtns('movepext|'+p+'|'+e.id)} <span class="del" data-act="delpext|${p}|${e.id}">✕</span> ${txtCell(e.name,'pextname|'+p+'|'+e.id)}</td>${E3}${em}<td>${eur(t)}</td>${E2}</tr>`;
   });
-  h += `<tr><td><span class="miniadd" data-act="addpext|${p}">+ revenu perso (hors prorata)</span></td>${E3}${MONTHS.map(()=>`<td></td>`).join('')}<td></td></tr>`;
+  h += `<tr><td><span class="miniadd" data-act="addpext|${p}">+ revenu perso (hors prorata)</span></td>${E3}${MONTHS.map(()=>`<td></td>`).join('')}<td></td>${E2}</tr>`;
   const totM=MONTHS.map((_,m)=>{const v=personFullIncome(p,m);rT+=v;return `<td>${num(v)}</td>`}).join('');
-  h += `<tr class="total"><td>Total revenus ${esc(p)}</td>${E3}${totM}<td>${eur(rT)}</td></tr>`;
+  h += `<tr class="total"><td>Total revenus ${esc(p)}</td>${E3}${totM}<td>${eur(rT)}</td>${E2}</tr>`;
   // perso groups
   const groups = [...new Set(P.cats.map(c=>c.group))];
   groups.forEach(g=>{
     const lines=P.cats.filter(c=>c.group===g); const col=state.ui.collapsed['person:'+p+'|'+g];
     let gt=0; const gm=MONTHS.map((_,m)=>{const v=lines.reduce((s,l)=>s+catVal(p,l,m,'planned'),0);gt+=v;return `<td>${num(v)}</td>`}).join(''); const gb=persoGroupBudget(p,g);
-    h += `<tr class="group"><td><span class="colcaret" data-col="person:${esc(p)}|${esc(g)}">${col?'▶':'▼'}</span><span class="mv" data-act="movegrpc|${p}|${esc(g)}|up" title="Monter la catégorie">▲</span><span class="mv" data-act="movegrpc|${p}|${esc(g)}|down" title="Descendre la catégorie">▼</span><span class="mv" data-act="rengrpc|${p}|${esc(g)}" title="Renommer la catégorie">✏️</span><span class="del" data-act="delgrpc|${p}|${esc(g)}" title="Supprimer toute la catégorie">🗑</span> ${esc(g)}</td>${bcell(gb)}${ecartCell(gt,gb)}${ratioCell(gt,base)}${gm}<td>${eur(gt)}</td></tr>`;
+    let gRtd=0,gPtd=0; months.forEach(mm=>{ lines.forEach(l=>{ gRtd+=catVal(p,l,mm,'real'); gPtd+=catVal(p,l,mm,'planned'); }); });
+    h += `<tr class="group"><td><span class="colcaret" data-col="person:${esc(p)}|${esc(g)}">${col?'▶':'▼'}</span><span class="mv" data-act="movegrpc|${p}|${esc(g)}|up" title="Monter la catégorie">▲</span><span class="mv" data-act="movegrpc|${p}|${esc(g)}|down" title="Descendre la catégorie">▼</span><span class="mv" data-act="rengrpc|${p}|${esc(g)}" title="Renommer la catégorie">✏️</span><span class="del" data-act="delgrpc|${p}|${esc(g)}" title="Supprimer toute la catégorie">🗑</span> ${esc(g)}</td>${bcell(gb)}${ecartCell(gt,gb)}${ratioCell(gt,base)}${gm}<td>${eur(gt)}</td>${realCols(gRtd,gPtd,isSavingCat(g))}</tr>`;
     if(!col){
       lines.forEach(l=>{
         let t=0; const lm=MONTHS.map((_,m)=>{const v=catVal(p,l,m,'planned');t+=v;return l.auto?`<td class="autocell" title="10% du revenu (auto)">${num(v)}</td>`:`<td>${inCell(l.planned[m],'cp|'+p+'|'+l.id+'|'+m)}</td>`}).join('');
         const badge=(l.auto!==undefined)?` <span class="pill dimebadge" data-act="dimeauto|${p}|${l.id}" title="Basculer entre 10% auto et saisie manuelle">${l.auto?'auto '+(l.rate||10)+'%':'manuel ✎'}</span>`:'';
-        h += `<tr class="sub"><td title="${l.note?esc(l.note):''}"><span class="mv" data-act="movec|${p}|${l.id}|up" title="Monter">↑</span><span class="mv" data-act="movec|${p}|${l.id}|down" title="Descendre">↓</span> <span class="del" data-act="delcat|${p}|${l.id}">✕</span> ${noteIcon('notec|'+p+'|'+l.id,l.note)} ${txtCell(l.name,'cname|'+p+'|'+l.id)}${badge}</td><td>${inCell(l.budget,'cb|'+p+'|'+l.id)}</td>${ecartCell(t,l.budget||0)}${ratioCell(t,base)}${lm}<td>${eur(t)}</td></tr>`;
+        let lr=0,lp=0; months.forEach(mm=>{ lr+=catVal(p,l,mm,'real'); lp+=catVal(p,l,mm,'planned'); });
+        h += `<tr class="sub"><td title="${l.note?esc(l.note):''}"><span class="mv" data-act="movec|${p}|${l.id}|up" title="Monter">↑</span><span class="mv" data-act="movec|${p}|${l.id}|down" title="Descendre">↓</span> <span class="del" data-act="delcat|${p}|${l.id}">✕</span> ${noteIcon('notec|'+p+'|'+l.id,l.note)} ${txtCell(l.name,'cname|'+p+'|'+l.id)}${badge}</td><td>${inCell(l.budget,'cb|'+p+'|'+l.id)}</td>${ecartCell(t,l.budget||0)}${ratioCell(t,base)}${lm}<td>${eur(t)}</td>${realCols(lr,lp,isSavingCat(l.group))}</tr>`;
       });
-      h += `<tr><td><span class="miniadd" data-act="addcat|${p}|${g}">+ ligne</span></td>${E3}${MONTHS.map(()=>`<td></td>`).join('')}<td></td></tr>`;
+      h += `<tr><td><span class="miniadd" data-act="addcat|${p}|${g}">+ ligne</span></td>${E3}${MONTHS.map(()=>`<td></td>`).join('')}<td></td>${E2}</tr>`;
     }
   });
-  h += `<tr><td><span class="miniadd" data-act="addcatgroup|${p}">+ nouveau groupe</span></td>${E3}${MONTHS.map(()=>`<td></td>`).join('')}<td></td></tr>`;
+  h += `<tr><td><span class="miniadd" data-act="addcatgroup|${p}">+ nouveau groupe</span></td>${E3}${MONTHS.map(()=>`<td></td>`).join('')}<td></td>${E2}</tr>`;
   let perT=0; const perM=MONTHS.map((_,m)=>{const v=persoTotal(p,m,'planned');perT+=v;return `<td>${num(v)}</td>`}).join(''); const perB=persoBudgetTotal(p);
-  h += `<tr class="total"><td>Total dépenses perso</td>${bcell(perB)}${ecartCell(perT,perB)}${ratioCell(perT,base)}${perM}<td>${eur(perT)}</td></tr>`;
+  let perRtd=0,perPtd=0; months.forEach(mm=>{ perRtd+=persoTotal(p,mm,'real'); perPtd+=persoTotal(p,mm,'planned'); });
+  h += `<tr class="total"><td>Total dépenses perso</td>${bcell(perB)}${ecartCell(perT,perB)}${ratioCell(perT,base)}${perM}<td>${eur(perT)}</td>${realCols(perRtd,perPtd,false)}</tr>`;
   // commune par groupe foyer proratisée
-  h += `<tr class="group"><td>Dépenses communes (part ${esc(p)})</td>${E3}${MONTHS.map(()=>`<td></td>`).join('')}<td></td></tr>`;
+  h += `<tr class="group"><td>Dépenses communes (part ${esc(p)})</td>${E3}${MONTHS.map(()=>`<td></td>`).join('')}<td></td>${E2}</tr>`;
   foyerGroups().forEach(g=>{
     let t=0; const cm=MONTHS.map((_,m)=>{const v=prorata(p,m)*foyerGroupTotal(g,m,'planned');t+=v;return `<td>${num(v)}</td>`}).join('');
-    h += `<tr class="sub"><td>${esc(g)}</td><td></td><td></td>${ratioCell(t,base)}${cm}<td>${eur(t)}</td></tr>`;
+    let crd=0,cpd=0; months.forEach(mm=>{ crd+=prorata(p,mm)*foyerGroupTotal(g,mm,'real'); cpd+=prorata(p,mm)*foyerGroupTotal(g,mm,'planned'); });
+    h += `<tr class="sub"><td>${esc(g)}</td><td></td><td></td>${ratioCell(t,base)}${cm}<td>${eur(t)}</td>${realCols(crd,cpd,false)}</tr>`;
   });
   let comT=0; const comM=MONTHS.map((_,m)=>{const v=communeShare(p,m,'planned');comT+=v;return `<td>${num(v)}</td>`}).join('');
-  h += `<tr class="total"><td>Total dépenses communes</td><td></td><td></td>${ratioCell(comT,base)}${comM}<td>${eur(comT)}</td></tr>`;
-  // épargne (avec objectif annuel)
+  let comRtd=0,comPtd=0; months.forEach(mm=>{ comRtd+=communeShare(p,mm,'real'); comPtd+=communeShare(p,mm,'planned'); });
+  h += `<tr class="total"><td>Total dépenses communes</td><td></td><td></td>${ratioCell(comT,base)}${comM}<td>${eur(comT)}</td>${realCols(comRtd,comPtd,false)}</tr>`;
+  // épargne (avec objectif annuel) — la colonne réel met en évidence l'épargne réellement constatée
   let epT=0; const epObj=P.epargneObjectif||0; const epM=MONTHS.map((_,m)=>{const v=epargne(p,m,'planned');epT+=v;return `<td class="${v>=0?'good':'bad'}">${num(v)}</td>`}).join('');
-  h += `<tr class="grand"><td>Épargne mensuelle planifiée</td><td>${inCell(P.epargneObjectif,'epobj|'+p)}</td><td class="${savClass(epT,epObj)}">${epObj?((epT-epObj)>0?'+':'')+num(epT-epObj):'—'}</td>${ratioCell(epT,base)}${epM}<td>${eur(epT)}</td></tr>`;
+  let epRtd=0,epPtd=0; months.forEach(mm=>{ epRtd+=epargne(p,mm,'real'); epPtd+=epargne(p,mm,'planned'); });
+  h += `<tr class="grand"><td>Épargne mensuelle planifiée</td><td>${inCell(P.epargneObjectif,'epobj|'+p)}</td><td class="${savClass(epT,epObj)}">${epObj?((epT-epObj)>0?'+':'')+num(epT-epObj):'—'}</td>${ratioCell(epT,base)}${epM}<td>${eur(epT)}</td>${realCols(epRtd,epPtd,true)}</tr>`;
   h += `</tbody></table></div></div>`;
 
   // Épargne réelle à date
   const closed=[]; MONTHS.forEach((_,m)=>{ if(realizedMonth(m)) closed.push(m); });
   let realCum=0, planSame=0; closed.forEach(m=>{ realCum+=epargne(p,m,'real'); planSame+=epargne(p,m,'planned'); });
   let projAnnual=0; MONTHS.forEach((_,m)=>projAnnual+=epargneProj(p,m));
-  h += `<div class="card"><h2>Épargne réelle à date — ${esc(p)}</h2>
-  <p class="hint">Basée sur les mois où des dépenses réelles ont été saisies (onglet Suivi réel).</p><div class="kpis">`;
-  h += kpi('Mois clôturés', closed.length+' / 12');
-  h += kpi('Épargne réelle à date', eur(realCum), realCum>=0?'good':'bad');
-  h += kpi('vs planifié (mêmes mois)', (realCum-planSame>=0?'+':'')+eur(realCum-planSame), savClass(realCum,planSame));
-  h += kpi('Projection annuelle', eur(projAnnual), projAnnual>=0?'good':'bad');
-  h += `</div></div>`;
+  h += `<div class="card hl-epargne"><h2>💰 Épargne réelle à date — ${esc(p)}</h2>
+  <p class="hint">Calculée sur les <b>${closed.length}</b> mois réellement saisis : c'est ton épargne <b>vraiment constatée</b> (pas la prévision).</p>
+  <div class="bigkpis">
+    <div class="bigkpi"><div class="lbl">Épargne réelle à date (${closed.length}/12 mois)</div><div class="val ${realCum>=0?'good':'bad'}">${(realCum>=0?'+':'')+eur(realCum)}</div>${vsPlan(realCum,planSame,true)}</div>
+    <div class="bigkpi"><div class="lbl">Projection fin ${state.currentYear}</div><div class="val ${projAnnual>=0?'good':'bad'}">${(projAnnual>=0?'+':'')+eur(projAnnual)}</div></div>
+  </div></div>`;
 
   // KPIs
   h += `<div class="card"><h2>Synthèse ${esc(p)} ${state.currentYear}</h2><div class="kpis">`;
@@ -683,7 +728,8 @@ function reelFoyer(m){
   let h=`<div class="card"><h2>Foyer — ${MONTHS[m]}</h2><div class="tablewrap"><table class="reel" style="min-width:320px"><thead><tr><th>Poste</th><th>Planifié</th><th>Réel</th><th>Écart</th></tr></thead><tbody>`;
   foyerGroups().forEach(g=>{
     const lines=Y().foyer.filter(l=>l.group===g); const col=state.ui.collapsed['foyer|'+g];
-    h += `<tr class="group"><td><span class="colcaret" data-col="foyer|${esc(g)}">${col?'▶':'▼'}</span> ${esc(g)} <span class="mv" data-act="reelcopyf|${esc(g)}|${m}" title="Réel = Planifié pour cette catégorie">⇄</span></td><td>${num(foyerGroupTotal(g,m,'planned'))}</td><td>${num(foyerGroupTotal(g,m,'real'))}</td><td></td></tr>`;
+    const gpl=foyerGroupTotal(g,m,'planned'), gre=foyerGroupTotal(g,m,'real');
+    h += `<tr class="group"><td><span class="colcaret" data-col="foyer|${esc(g)}">${col?'▶':'▼'}</span> ${esc(g)} <span class="mv" data-act="reelcopyf|${esc(g)}|${m}" title="Réel = Planifié pour cette catégorie">⇄</span></td><td>${num(gpl)}</td><td>${num(gre)}</td><td class="${expClass(gre,gpl)}">${(gre-gpl)>0?'+':''}${num(gre-gpl)}</td></tr>`;
     if(!col) lines.forEach(l=>{
       const pl=l.planned[m]||0, re=l.real[m]||0, ec=re-pl;
       h += `<tr class="sub"><td>${esc(l.name)}</td><td>${num(pl)}</td><td>${inCell(l.real[m],'fr|'+l.id+'|'+m)}</td><td class="${expClass(re,pl)}">${ec>0?'+':''}${num(ec)}</td></tr>`;
@@ -1416,8 +1462,7 @@ function renderTab(){
   if(t==='home') html=renderHome();
   else if(t==='objectifs') html=renderObjectifs();
   else if(t==='revenus') html=renderRevenus();
-  else if(t==='foyer') html=renderFoyer();
-  else if(t.startsWith('person:')) html=renderPerson(t.slice(7));
+  else if(t==='budget') html=renderBudget();
   else if(t==='reel') html=renderReel();
   else if(t==='except') html=renderExcept();
   else if(t==='dash') html=renderDashboard();
@@ -1507,7 +1552,7 @@ function applyTextValue(c, v){
     case 'pextname': { const ex=(Y().persons[c[1]].persoExtras||[]).find(x=>x.id===c[2]); if(ex) ex.name=v; break; }
     case 'fname': { const l=getLine('foyer',c[1]); if(l) l.name=v; break; }
     case 'cname': { const l=Y().persons[c[1]].cats.find(x=>x.id===c[2]); if(l) l.name=v; break; }
-    case 'people': { const old=state.people[+c[1]]; const nw=v.trim()||old; if(nw!==old){ state.people[+c[1]]=nw; Object.values(state.years).forEach(yr=>{ yr.persons[nw]=yr.persons[old]; delete yr.persons[old]; }); if(state.ui.tab==='person:'+old) state.ui.tab='person:'+nw; } return true; }
+    case 'people': { const old=state.people[+c[1]]; const nw=v.trim()||old; if(nw!==old){ state.people[+c[1]]=nw; Object.values(state.years).forEach(yr=>{ yr.persons[nw]=yr.persons[old]; delete yr.persons[old]; }); if(state.ui.budgetScope==='person:'+old) state.ui.budgetScope='person:'+nw; } return true; }
   }
   return false;
 }
@@ -1631,10 +1676,14 @@ document.addEventListener('click', e=>{
   if(mt && mt.dataset.dash){ state.ui.dashScope=mt.dataset.dash; save(); fullRender(); return; }
   if(mt && mt.dataset.reel){ state.ui.reelScope=mt.dataset.reel; save(); fullRender(); return; }
   if(mt && mt.dataset.home){ state.ui.homeScope=mt.dataset.home; save(); fullRender(); return; }
+  if(mt && mt.dataset.bscope){ state.ui.budgetScope=mt.dataset.bscope; save(); fullRender(); return; }
+  if(mt && mt.dataset.bview){ state.ui.budgetView=mt.dataset.bview; save(); fullRender(); return; }
+  if(mt && mt.dataset.bmonth!==undefined){ state.ui.budgetMonth=+mt.dataset.bmonth; save(); fullRender(); return; }
+  if(mt && mt.dataset.breal!==undefined){ state.ui.budgetReal=!state.ui.budgetReal; save(); fullRender(); return; }
   const sh=e.target.closest&&e.target.closest('[data-sort]');
   if(sh){ const k=sh.dataset.sort, s=state.ui.investSort||{key:'',dir:1}; state.ui.investSort = s.key===k?{key:k,dir:-s.dir}:{key:k,dir:1}; save(); fullRender(); return; }
   const go=e.target.closest&&e.target.closest('[data-go]');
-  if(go){ state.ui.tab=go.dataset.go; save(); fullRender(); return; }
+  if(go){ let t=go.dataset.go; if(t==='foyer'){ state.ui.tab='budget'; state.ui.budgetScope='foyer'; } else if(t.startsWith('person:')){ state.ui.tab='budget'; state.ui.budgetScope=t; } else { state.ui.tab=t; } save(); fullRender(); return; }
   const col=e.target.closest&&e.target.closest('[data-col]');
   if(col){ const k=col.dataset.col; state.ui.collapsed[k]=!state.ui.collapsed[k]; save(); fullRender(); return; }
   if(e.target.dataset&&e.target.dataset.collapseall!==undefined){ const sc=e.target.dataset.collapseall; let groups=[]; if(sc==='foyer') groups=foyerGroups(); else if(sc.startsWith('person:')) groups=[...new Set((Y().persons[sc.slice(7)]||{cats:[]}).cats.map(c=>c.group))]; const anyOpen=groups.some(g=>!state.ui.collapsed[sc+'|'+g]); groups.forEach(g=>state.ui.collapsed[sc+'|'+g]=anyOpen); save(); fullRender(); return; }
@@ -1815,7 +1864,7 @@ document.getElementById('btnExport').onclick=doExport;
 document.getElementById('btnImport').onclick=doImport;
 document.getElementById('btnPrint').onclick=()=>{
   const t=state.ui.tab;
-  const wide = ['revenus','foyer','reel','dash','invest'].includes(t) || t.startsWith('person:');
+  const wide = ['revenus','budget','reel','dash','invest'].includes(t) || t.startsWith('person:');
   let st=document.getElementById('printpage'); if(!st){ st=document.createElement('style'); st.id='printpage'; document.head.appendChild(st); }
   st.textContent='@page{size:A4 '+(wide?'landscape':'portrait')+';margin:8mm}';
   window.print();
