@@ -1319,13 +1319,14 @@ function transList(){ return Y().transfers||(Y().transfers=[]); }
 function trFeeEur(t){ return t.feeMode==='pct' ? (t.eur||0)*(t.fees||0)/100 : (t.fees||0); }
 function fcfaToEur(fcfa){ return (fcfa||0)*(state.fx.FCFA||FX_DEFAULT.FCFA); }
 // Commande réutilisable (pérenne) : à donner à Claude OU à tout assistant ayant accès au mail.
-const TR_CMD = `Cherche dans ma boîte mail tous les reçus / confirmations d'envoi d'argent vers le Burkina Faso pour l'année ${''}ANNEE (TapTapSend, Orange Money, MoneyGram, Wave, Sendwave, Western Union, etc.).
-Pour chaque envoi, renvoie UNIQUEMENT un tableau JSON (aucun texte autour), avec ces champs :
+const TR_CMD = `Cherche dans ma boîte mail tous mes envois d'argent vers le Burkina Faso pour l'année ${''}ANNEE.
+Sources : TapTapSend envoie un RELEVÉ MENSUEL en pièce jointe PDF (« Relevé d'activité Taptap Send ») — ouvre ces PDF et lis chaque ligne d'envoi. Regarde aussi Orange Money, MoneyGram, Wave, Sendwave, Western Union (mails ou reçus).
+Pour CHAQUE envoi individuel, renvoie UNIQUEMENT un tableau JSON (aucun texte autour) :
 [{"date":"AAAA-MM-JJ","provider":"TapTapSend","beneficiary":"nom du destinataire si connu","motif":"","eur":0,"fees":0,"feeMode":"eur","fcfa":0}]
 - eur = montant principal débité en euros (hors frais)
 - fees = frais en euros ; feeMode = "eur"
 - fcfa = montant reçu en FCFA par le destinataire
-Trie par date croissante.`;
+Trie par date croissante. Si une info manque, mets 0 ou "".`;
 function renderTransferts(){
   const list=transList(); const rate=state.fx.FCFA||FX_DEFAULT.FCFA;
   let tEur=0,tFees=0,tFcfa=0; const parMotif={};
