@@ -272,13 +272,23 @@
   <div class="row" style="justify-content:space-between;align-items:center"><h3 id="recapTitle">Récap mensuel</h3><button class="btn sm" id="recapClose">✕ Fermer</button></div>
   <div id="recapBody"></div>
 </div></div>
+<div class="modal" id="trModal"><div class="modalbox recapbox">
+  <div class="row" style="justify-content:space-between;align-items:center"><h3>📥 Importer des envois</h3><button class="btn sm" id="trClose">✕ Fermer</button></div>
+  <p class="hint">L'appli ne peut pas lire ton mail toute seule (site sans serveur). <b>Méthode pérenne</b> : copie la commande ci-dessous, donne-la à Claude (ou à tout assistant ayant accès à ton mail), puis colle le résultat (JSON) plus bas. Ça marchera toujours, même sans Claude.</p>
+  <div class="row"><button class="btn sm" id="trCopyCmd">📋 Copier la commande</button></div>
+  <textarea id="trCmd" readonly style="width:100%;height:120px;font-family:monospace;font-size:11px;margin-top:6px"></textarea>
+  <p class="hint" style="margin-top:10px">Colle ici le JSON des envois :</p>
+  <textarea id="trPaste" placeholder='[{"date":"2026-01-15","provider":"TapTapSend","beneficiary":"Maman","motif":"Famille","eur":100,"fees":2.5,"feeMode":"eur","fcfa":64000}]' style="width:100%;height:110px;font-family:monospace;font-size:12px"></textarea>
+  <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn primary" id="trImport">Importer</button></div>
+  <p class="note" id="trMsg"></p>
+</div></div>
 
 <script>
 /* =========================================================
    DONNÉES & MODÈLE
    ========================================================= */
 const LS_KEY = 'budgetFamille_v1';
-const BUILD = '2026-06-22.6';   // version de code — doit être identique sur tous les appareils
+const BUILD = '2026-06-22.7';   // version de code — doit être identique sur tous les appareils
 const MONTHS = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
 const FOYER_GROUPS = [
   'Logement & charges','Courses & quotidien','Transport','Abonnements & services',
@@ -306,7 +316,7 @@ function excNat(k){ return EXC_NATURES.find(n=>n.key===k)||EXC_NATURES.find(n=>n
 function excSumKey(k){ return excList().filter(e=>e.nature===k).reduce((s,e)=>s+(e.montant||0),0); }
 const CURRENCIES = ['EUR','USDT','USD','GBP','FCFA'];
 const FX_DEFAULT = {EUR:1, USDT:0.92, USD:0.92, GBP:1.17, FCFA:0.001524};
-const AUX = ['inv','liq','asset','debt','deduc','dedm','fx','startcash','excm','excl','excn','excmt','goal','simep','simrate'];
+const AUX = ['inv','liq','asset','debt','deduc','dedm','fx','startcash','excm','excl','excn','excmt','goal','simep','simrate','tr'];
 
 let uid = 1; const nid = ()=> 'i'+(uid++)+Date.now().toString(36).slice(-3);
 const arr12 = ()=> [0,0,0,0,0,0,0,0,0,0,0,0];
@@ -365,7 +375,8 @@ function makeYear(){
     deductions: [],
     investments: [],
     liquidity: [],
-    realized: []
+    realized: [],
+    transfers: []
   };
 }
 function defaultState(){
@@ -413,6 +424,7 @@ function migrate(){
     if(!yr.investments) yr.investments=[];
     if(!yr.liquidity) yr.liquidity=[];
     if(!yr.realized) yr.realized=[];
+    if(!yr.transfers) yr.transfers=[];
     Object.values(yr.persons||{}).forEach(P=> (P.cats||[]).forEach(l=>{
       if(/^d[îi]me$/i.test(String(l.name||'').trim()) && l.auto===undefined){ l.auto=true; l.rate=10; }
     }));
@@ -533,6 +545,7 @@ function renderTopbar(){
     ['except','Exceptionnel'],
     ['dash','Tableau de bord'],
     ['invest','Investissements'],
+    ['transferts','🌍 Transferts'],
     ['patrimoine','Patrimoine'],
     ['defisc','Défiscalisation'],
     ['params','Paramètres']
@@ -667,7 +680,8 @@ function renderPerson(p, showReal){
   const realCols=(rtd,ptd,saving)=>{ if(!showReal) return ''; const ec=rtd-ptd, cls=saving?savClass(rtd,ptd):expClass(rtd,ptd); return `<td>${num(rtd)}</td><td class="${cls}">${ec>0?'+':''}${num(ec)}</td>`; };
   const E3='<td></td><td></td><td></td>'; const E2=showReal?'<td></td><td></td>':'';
   let h = `<div class="card"><h2>${esc(p)} — planification annuelle ${state.currentYear}</h2>
-  <p class="hint">Colonnes <b>Budget</b>/<b>Écart</b>/<b>Ratio</b> (part du revenu de ${esc(p)})${showReal?' • <b>Réel à date</b> + <b>Écart réel</b>':''}. 💡 Formule (ex. <b>=200*12</b>) + <b>Entrée</b>. La <b>Dîme</b> est à 10% auto (clique le badge pour saisir manuellement).</p>`;
+  <p class="hint">Colonnes <b>Budget</b>/<b>Écart</b>/<b>Ratio</b> (part du revenu de ${esc(p)})${showReal?' • <b>Réel à date</b> + <b>Écart réel</b>':''}. 💡 Formule (ex. <b>=200*12</b>) + <b>Entrée</b>. La <b>Dîme</b> est à 10% auto (clique le badge pour saisir manuellement).</p>
+  <div class="row" style="margin-bottom:6px"><button class="btn sm" data-act="importtr">🌍 Envois vers Ouaga — importer depuis le mail</button> <button class="btn sm" data-go="transferts">Voir le suivi des transferts</button></div>`;
   h += `<div class="tablewrap"><table class="planif"><thead><tr><th>Poste</th><th>Budget</th><th>Écart</th><th>Ratio</th>${MONTHS.map(m=>`<th>${m}</th>`).join('')}<th>Total an.</th>${RH}</tr></thead><tbody>`;
   // revenus
   let rT=0;
@@ -1298,6 +1312,44 @@ function renderInvest(){
 /* =========================================================
    ONGLET PATRIMOINE
    ========================================================= */
+/* =========================================================
+   ONGLET TRANSFERTS € → FCFA (envois vers Ouaga)
+   ========================================================= */
+function transList(){ return Y().transfers||(Y().transfers=[]); }
+function trFeeEur(t){ return t.feeMode==='pct' ? (t.eur||0)*(t.fees||0)/100 : (t.fees||0); }
+function fcfaToEur(fcfa){ return (fcfa||0)*(state.fx.FCFA||FX_DEFAULT.FCFA); }
+// Commande réutilisable (pérenne) : à donner à Claude OU à tout assistant ayant accès au mail.
+const TR_CMD = `Cherche dans ma boîte mail tous les reçus / confirmations d'envoi d'argent vers le Burkina Faso pour l'année ${''}ANNEE (TapTapSend, Orange Money, MoneyGram, Wave, Sendwave, Western Union, etc.).
+Pour chaque envoi, renvoie UNIQUEMENT un tableau JSON (aucun texte autour), avec ces champs :
+[{"date":"AAAA-MM-JJ","provider":"TapTapSend","beneficiary":"nom du destinataire si connu","motif":"","eur":0,"fees":0,"feeMode":"eur","fcfa":0}]
+- eur = montant principal débité en euros (hors frais)
+- fees = frais en euros ; feeMode = "eur"
+- fcfa = montant reçu en FCFA par le destinataire
+Trie par date croissante.`;
+function renderTransferts(){
+  const list=transList(); const rate=state.fx.FCFA||FX_DEFAULT.FCFA;
+  let tEur=0,tFees=0,tFcfa=0; const parMotif={};
+  let h=`<div class="card"><h2>Transferts € → FCFA (Ouaga) 🌍 — ${state.currentYear}</h2>
+   <p class="hint">Tes envois vers le Burkina (TapTapSend, Orange Money, MoneyGram, Wave…). <b>Décorrélé du budget</b> : seul le montant € sorti de tes comptes apparaît côté budget. Taux : <b>1 FCFA = ${rate} €</b> (modifiable dans Investissements › devises). <b>Frais</b> : bascule <b>€ ⇄ %</b> en cliquant la pastille.</p>
+   <div class="row" style="margin-bottom:8px"><button class="btn primary" data-act="importtr">📥 Importer des envois (mail)</button> <button class="btn" data-act="addtr">+ Ajouter un envoi</button></div>`;
+  h+=`<div class="tablewrap"><table class="reel" style="min-width:820px"><thead><tr><th>Date</th><th>Canal</th><th>Bénéficiaire</th><th>Motif</th><th>Montant €</th><th>Frais</th><th>Coût € total</th><th>Reçu FCFA</th><th>≈ € reçu</th><th></th></tr></thead><tbody>`;
+  list.slice().sort((a,b)=>String(a.date||'').localeCompare(String(b.date||''))).forEach(t=>{
+    const fe=trFeeEur(t), cost=(t.eur||0)+fe; tEur+=t.eur||0; tFees+=fe; tFcfa+=t.fcfa||0;
+    const mot=(t.motif||'(sans motif)'); parMotif[mot]=(parMotif[mot]||0)+cost;
+    h+=`<tr class="sub"><td>${dateCell(t.date,'tr|'+t.id+'|date')}</td><td>${txtCell(t.provider,'tr|'+t.id+'|provider')}</td><td>${txtCell(t.beneficiary,'tr|'+t.id+'|beneficiary')}</td><td>${txtCell(t.motif,'tr|'+t.id+'|motif')}</td><td>${inCell(t.eur,'tr|'+t.id+'|eur')}</td><td>${inCell(t.fees,'tr|'+t.id+'|fees','style="width:56px"')} <span class="pill" data-act="trfee|${t.id}" title="Basculer € / %">${t.feeMode==='pct'?'%':'€'}</span></td><td>${num(cost)}</td><td>${inCell(t.fcfa,'tr|'+t.id+'|fcfa')}</td><td class="note">${num(fcfaToEur(t.fcfa))} €</td><td><span class="del" data-act="deltr|${t.id}">✕</span></td></tr>`;
+  });
+  if(!list.length) h+=`<tr class="sub"><td colspan="10" class="note">Aucun envoi pour l'instant. Clique « Importer des envois (mail) » ou « + Ajouter un envoi ».</td></tr>`;
+  h+=`<tr class="grand"><td>Total ${list.length} envoi(s)</td><td></td><td></td><td></td><td>${num(tEur)}</td><td>${num(tFees)}</td><td>${num(tEur+tFees)}</td><td>${num(tFcfa)}</td><td>${num(fcfaToEur(tFcfa))} €</td><td></td></tr>`;
+  h+=`</tbody></table></div></div>`;
+  h+=`<div class="card"><h2>Synthèse ${state.currentYear}</h2><div class="kpis">${kpi('Total envoyé (principal €)',eur(tEur))}${kpi('Total frais (€)',eur(tFees),tFees>0?'bad':'')}${kpi('Coût total (€)',eur(tEur+tFees))}${kpi('Reçu au Burkina',num(tFcfa)+' FCFA')}${kpi('Taux effectif moyen',tFcfa>0?num((tEur+tFees)/tFcfa*1000)+' € / 1000 FCFA':'—')}</div>`;
+  const motifs=Object.keys(parMotif);
+  if(motifs.length){ h+=`<h2 style="margin-top:16px">Répartition par motif</h2><div class="tablewrap"><table class="reel" style="min-width:320px"><thead><tr><th>Motif</th><th>Coût total €</th><th>Part</th></tr></thead><tbody>`;
+    const tot=motifs.reduce((s,k)=>s+parMotif[k],0);
+    motifs.sort((a,b)=>parMotif[b]-parMotif[a]).forEach(k=>{ h+=`<tr class="sub"><td>${esc(k)}</td><td>${num(parMotif[k])}</td><td>${tot?pct(parMotif[k]/tot):'—'}</td></tr>`; });
+    h+=`</tbody></table></div>`; }
+  h+=`</div>`;
+  return h;
+}
 function renderPatrimoine(){
   const investCur=investCurrentEUR();
   const avo=state.assets.reduce((s,a)=>s+toEUR(a.value,a.devise),0);
@@ -1498,6 +1550,7 @@ function renderTab(){
   else if(t==='except') html=renderExcept();
   else if(t==='dash') html=renderDashboard();
   else if(t==='invest') html=renderInvest();
+  else if(t==='transferts') html=renderTransferts();
   else if(t==='patrimoine') html=renderPatrimoine();
   else if(t==='defisc') html=renderDefisc();
   else if(t==='params') html=renderParams();
@@ -1602,6 +1655,7 @@ function applyAux(c, el){
     case 'startcash': state.startCash=n; break;
     case 'simep': state.simEp=n; break;
     case 'simrate': state.simRate=n; break;
+    case 'tr': { const it=transList().find(x=>x.id===c[1]); if(it){ it[c[2]] = (c[2]==='eur'||c[2]==='fees'||c[2]==='fcfa')? n : v; } break; }
     case 'goal': { const it=(state.goals||[]).find(x=>x.id===c[1]); if(it){ it[c[2]] = (c[2]==='target'||c[2]==='current')?n:v; } break; }
     case 'excm': { const it=excList().find(x=>x.id===c[1]); if(it) it.month=Math.max(0,MONTHS.indexOf(v)); break; }
     case 'excl': { const it=excList().find(x=>x.id===c[1]); if(it) it.label=v; break; }
@@ -1772,6 +1826,10 @@ document.addEventListener('click', e=>{
     case 'addexc': excList().push({id:nid(),month:(state.ui.month||0),label:'Nouvel événement',nature:'conso',montant:0}); break;
     case 'delexc': Y().exceptional=excList().filter(x=>x.id!==c[1]); break;
     case 'moveexc': moveItem(excList(), c[1], c[2]==='up'?-1:1); break;
+    case 'addtr': transList().push({id:nid(),date:TODAY(),provider:'TapTapSend',beneficiary:'',motif:'',eur:0,fees:0,feeMode:'eur',fcfa:0}); break;
+    case 'deltr': Y().transfers=transList().filter(x=>x.id!==c[1]); break;
+    case 'trfee': { const it=transList().find(x=>x.id===c[1]); if(it) it.feeMode = it.feeMode==='pct'?'eur':'pct'; break; }
+    case 'importtr': openTrModal(); return;
     case 'sumdimes': {
       const re=/d[îi]me|offrande|don/i; let s=0;
       Y().foyer.forEach(l=>{ if(re.test(l.name)) s+=l.planned.reduce((a,v)=>a+v,0); });
@@ -1816,7 +1874,7 @@ function duplicateYear(){
   // reset réel + événements de l'année, mais on REPORTE les placements et les liquidités
   copy.foyer.forEach(l=>l.real=arr12());
   Object.values(copy.persons).forEach(P=>P.cats.forEach(c=>c.real=arr12()));
-  copy.exceptional=[]; copy.deductions=[]; copy.realized=[];
+  copy.exceptional=[]; copy.deductions=[]; copy.realized=[]; copy.transfers=[];
   state.years[ny]=copy; state.currentYear=ny; save(); fullRender(); toast('Dupliqué vers '+ny+' (placements & liquidités reportés)');
 }
 function delYear(y){
@@ -1926,6 +1984,19 @@ function openRecap(scope){
 function closeRecap(){ document.getElementById('recapModal').classList.remove('show'); }
 document.getElementById('recapClose').onclick=closeRecap;
 document.getElementById('recapModal').addEventListener('click', e=>{ if(e.target.id==='recapModal') closeRecap(); });
+// Import des transferts (envois Ouaga)
+function openTrModal(){ document.getElementById('trCmd').value=TR_CMD.replace('ANNEE',state.currentYear); document.getElementById('trPaste').value=''; document.getElementById('trMsg').textContent=''; document.getElementById('trModal').classList.add('show'); }
+function closeTrModal(){ document.getElementById('trModal').classList.remove('show'); }
+function importTransfers(txt){
+  let arr=null; try{ arr=JSON.parse(txt); }catch(e){ const m=txt&&txt.match(/\[[\s\S]*\]/); if(m){ try{ arr=JSON.parse(m[0]); }catch(_){} } }
+  if(!Array.isArray(arr)) return {ok:false,msg:'⚠️ JSON invalide : attendu un tableau [ { … } ].'};
+  let n=0; snapshot(true); arr.forEach(o=>{ if(!o||typeof o!=='object') return; transList().push({id:nid(), date:o.date||'', provider:o.provider||'', beneficiary:o.beneficiary||'', motif:o.motif||'', eur:+o.eur||0, fees:+o.fees||0, feeMode:(o.feeMode==='pct'?'pct':'eur'), fcfa:+o.fcfa||0}); n++; });
+  markEdit(); save(); return {ok:true,msg:'✅ '+n+' envoi(s) importé(s).'};
+}
+document.getElementById('trClose').onclick=closeTrModal;
+document.getElementById('trModal').addEventListener('click', e=>{ if(e.target.id==='trModal') closeTrModal(); });
+document.getElementById('trCopyCmd').onclick=()=>{ const ta=document.getElementById('trCmd'); ta.select(); try{ navigator.clipboard.writeText(ta.value); }catch(e){} toast('Commande copiée'); };
+document.getElementById('trImport').onclick=()=>{ const res=importTransfers(document.getElementById('trPaste').value); document.getElementById('trMsg').textContent=res.msg; if(res.ok){ fullRender(); setTimeout(()=>{ if(document.getElementById('trModal')) closeTrModal(); },800); } };
 document.addEventListener('keydown', e=>{
   if((e.metaKey||e.ctrlKey) && (e.key==='z'||e.key==='Z')){ e.preventDefault(); if(e.shiftKey) redo(); else undo(); }
   else if((e.metaKey||e.ctrlKey) && (e.key==='y'||e.key==='Y')){ e.preventDefault(); redo(); }
