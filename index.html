@@ -298,7 +298,7 @@
    DONNÉES & MODÈLE
    ========================================================= */
 const LS_KEY = 'budgetFamille_v1';
-const BUILD = '2026-06-22.8';   // version de code — doit être identique sur tous les appareils
+const BUILD = '2026-06-22.9';   // version de code — doit être identique sur tous les appareils
 const MONTHS = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
 const FOYER_GROUPS = [
   'Logement & charges','Courses & quotidien','Transport','Abonnements & services',
@@ -2124,10 +2124,14 @@ function importOps(txt){
   let ops=null,prices=null;
   if(Array.isArray(data)) ops=data; else if(data&&typeof data==='object'){ ops=data.ops; prices=data.prices; }
   if(!Array.isArray(ops)) return {ok:false,msg:'⚠️ JSON invalide : attendu un tableau d\'opérations, ou {ops:[...],prices:{...}}.'};
-  let n=0; snapshot(true);
-  ops.forEach(o=>{ if(!o||typeof o!=='object') return; pf().ops.push({id:nid(),date:o.date||'',sgi:o.sgi||'',type:OP_TYPES.includes(o.type)?o.type:'achat',titre:o.titre||'',qty:+o.qty||0,price:+o.price||0,fees:+o.fees||0,amount:+o.amount||0,devise:(o.devise==='XOF'||o.devise==='FCFA')?'XOF':'EUR'}); n++; });
+  const norm=o=>({date:o.date||'',sgi:(o.sgi||'').trim(),type:OP_TYPES.includes(o.type)?o.type:'achat',titre:(o.titre||'').trim(),qty:+o.qty||0,price:+o.price||0,fees:+o.fees||0,amount:+o.amount||0,devise:(o.devise==='XOF'||o.devise==='FCFA')?'XOF':'EUR'});
+  // signature pour éviter les doublons (ré-imports / sources qui se recoupent)
+  const sig=o=>[o.date,o.sgi,o.type,o.titre,Math.round(o.qty*1e4),Math.round(o.price*100),Math.round(o.amount*100),o.devise].join('|');
+  const seen=new Set(pf().ops.map(x=>sig(norm(x))));
+  let n=0,dup=0; snapshot(true);
+  ops.forEach(o=>{ if(!o||typeof o!=='object') return; const v=norm(o), s=sig(v); if(seen.has(s)){ dup++; return; } seen.add(s); pf().ops.push(Object.assign({id:nid()},v)); n++; });
   if(prices&&typeof prices==='object') Object.keys(prices).forEach(k=>{ const val=+prices[k]; if(!isNaN(val)) pf().prices[k]=val; });
-  markEdit(); save(); return {ok:true,msg:'✅ '+n+' opération(s) importée(s)'+(prices?' + cours mis à jour':'')+'.'};
+  markEdit(); save(); return {ok:true,msg:'✅ '+n+' opération(s) importée(s)'+(dup?' — '+dup+' doublon(s) ignoré(s)':'')+(prices?' + cours mis à jour':'')+'.'};
 }
 document.getElementById('opsClose').onclick=closeOpsModal;
 document.getElementById('opsModal').addEventListener('click', e=>{ if(e.target.id==='opsModal') closeOpsModal(); });
