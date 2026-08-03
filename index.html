@@ -150,6 +150,10 @@
   .rbar{height:9px;border-radius:5px;min-width:2px}
   .rbar.rev{background:var(--good)} .rbar.dep{background:var(--muted)}
   .recapvals{font-size:12.5px;white-space:nowrap;text-align:right}
+  /* Tables du portefeuille : plus compactes, surtout en FCFA sur mobile */
+  table.pftab{font-size:13px}
+  table.pftab th,table.pftab td{padding:6px 8px}
+  @media(max-width:600px){ table.pftab{font-size:11px} table.pftab th,table.pftab td{padding:4px 5px} table.pftab input.cell{font-size:11px} }
   /* Barre d'opérateurs pour saisir des calculs au clavier numérique (mobile) */
   .opbar{position:fixed;left:0;right:0;bottom:0;z-index:300;display:none;gap:6px;padding:7px 8px;background:var(--panel2);border-top:1px solid var(--line);box-shadow:0 -6px 18px rgba(0,0,0,.22);overflow-x:auto;-webkit-overflow-scrolling:touch}
   .opbar.show{display:flex}
@@ -298,7 +302,7 @@
    DONNÉES & MODÈLE
    ========================================================= */
 const LS_KEY = 'budgetFamille_v1';
-const BUILD = '2026-06-22.9';   // version de code — doit être identique sur tous les appareils
+const BUILD = '2026-06-22.10';   // version de code — doit être identique sur tous les appareils
 const MONTHS = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
 const FOYER_GROUPS = [
   'Logement & charges','Courses & quotidien','Transport','Abonnements & services',
@@ -417,6 +421,7 @@ function migrate(){
   if(!state.pf) state.pf={ops:[],prices:{}};
   if(!state.pf.ops) state.pf.ops=[]; if(!state.pf.prices) state.pf.prices={};
   if(!state.ui.pfCur) state.ui.pfCur='EUR';
+  if(!state.ui.pfMkt) state.ui.pfMkt='all';
   if(!state.ui.budgetScope) state.ui.budgetScope='foyer';
   if(!state.ui.budgetView) state.ui.budgetView='year';
   if(state.ui.budgetMonth==null) state.ui.budgetMonth=new Date().getMonth();
@@ -1092,7 +1097,7 @@ function niceScale(min,max,ticks){
   return {min:Math.floor(min/step)*step, max:Math.ceil(max/step)*step, step};
 }
 function yTicks(ns){ const t=[]; for(let v=ns.min; v<=ns.max+ns.step*1e-6; v+=ns.step) t.push(Math.round(v*1e6)/1e6); return t; }
-function lineChart(labels, series){
+function lineChart(labels, series, unit='€'){
   const mob=isMobile(), W=mob?400:720, H=mob?250:208;
   const all=series.flatMap(s=>s.values);
   const ns=niceScale(Math.min(...all,0), Math.max(...all,0)); const ticks=yTicks(ns);
@@ -1117,7 +1122,7 @@ function lineChart(labels, series){
   });
   // zones de survol par mois (toute la hauteur) → info-bulle fiable
   const gapw=labels.length>1?plotW/(labels.length-1):plotW;
-  labels.forEach((l,i)=>{ const tip=`${esc(l)} — ${series.map(se=>esc(se.name)+': '+num(se.values[i])+' €').join(' • ')}`;
+  labels.forEach((l,i)=>{ const tip=`${esc(l)} — ${series.map(se=>esc(se.name)+': '+num(se.values[i])+' '+unit).join(' • ')}`;
     s+=`<rect x="${X(i)-gapw/2}" y="${padT}" width="${gapw}" height="${plotH}" fill="transparent" data-tip="${tip}"/>`; });
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet">${s}</svg>${legend(series)}`;
 }
@@ -1279,14 +1284,40 @@ function investSorted(){
    espèces par SGI, multi‑devises € ⇄ FCFA (bascule), camemberts, perf.
    ========================================================= */
 function pf(){ if(!state.pf) state.pf={ops:[],prices:{}}; if(!state.pf.ops) state.pf.ops=[]; if(!state.pf.prices) state.pf.prices={}; return state.pf; }
-const OP_TYPES=['depot','achat','vente','retrait','dividende'];
-const OP_LABEL={depot:'Approvisionnement',achat:'Achat',vente:'Vente',retrait:'Retrait',dividende:'Dividende'};
+const OP_TYPES=['depot','achat','vente','retrait','dividende','frais'];
+const OP_LABEL={depot:'Approvisionnement',achat:'Achat',vente:'Vente',retrait:'Retrait',dividende:'Dividende',frais:'Frais SGI'};
+// Marché à partir du courtier (SGI) : Euronext (Fortuneo), BRVM (Coris Bourse), Crypto (Binance…)
+function pfMarket(sgi){ const s=(sgi||'').toLowerCase();
+  if(/coris|brvm/.test(s)) return 'BRVM';
+  if(/binance|crypto|kraken|coinbase|bitcoin|ledger|kucoin|bybit/.test(s)) return 'Crypto';
+  if(/fortuneo|euronext|bourso|trade\s?republic|degiro|saxo|bourse\s?direct|xtb|revolut/.test(s)) return 'Euronext';
+  return 'Autre'; }
+// Analytics : +/- value réalisée par titre + performance par année (réalisé, dividendes, frais)
+function pfAnalytics(mkt){
+  const run={}, perSec={}, perYear={};
+  const ey=y=>perYear[y]||(perYear[y]={realized:0,div:0,fee:0});
+  opsSorted().forEach(o=>{ if(mkt && mkt!=='all' && pfMarket(o.sgi)!==mkt) return;
+    const y=(o.date||'').slice(0,4)||'?', dev=o.devise||'EUR';
+    if(o.type==='dividende'){ ey(y).div+=eurOf(+o.amount||0,dev); return; }
+    if(o.type==='frais'){ ey(y).fee+=eurOf(+o.amount||0,dev); return; }
+    if(o.type!=='achat'&&o.type!=='vente') return;
+    const k=(o.sgi||'?')+'|'+(o.titre||'?');
+    if(!run[k])run[k]={qty:0,cost:0};
+    if(!perSec[k])perSec[k]={sgi:o.sgi||'?',titre:o.titre||'?',dev,realized:0};
+    const p=run[k],q=+o.qty||0,prc=+o.price||0,fr=+o.fees||0;
+    if(o.type==='achat'){ p.qty+=q; p.cost+=q*prc+fr; }
+    else { const cmp=p.qty?p.cost/p.qty:0, g=eurOf(q*prc-fr-cmp*q,dev); perSec[k].realized+=g; ey(y).realized+=g; p.cost-=cmp*Math.min(q,p.qty); p.qty-=q; if(p.qty<1e-6){p.qty=0;p.cost=0;} }
+  });
+  return {perSec,perYear};
+}
 function xofRate(){ return state.fx.FCFA||FX_DEFAULT.FCFA; }        // 1 FCFA = xofRate €
 function eurOf(v,dev){ return (dev==='XOF')?(v||0)*xofRate():(v||0); }
 function pfCur(){ return state.ui.pfCur||'EUR'; }
 function pfSym(){ return pfCur()==='XOF'?'FCFA':'€'; }
 function dispFromEur(e){ return pfCur()==='XOF'? e/xofRate() : e; }
 function money(vEur,signed){ const x=dispFromEur(vEur); const body = pfCur()==='XOF'? Math.round(x).toLocaleString('fr-FR')+' FCFA' : x.toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' €'; return (signed&&x>=0?'+':'')+body; }
+// Sans symbole de devise (tableaux denses / mobile) — la devise est rappelée dans l'en-tête
+function moneyN(vEur,signed){ const x=dispFromEur(vEur); const body = pfCur()==='XOF'? Math.round(x).toLocaleString('fr-FR') : x.toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2}); return (signed&&x>=0?'+':'')+body; }
 function pfPriceVal(vEur){ const x=dispFromEur(vEur); return pfCur()==='XOF'? String(Math.round(x)) : String(Math.round(x*100)/100); }
 function opsSorted(){ return pf().ops.slice().sort((a,b)=>String(a.date||'').localeCompare(String(b.date||''))); }
 // Positions courantes (qté>0) dérivées des achats/ventes, CMP en devise native
@@ -1310,7 +1341,7 @@ function pfCash(){
   const c={};
   pf().ops.forEach(o=>{ const dev=o.devise||'EUR', sgi=o.sgi||'?'; if(!c[sgi]) c[sgi]={sgi,dev,amount:0}; const x=c[sgi];
     if(o.type==='depot'||o.type==='dividende') x.amount+=(+o.amount||0);
-    else if(o.type==='retrait') x.amount-=(+o.amount||0);
+    else if(o.type==='retrait'||o.type==='frais') x.amount-=(+o.amount||0);
     else if(o.type==='achat') x.amount-=((+o.qty||0)*(+o.price||0)+(+o.fees||0));
     else if(o.type==='vente') x.amount+=((+o.qty||0)*(+o.price||0)-(+o.fees||0));
   });
@@ -1319,84 +1350,101 @@ function pfCash(){
 function pfValueEur(){ return pfPositions().reduce((s,p)=>s+eurOf(p.val,p.dev),0); }
 function pfCashEur(){ return pfCash().reduce((s,x)=>s+eurOf(x.amount,x.dev),0); }
 function renderInvest(){
-  const cur=pfCur();
-  const positions=pfPositions(), cashArr=pfCash();
+  const cur=pfCur(), sym=pfSym();
+  const mkt=state.ui.pfMkt||'all';
+  const inMkt=sgi=> mkt==='all'||pfMarket(sgi)===mkt;
+  const positions=pfPositions().filter(p=>inMkt(p.sgi));
+  const cashArr=pfCash().filter(x=>inMkt(x.sgi));
   const invEur=positions.reduce((s,p)=>s+eurOf(p.qty*p.cmp,p.dev),0);
   const valEur=positions.reduce((s,p)=>s+eurOf(p.val,p.dev),0);
   const pvEur=valEur-invEur;
   const cashEur=cashArr.reduce((s,x)=>s+eurOf(x.amount,x.dev),0);
-  const realizedEur=(function(){ // +/- value réalisée (ventes) = Σ ventes (proceeds − qté*CMP au moment) ; approx via ops
-    let g=0; const run={};
-    opsSorted().forEach(o=>{ if(o.type!=='achat'&&o.type!=='vente') return; const k=(o.sgi||'?')+'|'+(o.titre||'?'); if(!run[k])run[k]={qty:0,cost:0};
-      const p=run[k],q=+o.qty||0,prc=+o.price||0,fr=+o.fees||0;
-      if(o.type==='achat'){p.qty+=q;p.cost+=q*prc+fr;} else {const cmp=p.qty?p.cost/p.qty:0; g+=eurOf(q*prc-fr-cmp*q,o.devise||'EUR'); p.cost-=cmp*Math.min(q,p.qty); p.qty-=q; if(p.qty<1e-6){p.qty=0;p.cost=0;}} });
-    return g; })();
+  const anal=pfAnalytics(mkt);
+  const realizedEur=Object.values(anal.perSec).reduce((s,x)=>s+x.realized,0);
+  // marchés présents pour la barre de filtre
+  const order=['Euronext','BRVM','Crypto','Autre'];
+  const markets=order.filter(m=>pf().ops.some(o=>pfMarket(o.sgi)===m));
   let h=`<div class="card"><h2>Investissements 📈</h2>
-   <p class="hint">Portefeuille piloté par tes <b>opérations</b> (achat / vente / approvisionnement) : les positions et les espèces se recalculent tout seuls. <b>CMP</b> = coût moyen pondéré. Mets à jour la colonne <b>Prix</b> (cours actuel) pour voir la valeur et la +/- value.</p>
+   <p class="hint">Portefeuille piloté par tes <b>opérations</b> : positions et espèces se recalculent seules. <b>CMP</b> = coût moyen pondéré. Mets à jour la colonne <b>Prix</b> (cours actuel). Tous les montants sont affichés en <b>${sym}</b>.</p>
    <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
-     <span class="note">Devise d'affichage :</span>
+     <span class="note">Devise :</span>
      <button class="monthtab ${cur==='EUR'?'active':''}" data-pfcur="EUR">€ Euro</button>
      <button class="monthtab ${cur==='XOF'?'active':''}" data-pfcur="XOF">FCFA</button>
-     <span class="note">&nbsp;1 FCFA =</span>${inCell(state.fx.FCFA,'fx|FCFA','style="width:96px"')}<span class="note">€</span>
-     <button class="btn sm" data-act="importops">📥 Importer mes opérations</button>
+     <span class="note">&nbsp;1 FCFA =</span>${inCell(state.fx.FCFA,'fx|FCFA','style="width:92px"')}<span class="note">€</span>
+     <button class="btn sm" data-act="importops">📥 Importer</button>
    </div>
-   <div class="kpis" style="margin:6px 0 4px">${kpi('Investi (en cours)',money(invEur))}${kpi('Valeur actuelle',money(valEur))}${kpi('+/- value latente',money(pvEur,true),pvEur>=0?'good':'bad')}${kpi('Perf. latente',pct(invEur?pvEur/invEur:0),pvEur>=0?'good':'bad')}${kpi('+/- value réalisée',money(realizedEur,true),realizedEur>=0?'good':'bad')}${kpi('Espèces dispo',money(cashEur))}${kpi('Total (titres + espèces)',money(valEur+cashEur))}</div></div>`;
-  // ===== Table des actifs en cours =====
-  h+=`<div class="card"><h2>Mes actifs en cours</h2><div class="tablewrap"><table class="reel" style="min-width:840px"><thead><tr><th>Titre</th><th>Qté</th><th>CMP</th><th>Prix</th><th>Valeur</th><th>Variation</th><th>+/- value</th><th>SGI</th></tr></thead><tbody>`;
-  if(!positions.length) h+=`<tr class="sub"><td colspan="8" class="note">Aucune position. Ajoute des opérations d'achat ci-dessous (ou importe tes relevés).</td></tr>`;
-  positions.forEach(p=>{
-    const cl=p.pv>=0?'good':'bad';
-    h+=`<tr class="sub"><td><b>${esc(p.titre)}</b></td><td>${num(p.qty)}</td><td>${money(eurOf(p.cmp,p.dev))}</td><td>${inCell((pf().prices[p.key]!=null&&pf().prices[p.key]!=='')?pfPriceVal(eurOf(+pf().prices[p.key],p.dev)):'', 'pfprice|'+p.key+'|'+p.dev,'style="width:96px"')} <span class="note">${pfSym()}</span></td><td>${money(eurOf(p.val,p.dev))}</td><td class="${cl}">${p.vp>=0?'+':''}${pct(p.vp)}</td><td class="${cl}" style="font-weight:700">${money(eurOf(p.pv,p.dev),true)}</td><td>${esc(p.sgi)}</td></tr>`;
-  });
-  // total titres
-  h+=`<tr class="grand"><td>Total titres</td><td></td><td></td><td></td><td>${money(valEur)}</td><td></td><td class="${pvEur>=0?'good':'bad'}" style="font-weight:800">${money(pvEur,true)}</td><td></td></tr>`;
-  h+=`</tbody></table></div><p class="note">La colonne <b>Prix</b> est le cours actuel que tu saisis (dans la devise du marché). CMP, valeur et +/- value suivent la devise d'affichage choisie en haut.</p></div>`;
-  // ===== Espèces par SGI =====
-  h+=`<div class="card"><h2>Espèces disponibles par SGI</h2><div class="tablewrap"><table class="reel" style="min-width:420px"><thead><tr><th>SGI / courtier</th><th>Espèces</th></tr></thead><tbody>`;
+   <div class="row" style="gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+     <span class="note">Marché :</span>
+     <button class="monthtab ${mkt==='all'?'active':''}" data-pfmkt="all">Tout</button>
+     ${markets.map(m=>`<button class="monthtab ${mkt===m?'active':''}" data-pfmkt="${m}">${m==='Euronext'?'🇪🇺 Euronext':m==='BRVM'?'🌍 BRVM':m==='Crypto'?'₿ Crypto':m}</button>`).join('')}
+   </div>
+   <div class="kpis" style="margin:6px 0 4px">${kpi('Investi (en cours)',money(invEur))}${kpi('Valeur actuelle',money(valEur))}${kpi('+/- value latente',money(pvEur,true),pvEur>=0?'good':'bad')}${kpi('Variation latente',pct(invEur?pvEur/invEur:0),pvEur>=0?'good':'bad')}${kpi('+/- value réalisée',money(realizedEur,true),realizedEur>=0?'good':'bad')}${kpi('Espèces dispo',money(cashEur))}${kpi('Total (titres + espèces)',money(valEur+cashEur))}</div></div>`;
+  // ===== Actifs en cours =====
+  h+=`<div class="card"><h2>Mes actifs en cours <span class="note">(${sym})</span></h2><div class="tablewrap"><table class="reel pftab" style="min-width:720px"><thead><tr><th>Titre</th><th>Qté</th><th>CMP</th><th>Prix</th><th>Valeur</th><th>Var.</th><th>+/- value</th><th>SGI</th></tr></thead><tbody>`;
+  if(!positions.length) h+=`<tr class="sub"><td colspan="8" class="note">Aucune position pour ce filtre.</td></tr>`;
+  positions.forEach(p=>{ const cl=p.pv>=0?'good':'bad';
+    h+=`<tr class="sub"><td><b>${esc(p.titre)}</b></td><td>${num(p.qty)}</td><td>${moneyN(eurOf(p.cmp,p.dev))}</td><td>${inCell((pf().prices[p.key]!=null&&pf().prices[p.key]!=='')?pfPriceVal(eurOf(+pf().prices[p.key],p.dev)):'', 'pfprice|'+p.key+'|'+p.dev,'style="width:80px"')}</td><td>${moneyN(eurOf(p.val,p.dev))}</td><td class="${cl}">${p.vp>=0?'+':''}${pct(p.vp)}</td><td class="${cl}" style="font-weight:700">${moneyN(eurOf(p.pv,p.dev),true)}</td><td>${esc(p.sgi)}</td></tr>`; });
+  h+=`<tr class="grand"><td>Total titres</td><td></td><td></td><td></td><td>${moneyN(valEur)}</td><td class="${pvEur>=0?'good':'bad'}">${invEur?((pvEur>=0?'+':'')+pct(pvEur/invEur)):''}</td><td class="${pvEur>=0?'good':'bad'}" style="font-weight:800">${moneyN(pvEur,true)}</td><td></td></tr>`;
+  h+=`</tbody></table></div><p class="note">Prix = cours actuel saisi (devise du marché). CMP, valeur et +/- value suivent la devise choisie en haut.</p></div>`;
+  // ===== Espèces =====
+  h+=`<div class="card"><h2>Espèces disponibles par SGI <span class="note">(${sym})</span></h2><div class="tablewrap"><table class="reel pftab" style="min-width:360px"><thead><tr><th>SGI / courtier</th><th>Espèces</th></tr></thead><tbody>`;
   if(!cashArr.length) h+=`<tr class="sub"><td colspan="2" class="note">—</td></tr>`;
-  cashArr.forEach(x=>{ h+=`<tr class="sub"><td>${esc(x.sgi)}</td><td class="${x.amount<0?'bad':''}">${money(eurOf(x.amount,x.dev))}</td></tr>`; });
-  h+=`<tr class="grand"><td>Total espèces</td><td>${money(cashEur)}</td></tr></tbody></table></div><p class="note">Espèces = approvisionnements + ventes + dividendes − achats − retraits (par courtier).</p></div>`;
-  // ===== Journal des opérations =====
-  h+=`<div class="card"><h2>Journal des opérations</h2><p class="hint">Saisis chaque opération : elle met à jour automatiquement tes positions et tes espèces. Montants en € ou en FCFA (colonne Devise). Pour un <b>achat/vente</b> : Qté + Cours ; pour un <b>approvisionnement/retrait/dividende</b> : Montant.</p>
-   <div class="row" style="margin-bottom:8px"><button class="btn" data-act="addop">+ Ajouter une opération</button> <button class="btn" data-act="importops">📥 Importer (relevés / mail)</button></div>
-   <div class="tablewrap"><table class="reel" style="min-width:900px"><thead><tr><th>Date</th><th>SGI</th><th>Type</th><th>Titre</th><th>Qté</th><th>Cours</th><th>Frais</th><th>Montant</th><th>Devise</th><th></th></tr></thead><tbody>`;
-  opsSorted().reverse().forEach(o=>{
-    const isTrade=(o.type==='achat'||o.type==='vente');
-    const montant = isTrade ? ((+o.qty||0)*(+o.price||0)+ (o.type==='achat'?1:-1)*(+o.fees||0)) : (+o.amount||0);
-    h+=`<tr class="sub"><td>${dateCell(o.date,'op|'+o.id+'|date')}</td><td>${txtCell(o.sgi,'op|'+o.id+'|sgi')}</td><td>${selCellL(o.type||'achat','op|'+o.id+'|type',OP_TYPES,OP_TYPES.map(t=>OP_LABEL[t]))}</td><td>${isTrade?txtCell(o.titre,'op|'+o.id+'|titre'):'<span class="note">—</span>'}</td><td>${isTrade?inCell(o.qty,'op|'+o.id+'|qty','style="width:60px"'):''}</td><td>${isTrade?inCell(o.price,'op|'+o.id+'|price','style="width:80px"'):''}</td><td>${isTrade?inCell(o.fees,'op|'+o.id+'|fees','style="width:56px"'):''}</td><td>${isTrade?('<span class="note">'+num(montant)+'</span>'):inCell(o.amount,'op|'+o.id+'|amount','style="width:90px"')}</td><td>${selCellL(o.devise||'EUR','op|'+o.id+'|devise',['EUR','XOF'],['€','FCFA'])}</td><td><span class="del" data-act="delop|${o.id}">✕</span></td></tr>`;
-  });
-  if(!pf().ops.length) h+=`<tr class="sub"><td colspan="10" class="note">Aucune opération. Clique « + Ajouter une opération » ou « Importer ».</td></tr>`;
-  h+=`</tbody></table></div></div>`;
-  // ===== Camemberts =====
+  cashArr.forEach(x=>{ h+=`<tr class="sub"><td>${esc(x.sgi)}</td><td class="${x.amount<0?'bad':''}">${moneyN(eurOf(x.amount,x.dev))}</td></tr>`; });
+  h+=`<tr class="grand"><td>Total espèces</td><td>${moneyN(cashEur)}</td></tr></tbody></table></div></div>`;
+  // ===== Récap +/- value par action =====
+  const perSec=anal.perSec;
+  const keys=[...new Set([...Object.keys(perSec), ...positions.map(p=>p.key)])];
+  if(keys.length){
+    const rows=keys.map(k=>{ const ps=perSec[k], pos=positions.find(p=>p.key===k);
+      return {titre:pos?pos.titre:(ps?ps.titre:k), sgi:pos?pos.sgi:(ps?ps.sgi:''), realized:ps?ps.realized:0, latent:pos?eurOf(pos.pv,pos.dev):0}; })
+      .map(r=>Object.assign(r,{total:r.realized+r.latent})).sort((a,b)=>b.total-a.total);
+    const tR=rows.reduce((s,r)=>s+r.realized,0), tL=rows.reduce((s,r)=>s+r.latent,0);
+    h+=`<div class="card"><h2>Gains / pertes par action <span class="note">(${sym})</span></h2>
+     <p class="hint"><b>Réalisé</b> = résultat des ventes (vs coût moyen). <b>Latent</b> = plus/moins-value sur ce que tu détiens encore.</p>
+     <div class="tablewrap"><table class="reel pftab" style="min-width:520px"><thead><tr><th>Titre</th><th>SGI</th><th>+/- réalisé</th><th>+/- latent</th><th>Total</th></tr></thead><tbody>`;
+    rows.forEach(r=>{ h+=`<tr class="sub"><td><b>${esc(r.titre)}</b></td><td class="note">${esc(r.sgi)}</td><td class="${r.realized>=0?'good':'bad'}">${moneyN(r.realized,true)}</td><td class="${r.latent>=0?'good':'bad'}">${moneyN(r.latent,true)}</td><td class="${r.total>=0?'good':'bad'}" style="font-weight:700">${moneyN(r.total,true)}</td></tr>`; });
+    h+=`<tr class="grand"><td>Total</td><td></td><td class="${tR>=0?'good':'bad'}">${moneyN(tR,true)}</td><td class="${tL>=0?'good':'bad'}">${moneyN(tL,true)}</td><td class="${(tR+tL)>=0?'good':'bad'}" style="font-weight:800">${moneyN(tR+tL,true)}</td></tr>`;
+    h+=`</tbody></table></div></div>`;
+  }
+  // ===== Performance par année (auto-évaluation) =====
+  const py=anal.perYear, years=Object.keys(py).filter(y=>/^\d{4}$/.test(y)).sort();
+  if(years.length){
+    let sumNet=0;
+    h+=`<div class="card"><h2>Ma performance par année 🏆 <span class="note">(${sym})</span></h2>
+     <p class="hint">Ce que tu as <b>concrètement encaissé</b> chaque année : gains réalisés sur ventes + dividendes − frais SGI. La +/- value latente (non vendue) est indiquée à part.</p>
+     <div class="tablewrap"><table class="reel pftab" style="min-width:540px"><thead><tr><th>Année</th><th>+/- réalisé</th><th>Dividendes</th><th>Frais SGI</th><th>Gain net réalisé</th></tr></thead><tbody>`;
+    years.forEach(y=>{ const d=py[y], net=d.realized+d.div-d.fee; sumNet+=net;
+      h+=`<tr class="sub"><td><b>${y}</b></td><td class="${d.realized>=0?'good':'bad'}">${moneyN(d.realized,true)}</td><td>${moneyN(d.div)}</td><td class="${d.fee>0?'bad':''}">${d.fee?'-'+moneyN(d.fee):moneyN(0)}</td><td class="${net>=0?'good':'bad'}" style="font-weight:700">${moneyN(net,true)}</td></tr>`; });
+    h+=`<tr class="grand"><td>Depuis le début</td><td></td><td></td><td></td><td class="${sumNet>=0?'good':'bad'}" style="font-weight:800">${moneyN(sumNet,true)}</td></tr>`;
+    h+=`</tbody></table></div>
+     <div class="kpis" style="margin-top:10px">${kpi('Gain net réalisé (cumul)',money(sumNet,true),sumNet>=0?'good':'bad')}${kpi('+/- value latente (à ce jour)',money(pvEur,true),pvEur>=0?'good':'bad')}${kpi('Performance totale',money(sumNet+pvEur,true),(sumNet+pvEur)>=0?'good':'bad')}</div>
+     <p class="note">« Performance totale » = tout ce que tu as gagné depuis le début (réalisé encaissé + latent encore en portefeuille).</p></div>`;
+  }
+  // ===== Camemberts (filtrés) =====
   const bySgi={}, byTitre={};
   positions.forEach(p=>{ const e=eurOf(p.val,p.dev); bySgi[p.sgi]=(bySgi[p.sgi]||0)+e; byTitre[p.titre]=(byTitre[p.titre]||0)+e; });
   if(positions.length){
-    h+=`<div class="card"><h2>Répartition du portefeuille</h2><div class="grid2">
+    h+=`<div class="card"><h2>Répartition ${mkt==='all'?'du portefeuille':'('+mkt+')'}</h2><div class="grid2">
       <div><h3 style="font-size:14px;margin:0 0 6px">Par SGI</h3>${pieChart(Object.keys(bySgi).map(k=>({label:k,value:bySgi[k]})))}</div>
       <div><h3 style="font-size:14px;margin:0 0 6px">Par titre</h3>${pieChart(Object.keys(byTitre).map(k=>({label:k,value:byTitre[k]})))}</div>
     </div><p class="note">Valeurs converties en € pour la comparaison.</p></div>`;
   }
-  // ===== Performance dans le temps (capital investi net cumulé) + filtre =====
-  const sgis=[...new Set(pf().ops.map(o=>o.sgi||'?'))].filter(Boolean);
-  const filt=state.ui.pfFilter||'all';
-  const opsF=opsSorted().filter(o=> filt==='all' || (o.sgi||'?')===filt);
+  // ===== Évolution — capital investi net (converti dans la devise d'affichage) =====
+  const opsF=opsSorted().filter(o=>inMkt(o.sgi));
   if(opsF.length){
-    // mois de la 1re op à aujourd'hui
-    const first=opsF[0].date||TODAY(); const fy=+first.slice(0,4), fm=+first.slice(5,7)-1;
-    const now=new Date(); const labels=[], vals=[]; let cum=0; let yy=fy, mm=fm;
-    const invByMonth={};
+    const first=opsF[0].date||TODAY(); let yy=+first.slice(0,4), mm=+first.slice(5,7)-1;
+    const now=new Date(); const labels=[], vals=[]; let cum=0;
+    const inv={};
     opsF.forEach(o=>{ const key=(o.date||'').slice(0,7); let flow=0;
       if(o.type==='depot') flow=eurOf(+o.amount||0,o.devise||'EUR');
       else if(o.type==='retrait') flow=-eurOf(+o.amount||0,o.devise||'EUR');
-      // achats/ventes = mouvements internes espèces↔titres, n'ajoutent pas de capital externe
-      invByMonth[key]=(invByMonth[key]||0)+flow; });
-    let guard=0;
-    while(guard++<60){ const key=yy+'-'+String(mm+1).padStart(2,'0'); cum+=(invByMonth[key]||0); labels.push(MONTHS[mm]+' '+String(yy).slice(2)); vals.push(Math.round(cum));
+      inv[key]=(inv[key]||0)+flow; });
+    let g=0;
+    while(g++<80){ const key=yy+'-'+String(mm+1).padStart(2,'0'); cum+=(inv[key]||0); labels.push(MONTHS[mm]+' '+String(yy).slice(2)); vals.push(Math.round(dispFromEur(cum)));
       if(yy===now.getFullYear()&&mm===now.getMonth()) break; mm++; if(mm>11){mm=0;yy++;} }
-    h+=`<div class="card"><h2>Évolution — capital investi net 📊</h2>
-     <div class="monthtabs" style="margin-bottom:8px"><button class="monthtab ${filt==='all'?'active':''}" data-pffilter="all">Tout</button>${sgis.map(s=>`<button class="monthtab ${filt===s?'active':''}" data-pffilter="${esc(s)}">${esc(s)}</button>`).join('')}</div>
-     <p class="hint">Capital net apporté (approvisionnements − retraits) cumulé, en €. Valeur actuelle du filtre : <b>${money(filt==='all'?valEur:positions.filter(p=>p.sgi===filt).reduce((s,p)=>s+eurOf(p.val,p.dev),0))}</b>.</p>
-     ${lineChart(labels,[{name:'Capital investi',color:'var(--accent)',values:vals}])}</div>`;
+    h+=`<div class="card"><h2>Évolution — capital investi net 📊 <span class="note">(${sym})</span></h2>
+     <p class="hint">Capital net apporté (approvisionnements − retraits) cumulé${mkt!=='all'?' — '+mkt:''}. Valeur actuelle : <b>${money(valEur)}</b>.</p>
+     ${lineChart(labels,[{name:'Capital investi',color:'var(--accent)',values:vals}],sym)}</div>`;
   }
   return h;
 }
@@ -1867,6 +1915,7 @@ document.addEventListener('click', e=>{
   if(mt && mt.dataset.breal!==undefined){ state.ui.budgetReal=!state.ui.budgetReal; save(); fullRender(); return; }
   if(mt && mt.dataset.pfcur){ state.ui.pfCur=mt.dataset.pfcur; save(); fullRender(); return; }
   if(mt && mt.dataset.pffilter){ state.ui.pfFilter=mt.dataset.pffilter; save(); fullRender(); return; }
+  if(mt && mt.dataset.pfmkt){ state.ui.pfMkt=mt.dataset.pfmkt; save(); fullRender(); return; }
   const sh=e.target.closest&&e.target.closest('[data-sort]');
   if(sh){ const k=sh.dataset.sort, s=state.ui.investSort||{key:'',dir:1}; state.ui.investSort = s.key===k?{key:k,dir:-s.dir}:{key:k,dir:1}; save(); fullRender(); return; }
   const rc=e.target.closest&&e.target.closest('[data-recap]');
