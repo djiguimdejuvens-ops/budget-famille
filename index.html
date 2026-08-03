@@ -302,7 +302,7 @@
    DONNÉES & MODÈLE
    ========================================================= */
 const LS_KEY = 'budgetFamille_v1';
-const BUILD = '2026-06-22.11';   // version de code — doit être identique sur tous les appareils
+const BUILD = '2026-06-22.12';   // version de code — doit être identique sur tous les appareils
 const MONTHS = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
 const FOYER_GROUPS = [
   'Logement & charges','Courses & quotidien','Transport','Abonnements & services',
@@ -330,7 +330,7 @@ function excNat(k){ return EXC_NATURES.find(n=>n.key===k)||EXC_NATURES.find(n=>n
 function excSumKey(k){ return excList().filter(e=>e.nature===k).reduce((s,e)=>s+(e.montant||0),0); }
 const CURRENCIES = ['EUR','USDT','USD','GBP','FCFA'];
 const FX_DEFAULT = {EUR:1, USDT:0.92, USD:0.92, GBP:1.17, FCFA:0.001524};
-const AUX = ['inv','liq','asset','debt','deduc','dedm','fx','startcash','excm','excl','excn','excmt','goal','simep','simrate','tr','op','pfprice'];
+const AUX = ['inv','liq','asset','debt','deduc','dedm','fx','startcash','excm','excl','excn','excmt','goal','simep','simrate','tr','op','pfprice','ptarget','phorizon','ppub','realcash'];
 
 let uid = 1; const nid = ()=> 'i'+(uid++)+Date.now().toString(36).slice(-3);
 const arr12 = ()=> [0,0,0,0,0,0,0,0,0,0,0,0];
@@ -1284,8 +1284,10 @@ function investSorted(){
    Positions dérivées (QTE/CMP/PRIX/VALEUR/VARIATION/+‑VALUE/SGI),
    espèces par SGI, multi‑devises € ⇄ FCFA (bascule), camemberts, perf.
    ========================================================= */
-function pf(){ if(!state.pf) state.pf={ops:[],prices:{}}; if(!state.pf.ops) state.pf.ops=[]; if(!state.pf.prices) state.pf.prices={}; return state.pf; }
+function pf(){ if(!state.pf) state.pf={ops:[],prices:{}}; if(!state.pf.ops) state.pf.ops=[]; if(!state.pf.prices) state.pf.prices={}; if(!state.pf.meta) state.pf.meta={}; if(!state.pf.realCash) state.pf.realCash={}; return state.pf; }
+function pfMeta(key){ if(!pf().meta[key]) pf().meta[key]={}; return pf().meta[key]; }
 const OP_TYPES=['depot','achat','vente','retrait','dividende','frais'];
+const HORIZONS=['','6m','1an','18m']; const HORIZON_LABELS=['—','6 mois','1 an','18 mois'];
 const OP_LABEL={depot:'Approvisionnement',achat:'Achat',vente:'Vente',retrait:'Retrait',dividende:'Dividende',frais:'Frais SGI'};
 // Marché à partir du courtier (SGI) : Euronext (Fortuneo), BRVM (Coris Bourse), Crypto (Binance…)
 function pfMarket(sgi){ const s=(sgi||'').toLowerCase();
@@ -1386,17 +1388,31 @@ function renderInvest(){
   if(sub==='actifs'){
     h+=`<div class="card"><div class="kpis">${kpi('Investi (en cours)',money(invEur))}${kpi('Valeur actuelle',money(valEur))}${kpi('+/- value latente',money(pvEur,true),pvEur>=0?'good':'bad')}${kpi('Variation latente',pct(invEur?pvEur/invEur:0),pvEur>=0?'good':'bad')}${kpi('+/- value réalisée',money(realizedEur,true),realizedEur>=0?'good':'bad')}${kpi('Espèces dispo',money(cashEur))}${kpi('Total (titres + espèces)',money(valEur+cashEur))}</div></div>`;
     h+=`<div class="card"><div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h2 style="margin:0">Mes actifs en cours <span class="note">(${sym})</span></h2><button class="btn sm" data-act="updcours">🔄 Actualiser les cours</button></div>
-     <div class="tablewrap"><table class="reel pftab" style="min-width:720px"><thead><tr><th>Titre</th><th>Qté</th><th>CMP</th><th>Prix</th><th>Valeur</th><th>Var.</th><th>+/- value</th><th>SGI</th></tr></thead><tbody>`;
-    if(!positions.length) h+=`<tr class="sub"><td colspan="8" class="note">Aucune position pour ce filtre.</td></tr>`;
-    positions.forEach(p=>{ const cl=p.pv>=0?'good':'bad';
-      h+=`<tr class="sub"><td><b>${esc(p.titre)}</b></td><td>${num(p.qty)}</td><td>${moneyN(eurOf(p.cmp,p.dev))}</td><td>${inCell((pf().prices[p.key]!=null&&pf().prices[p.key]!=='')?pfPriceVal(eurOf(+pf().prices[p.key],p.dev)):'', 'pfprice|'+p.key+'|'+p.dev,'style="width:80px"')}</td><td>${moneyN(eurOf(p.val,p.dev))}</td><td class="${cl}">${p.vp>=0?'+':''}${pct(p.vp)}</td><td class="${cl}" style="font-weight:700">${moneyN(eurOf(p.pv,p.dev),true)}</td><td>${esc(p.sgi)}</td></tr>`; });
-    h+=`<tr class="grand"><td>Total titres</td><td></td><td></td><td></td><td>${moneyN(valEur)}</td><td class="${pvEur>=0?'good':'bad'}">${invEur?((pvEur>=0?'+':'')+pct(pvEur/invEur)):''}</td><td class="${pvEur>=0?'good':'bad'}" style="font-weight:800">${moneyN(pvEur,true)}</td><td></td></tr>`;
-    h+=`</tbody></table></div><p class="note">Prix = cours actuel (devise du marché). « 🔄 Actualiser » met à jour la crypto en direct ; pour Euronext/BRVM, importe les cours via Cowork (📥 dans Journal).</p></div>`;
-    // Espèces
-    h+=`<div class="card"><h2>Espèces disponibles par SGI <span class="note">(${sym})</span></h2><div class="tablewrap"><table class="reel pftab" style="min-width:360px"><thead><tr><th>SGI / courtier</th><th>Espèces</th></tr></thead><tbody>`;
-    if(!cashArr.length) h+=`<tr class="sub"><td colspan="2" class="note">—</td></tr>`;
-    cashArr.forEach(x=>{ h+=`<tr class="sub"><td>${esc(x.sgi)}</td><td class="${x.amount<0?'bad':''}">${moneyN(eurOf(x.amount,x.dev))}</td></tr>`; });
-    h+=`<tr class="grand"><td>Total espèces</td><td>${moneyN(cashEur)}</td></tr></tbody></table></div></div>`;
+     <div class="tablewrap"><table class="reel pftab" style="min-width:940px"><thead><tr><th>Titre</th><th>Qté</th><th>CMP</th><th>Prix</th><th>Valeur</th><th>Var.</th><th>+/- value</th><th>Objectif</th><th>% obj.</th><th>Horizon</th><th>SGI</th></tr></thead><tbody>`;
+    if(!positions.length) h+=`<tr class="sub"><td colspan="11" class="note">Aucune position pour ce filtre.</td></tr>`;
+    positions.forEach(p=>{ const cl=p.pv>=0?'good':'bad'; const meta=pf().meta[p.key]||{}; const tgt=(meta.target!=null&&meta.target!=='')?+meta.target:null; const toTgt=(tgt&&p.price)?(tgt-p.price)/p.price:null;
+      h+=`<tr class="sub"><td><b>${esc(p.titre)}</b></td><td>${num(p.qty)}</td><td>${moneyN(eurOf(p.cmp,p.dev))}</td><td>${inCell((pf().prices[p.key]!=null&&pf().prices[p.key]!=='')?pfPriceVal(eurOf(+pf().prices[p.key],p.dev)):'', 'pfprice|'+p.key+'|'+p.dev,'style="width:72px"')}</td><td>${moneyN(eurOf(p.val,p.dev))}</td><td class="${cl}">${p.vp>=0?'+':''}${pct(p.vp)}</td><td class="${cl}" style="font-weight:700">${moneyN(eurOf(p.pv,p.dev),true)}</td><td>${inCell(tgt!=null?pfPriceVal(eurOf(tgt,p.dev)):'', 'ptarget|'+p.key+'|'+p.dev,'style="width:72px"')}</td><td class="${toTgt==null?'':(toTgt>=0?'good':'bad')}">${toTgt==null?'—':((toTgt>=0?'+':'')+pct(toTgt))}</td><td>${selCellL(meta.horizon||'','phorizon|'+p.key,HORIZONS,HORIZON_LABELS)}</td><td>${esc(p.sgi)}</td></tr>`; });
+    h+=`<tr class="grand"><td>Total titres</td><td></td><td></td><td></td><td>${moneyN(valEur)}</td><td class="${pvEur>=0?'good':'bad'}">${invEur?((pvEur>=0?'+':'')+pct(pvEur/invEur)):''}</td><td class="${pvEur>=0?'good':'bad'}" style="font-weight:800">${moneyN(pvEur,true)}</td><td></td><td></td><td></td><td></td></tr>`;
+    h+=`</tbody></table></div><p class="note"><b>Objectif</b> = ton prix cible ; <b>% obj.</b> = chemin restant depuis le cours actuel. <b>Horizon</b> = échéance visée. « 🔄 Actualiser » = crypto en direct ; Euronext/BRVM via Cowork (📥 Journal).</p></div>`;
+    // Espèces + réconciliation
+    h+=`<div class="card"><h2>Espèces disponibles par SGI <span class="note">(${sym})</span></h2>
+     <p class="hint">« Calculé » = d'après tes opérations. Saisis ton <b>solde réel</b> (relevé courtier) : l'écart révèle ce qui manque (taxes/frais non saisis, versement oublié…).</p>
+     <div class="tablewrap"><table class="reel pftab" style="min-width:480px"><thead><tr><th>SGI / courtier</th><th>Calculé</th><th>Solde réel</th><th>Écart</th></tr></thead><tbody>`;
+    if(!cashArr.length) h+=`<tr class="sub"><td colspan="4" class="note">—</td></tr>`;
+    let tCalc=0, tReal=0, anyReal=false;
+    cashArr.forEach(x=>{ const calcEur=eurOf(x.amount,x.dev); tCalc+=calcEur; const rc=pf().realCash[x.sgi]; const hasR=(rc!=null); if(hasR){anyReal=true;tReal+=rc;} const ecart=hasR?calcEur-rc:null;
+      h+=`<tr class="sub"><td>${esc(x.sgi)}</td><td class="${x.amount<0?'bad':''}">${moneyN(calcEur)}</td><td>${inCell(hasR?pfPriceVal(rc):'', 'realcash|'+x.sgi,'style="width:96px"')}</td><td class="${ecart==null?'':(Math.abs(ecart)<0.5?'neutral':'bad')}">${ecart==null?'—':moneyN(ecart,true)}</td></tr>`; });
+    h+=`<tr class="grand"><td>Total</td><td>${moneyN(tCalc)}</td><td>${anyReal?moneyN(tReal):'—'}</td><td>${anyReal?moneyN(tCalc-tReal,true):'—'}</td></tr></tbody></table></div></div>`;
+    // Publications de résultats
+    if(positions.length){
+      const wp=positions.map(p=>{ const meta=pf().meta[p.key]||{}; return {titre:p.titre,sgi:p.sgi,pub:meta.pub||'',key:p.key}; });
+      h+=`<div class="card"><h2>📅 Prochaines publications de résultats</h2>
+       <p class="hint">Date approximative de la prochaine publication de résultats par société (à ajuster). Repères — <b>BRVM</b> : annuels ~avril, semestriels ~sept. ; <b>Euronext</b> : trimestriels (fév / avr-mai / juil / oct-nov).</p>
+       <div class="tablewrap"><table class="reel pftab" style="min-width:440px"><thead><tr><th>Titre</th><th>SGI</th><th>Prochaine publication</th><th>Dans</th></tr></thead><tbody>`;
+      wp.sort((a,b)=>String(a.pub||'9999').localeCompare(String(b.pub||'9999'))).forEach(w=>{ let din='—'; if(/^\d{4}-\d{2}-\d{2}$/.test(w.pub)){ const d=Math.round((new Date(w.pub)-new Date())/86400000); din=d<0?'passé':(d===0?"aujourd'hui":d+' j'); }
+        h+=`<tr class="sub"><td><b>${esc(w.titre)}</b></td><td class="note">${esc(w.sgi)}</td><td>${dateCell(w.pub,'ppub|'+w.key)}</td><td class="note ${/^\d/.test(din)&&parseInt(din)<=21?'warn':''}">${din}</td></tr>`; });
+      h+=`</tbody></table></div></div>`;
+    }
     // Camemberts
     const bySgi={}, byTitre={};
     positions.forEach(p=>{ const e=eurOf(p.val,p.dev); bySgi[p.sgi]=(bySgi[p.sgi]||0)+e; byTitre[p.titre]=(byTitre[p.titre]||0)+e; });
@@ -1821,6 +1837,10 @@ function applyAux(c, el){
       const eur = pfCur()==='XOF'? n*xofRate() : n;             // valeur saisie → €
       pf().prices[key] = rowDev==='XOF'? eur/xofRate() : eur;   // € → devise native
       break; }
+    case 'ptarget': { const key=c[1]+'|'+c[2], rowDev=c[3]||'EUR'; if(el.value===''){ delete pfMeta(key).target; break; } const eur=pfCur()==='XOF'?n*xofRate():n; pfMeta(key).target = rowDev==='XOF'?eur/xofRate():eur; break; }
+    case 'phorizon': pfMeta(c[1]+'|'+c[2]).horizon = v; break;
+    case 'ppub': pfMeta(c[1]+'|'+c[2]).pub = v; break;
+    case 'realcash': { const sgi=c[1]; if(el.value==='') delete pf().realCash[sgi]; else pf().realCash[sgi]=n; break; }
     case 'goal': { const it=(state.goals||[]).find(x=>x.id===c[1]); if(it){ it[c[2]] = (c[2]==='target'||c[2]==='current')?n:v; } break; }
     case 'excm': { const it=excList().find(x=>x.id===c[1]); if(it) it.month=Math.max(0,MONTHS.indexOf(v)); break; }
     case 'excl': { const it=excList().find(x=>x.id===c[1]); if(it) it.label=v; break; }
@@ -2214,15 +2234,21 @@ async function updateCryptoPrices(){
   const others=pfPositions().filter(p=>pfMarket(p.sgi)!=='Crypto').length;
   if(!cryptos.length){ toast(others?'Cours auto = crypto uniquement. Euronext/BRVM : via 📥 Importer (Cowork).':'Aucune position crypto.'); return; }
   toast('Mise à jour des cours crypto…');
-  const ids=[...new Set(cryptos.map(p=>CG_IDS[(p.titre||'').toLowerCase().trim()]||(p.titre||'').toLowerCase().trim()))];
+  const idOf=p=>CG_IDS[(p.titre||'').toLowerCase().trim()]||(p.titre||'').toLowerCase().trim().replace(/\s+/g,'-');
+  const ids=[...new Set(cryptos.map(idOf))];
+  const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(),12000);
   try{
-    const res=await fetch('https://api.coingecko.com/api/v3/simple/price?ids='+encodeURIComponent(ids.join(','))+'&vs_currencies=eur');
-    if(!res.ok) throw new Error('HTTP '+res.status);
-    const data=await res.json(); let n=0;
-    cryptos.forEach(p=>{ const id=CG_IDS[(p.titre||'').toLowerCase().trim()]||(p.titre||'').toLowerCase().trim(); if(data[id]&&data[id].eur){ pf().prices[p.key]=data[id].eur; n++; } });
+    const url='https://api.coingecko.com/api/v3/simple/price?ids='+encodeURIComponent(ids.join(','))+'&vs_currencies=eur&_cb='+Date.now();
+    const res=await fetch(url,{signal:ctrl.signal,cache:'no-store'}); clearTimeout(to);
+    if(!res.ok) throw new Error('HTTP '+res.status+(res.status===429?' (trop de requêtes, réessaie dans 1 min)':''));
+    const data=await res.json(); let n=0; const miss=[];
+    cryptos.forEach(p=>{ const id=idOf(p); if(data[id]&&data[id].eur){ pf().prices[p.key]=data[id].eur; n++; } else miss.push(p.titre); });
     if(n){ markEdit(); save(); fullRender(); }
-    toast(n? ('✅ '+n+' cours crypto à jour'+(others?' — Euronext/BRVM via Cowork':'')) : 'Cours crypto introuvables (vérifie le nom du titre).');
-  }catch(e){ toast('⚠️ MAJ crypto impossible : '+e.message); }
+    let msg = n? ('✅ '+n+' cours crypto à jour') : '⚠️ Aucun cours trouvé';
+    if(miss.length) msg+=' · non reconnu : '+miss.join(', ');
+    if(others) msg+=' · Euronext/BRVM = Cowork';
+    toast(msg);
+  }catch(e){ clearTimeout(to); toast('⚠️ MAJ crypto impossible : '+(e.name==='AbortError'?'délai dépassé (réseau)':e.message)); }
 }
 document.addEventListener('keydown', e=>{
   if((e.metaKey||e.ctrlKey) && (e.key==='z'||e.key==='Z')){ e.preventDefault(); if(e.shiftKey) redo(); else undo(); }
