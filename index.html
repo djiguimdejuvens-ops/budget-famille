@@ -302,7 +302,7 @@
    DONNÉES & MODÈLE
    ========================================================= */
 const LS_KEY = 'budgetFamille_v1';
-const BUILD = '2026-06-22.10';   // version de code — doit être identique sur tous les appareils
+const BUILD = '2026-06-22.11';   // version de code — doit être identique sur tous les appareils
 const MONTHS = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
 const FOYER_GROUPS = [
   'Logement & charges','Courses & quotidien','Transport','Abonnements & services',
@@ -422,6 +422,7 @@ function migrate(){
   if(!state.pf.ops) state.pf.ops=[]; if(!state.pf.prices) state.pf.prices={};
   if(!state.ui.pfCur) state.ui.pfCur='EUR';
   if(!state.ui.pfMkt) state.ui.pfMkt='all';
+  if(!state.ui.invSub) state.ui.invSub='actifs';
   if(!state.ui.budgetScope) state.ui.budgetScope='foyer';
   if(!state.ui.budgetView) state.ui.budgetView='year';
   if(state.ui.budgetMonth==null) state.ui.budgetMonth=new Date().getMonth();
@@ -1303,9 +1304,9 @@ function pfAnalytics(mkt){
     if(o.type!=='achat'&&o.type!=='vente') return;
     const k=(o.sgi||'?')+'|'+(o.titre||'?');
     if(!run[k])run[k]={qty:0,cost:0};
-    if(!perSec[k])perSec[k]={sgi:o.sgi||'?',titre:o.titre||'?',dev,realized:0};
+    if(!perSec[k])perSec[k]={sgi:o.sgi||'?',titre:o.titre||'?',dev,realized:0,bought:0};
     const p=run[k],q=+o.qty||0,prc=+o.price||0,fr=+o.fees||0;
-    if(o.type==='achat'){ p.qty+=q; p.cost+=q*prc+fr; }
+    if(o.type==='achat'){ p.qty+=q; p.cost+=q*prc+fr; perSec[k].bought+=eurOf(q*prc+fr,dev); }
     else { const cmp=p.qty?p.cost/p.qty:0, g=eurOf(q*prc-fr-cmp*q,dev); perSec[k].realized+=g; ey(y).realized+=g; p.cost-=cmp*Math.min(q,p.qty); p.qty-=q; if(p.qty<1e-6){p.qty=0;p.cost=0;} }
   });
   return {perSec,perYear};
@@ -1351,7 +1352,7 @@ function pfValueEur(){ return pfPositions().reduce((s,p)=>s+eurOf(p.val,p.dev),0
 function pfCashEur(){ return pfCash().reduce((s,x)=>s+eurOf(x.amount,x.dev),0); }
 function renderInvest(){
   const cur=pfCur(), sym=pfSym();
-  const mkt=state.ui.pfMkt||'all';
+  const mkt=state.ui.pfMkt||'all', sub=state.ui.invSub||'actifs';
   const inMkt=sgi=> mkt==='all'||pfMarket(sgi)===mkt;
   const positions=pfPositions().filter(p=>inMkt(p.sgi));
   const cashArr=pfCash().filter(x=>inMkt(x.sgi));
@@ -1359,92 +1360,108 @@ function renderInvest(){
   const valEur=positions.reduce((s,p)=>s+eurOf(p.val,p.dev),0);
   const pvEur=valEur-invEur;
   const cashEur=cashArr.reduce((s,x)=>s+eurOf(x.amount,x.dev),0);
-  const anal=pfAnalytics(mkt);
-  const realizedEur=Object.values(anal.perSec).reduce((s,x)=>s+x.realized,0);
-  // marchés présents pour la barre de filtre
+  const anal=pfAnalytics(mkt), perSec=anal.perSec;
+  const realizedEur=Object.values(perSec).reduce((s,x)=>s+x.realized,0);
   const order=['Euronext','BRVM','Crypto','Autre'];
   const markets=order.filter(m=>pf().ops.some(o=>pfMarket(o.sgi)===m));
+  // ---- En-tête commun : devise + marché + sous-onglets ----
   let h=`<div class="card"><h2>Investissements 📈</h2>
-   <p class="hint">Portefeuille piloté par tes <b>opérations</b> : positions et espèces se recalculent seules. <b>CMP</b> = coût moyen pondéré. Mets à jour la colonne <b>Prix</b> (cours actuel). Tous les montants sont affichés en <b>${sym}</b>.</p>
    <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
      <span class="note">Devise :</span>
      <button class="monthtab ${cur==='EUR'?'active':''}" data-pfcur="EUR">€ Euro</button>
      <button class="monthtab ${cur==='XOF'?'active':''}" data-pfcur="XOF">FCFA</button>
      <span class="note">&nbsp;1 FCFA =</span>${inCell(state.fx.FCFA,'fx|FCFA','style="width:92px"')}<span class="note">€</span>
-     <button class="btn sm" data-act="importops">📥 Importer</button>
    </div>
    <div class="row" style="gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
      <span class="note">Marché :</span>
      <button class="monthtab ${mkt==='all'?'active':''}" data-pfmkt="all">Tout</button>
      ${markets.map(m=>`<button class="monthtab ${mkt===m?'active':''}" data-pfmkt="${m}">${m==='Euronext'?'🇪🇺 Euronext':m==='BRVM'?'🌍 BRVM':m==='Crypto'?'₿ Crypto':m}</button>`).join('')}
    </div>
-   <div class="kpis" style="margin:6px 0 4px">${kpi('Investi (en cours)',money(invEur))}${kpi('Valeur actuelle',money(valEur))}${kpi('+/- value latente',money(pvEur,true),pvEur>=0?'good':'bad')}${kpi('Variation latente',pct(invEur?pvEur/invEur:0),pvEur>=0?'good':'bad')}${kpi('+/- value réalisée',money(realizedEur,true),realizedEur>=0?'good':'bad')}${kpi('Espèces dispo',money(cashEur))}${kpi('Total (titres + espèces)',money(valEur+cashEur))}</div></div>`;
-  // ===== Actifs en cours =====
-  h+=`<div class="card"><h2>Mes actifs en cours <span class="note">(${sym})</span></h2><div class="tablewrap"><table class="reel pftab" style="min-width:720px"><thead><tr><th>Titre</th><th>Qté</th><th>CMP</th><th>Prix</th><th>Valeur</th><th>Var.</th><th>+/- value</th><th>SGI</th></tr></thead><tbody>`;
-  if(!positions.length) h+=`<tr class="sub"><td colspan="8" class="note">Aucune position pour ce filtre.</td></tr>`;
-  positions.forEach(p=>{ const cl=p.pv>=0?'good':'bad';
-    h+=`<tr class="sub"><td><b>${esc(p.titre)}</b></td><td>${num(p.qty)}</td><td>${moneyN(eurOf(p.cmp,p.dev))}</td><td>${inCell((pf().prices[p.key]!=null&&pf().prices[p.key]!=='')?pfPriceVal(eurOf(+pf().prices[p.key],p.dev)):'', 'pfprice|'+p.key+'|'+p.dev,'style="width:80px"')}</td><td>${moneyN(eurOf(p.val,p.dev))}</td><td class="${cl}">${p.vp>=0?'+':''}${pct(p.vp)}</td><td class="${cl}" style="font-weight:700">${moneyN(eurOf(p.pv,p.dev),true)}</td><td>${esc(p.sgi)}</td></tr>`; });
-  h+=`<tr class="grand"><td>Total titres</td><td></td><td></td><td></td><td>${moneyN(valEur)}</td><td class="${pvEur>=0?'good':'bad'}">${invEur?((pvEur>=0?'+':'')+pct(pvEur/invEur)):''}</td><td class="${pvEur>=0?'good':'bad'}" style="font-weight:800">${moneyN(pvEur,true)}</td><td></td></tr>`;
-  h+=`</tbody></table></div><p class="note">Prix = cours actuel saisi (devise du marché). CMP, valeur et +/- value suivent la devise choisie en haut.</p></div>`;
-  // ===== Espèces =====
-  h+=`<div class="card"><h2>Espèces disponibles par SGI <span class="note">(${sym})</span></h2><div class="tablewrap"><table class="reel pftab" style="min-width:360px"><thead><tr><th>SGI / courtier</th><th>Espèces</th></tr></thead><tbody>`;
-  if(!cashArr.length) h+=`<tr class="sub"><td colspan="2" class="note">—</td></tr>`;
-  cashArr.forEach(x=>{ h+=`<tr class="sub"><td>${esc(x.sgi)}</td><td class="${x.amount<0?'bad':''}">${moneyN(eurOf(x.amount,x.dev))}</td></tr>`; });
-  h+=`<tr class="grand"><td>Total espèces</td><td>${moneyN(cashEur)}</td></tr></tbody></table></div></div>`;
-  // ===== Récap +/- value par action =====
-  const perSec=anal.perSec;
-  const keys=[...new Set([...Object.keys(perSec), ...positions.map(p=>p.key)])];
-  if(keys.length){
-    const rows=keys.map(k=>{ const ps=perSec[k], pos=positions.find(p=>p.key===k);
-      return {titre:pos?pos.titre:(ps?ps.titre:k), sgi:pos?pos.sgi:(ps?ps.sgi:''), realized:ps?ps.realized:0, latent:pos?eurOf(pos.pv,pos.dev):0}; })
-      .map(r=>Object.assign(r,{total:r.realized+r.latent})).sort((a,b)=>b.total-a.total);
-    const tR=rows.reduce((s,r)=>s+r.realized,0), tL=rows.reduce((s,r)=>s+r.latent,0);
-    h+=`<div class="card"><h2>Gains / pertes par action <span class="note">(${sym})</span></h2>
-     <p class="hint"><b>Réalisé</b> = résultat des ventes (vs coût moyen). <b>Latent</b> = plus/moins-value sur ce que tu détiens encore.</p>
-     <div class="tablewrap"><table class="reel pftab" style="min-width:520px"><thead><tr><th>Titre</th><th>SGI</th><th>+/- réalisé</th><th>+/- latent</th><th>Total</th></tr></thead><tbody>`;
-    rows.forEach(r=>{ h+=`<tr class="sub"><td><b>${esc(r.titre)}</b></td><td class="note">${esc(r.sgi)}</td><td class="${r.realized>=0?'good':'bad'}">${moneyN(r.realized,true)}</td><td class="${r.latent>=0?'good':'bad'}">${moneyN(r.latent,true)}</td><td class="${r.total>=0?'good':'bad'}" style="font-weight:700">${moneyN(r.total,true)}</td></tr>`; });
-    h+=`<tr class="grand"><td>Total</td><td></td><td class="${tR>=0?'good':'bad'}">${moneyN(tR,true)}</td><td class="${tL>=0?'good':'bad'}">${moneyN(tL,true)}</td><td class="${(tR+tL)>=0?'good':'bad'}" style="font-weight:800">${moneyN(tR+tL,true)}</td></tr>`;
-    h+=`</tbody></table></div></div>`;
+   <div class="monthtabs" style="margin-top:2px">
+     <button class="monthtab ${sub==='actifs'?'active':''}" data-invsub="actifs">📊 Actifs</button>
+     <button class="monthtab ${sub==='journal'?'active':''}" data-invsub="journal">🧾 Journal</button>
+     <button class="monthtab ${sub==='perf'?'active':''}" data-invsub="perf">🏆 Performance</button>
+   </div></div>`;
+
+  if(sub==='actifs'){
+    h+=`<div class="card"><div class="kpis">${kpi('Investi (en cours)',money(invEur))}${kpi('Valeur actuelle',money(valEur))}${kpi('+/- value latente',money(pvEur,true),pvEur>=0?'good':'bad')}${kpi('Variation latente',pct(invEur?pvEur/invEur:0),pvEur>=0?'good':'bad')}${kpi('+/- value réalisée',money(realizedEur,true),realizedEur>=0?'good':'bad')}${kpi('Espèces dispo',money(cashEur))}${kpi('Total (titres + espèces)',money(valEur+cashEur))}</div></div>`;
+    h+=`<div class="card"><div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h2 style="margin:0">Mes actifs en cours <span class="note">(${sym})</span></h2><button class="btn sm" data-act="updcours">🔄 Actualiser les cours</button></div>
+     <div class="tablewrap"><table class="reel pftab" style="min-width:720px"><thead><tr><th>Titre</th><th>Qté</th><th>CMP</th><th>Prix</th><th>Valeur</th><th>Var.</th><th>+/- value</th><th>SGI</th></tr></thead><tbody>`;
+    if(!positions.length) h+=`<tr class="sub"><td colspan="8" class="note">Aucune position pour ce filtre.</td></tr>`;
+    positions.forEach(p=>{ const cl=p.pv>=0?'good':'bad';
+      h+=`<tr class="sub"><td><b>${esc(p.titre)}</b></td><td>${num(p.qty)}</td><td>${moneyN(eurOf(p.cmp,p.dev))}</td><td>${inCell((pf().prices[p.key]!=null&&pf().prices[p.key]!=='')?pfPriceVal(eurOf(+pf().prices[p.key],p.dev)):'', 'pfprice|'+p.key+'|'+p.dev,'style="width:80px"')}</td><td>${moneyN(eurOf(p.val,p.dev))}</td><td class="${cl}">${p.vp>=0?'+':''}${pct(p.vp)}</td><td class="${cl}" style="font-weight:700">${moneyN(eurOf(p.pv,p.dev),true)}</td><td>${esc(p.sgi)}</td></tr>`; });
+    h+=`<tr class="grand"><td>Total titres</td><td></td><td></td><td></td><td>${moneyN(valEur)}</td><td class="${pvEur>=0?'good':'bad'}">${invEur?((pvEur>=0?'+':'')+pct(pvEur/invEur)):''}</td><td class="${pvEur>=0?'good':'bad'}" style="font-weight:800">${moneyN(pvEur,true)}</td><td></td></tr>`;
+    h+=`</tbody></table></div><p class="note">Prix = cours actuel (devise du marché). « 🔄 Actualiser » met à jour la crypto en direct ; pour Euronext/BRVM, importe les cours via Cowork (📥 dans Journal).</p></div>`;
+    // Espèces
+    h+=`<div class="card"><h2>Espèces disponibles par SGI <span class="note">(${sym})</span></h2><div class="tablewrap"><table class="reel pftab" style="min-width:360px"><thead><tr><th>SGI / courtier</th><th>Espèces</th></tr></thead><tbody>`;
+    if(!cashArr.length) h+=`<tr class="sub"><td colspan="2" class="note">—</td></tr>`;
+    cashArr.forEach(x=>{ h+=`<tr class="sub"><td>${esc(x.sgi)}</td><td class="${x.amount<0?'bad':''}">${moneyN(eurOf(x.amount,x.dev))}</td></tr>`; });
+    h+=`<tr class="grand"><td>Total espèces</td><td>${moneyN(cashEur)}</td></tr></tbody></table></div></div>`;
+    // Camemberts
+    const bySgi={}, byTitre={};
+    positions.forEach(p=>{ const e=eurOf(p.val,p.dev); bySgi[p.sgi]=(bySgi[p.sgi]||0)+e; byTitre[p.titre]=(byTitre[p.titre]||0)+e; });
+    if(positions.length){
+      h+=`<div class="card"><h2>Répartition ${mkt==='all'?'du portefeuille':'('+mkt+')'}</h2><div class="grid2">
+        <div><h3 style="font-size:14px;margin:0 0 6px">Par SGI</h3>${pieChart(Object.keys(bySgi).map(k=>({label:k,value:bySgi[k]})))}</div>
+        <div><h3 style="font-size:14px;margin:0 0 6px">Par titre</h3>${pieChart(Object.keys(byTitre).map(k=>({label:k,value:byTitre[k]})))}</div>
+      </div><p class="note">Valeurs converties en € pour la comparaison.</p></div>`;
+    }
+    // Évolution
+    const opsF=opsSorted().filter(o=>inMkt(o.sgi));
+    const dated=opsF.filter(o=>/^\d{4}-\d{2}/.test(o.date||''));
+    if(dated.length){
+      const first=dated[0].date; let yy=+first.slice(0,4), mm=+first.slice(5,7)-1;
+      const now=new Date(); const labels=[], vals=[]; let cum=0; const inv={};
+      opsF.forEach(o=>{ const key=(o.date||'').slice(0,7); let flow=0;
+        if(o.type==='depot') flow=eurOf(+o.amount||0,o.devise||'EUR'); else if(o.type==='retrait') flow=-eurOf(+o.amount||0,o.devise||'EUR');
+        inv[key]=(inv[key]||0)+flow; });
+      let g=0;
+      while(g++<80){ const key=yy+'-'+String(mm+1).padStart(2,'0'); cum+=(inv[key]||0); labels.push(MONTHS[mm]+' '+String(yy).slice(2)); vals.push(Math.round(dispFromEur(cum)));
+        if(yy===now.getFullYear()&&mm===now.getMonth()) break; mm++; if(mm>11){mm=0;yy++;} }
+      h+=`<div class="card"><h2>Évolution — capital investi net 📊 <span class="note">(${sym})</span></h2>
+       <p class="hint">Capital net apporté (approvisionnements − retraits) cumulé${mkt!=='all'?' — '+mkt:''}. Valeur actuelle : <b>${money(valEur)}</b>.</p>
+       ${lineChart(labels,[{name:'Capital investi',color:'var(--accent)',values:vals}],sym)}</div>`;
+    }
   }
-  // ===== Performance par année (auto-évaluation) =====
-  const py=anal.perYear, years=Object.keys(py).filter(y=>/^\d{4}$/.test(y)).sort();
-  if(years.length){
-    let sumNet=0;
-    h+=`<div class="card"><h2>Ma performance par année 🏆 <span class="note">(${sym})</span></h2>
-     <p class="hint">Ce que tu as <b>concrètement encaissé</b> chaque année : gains réalisés sur ventes + dividendes − frais SGI. La +/- value latente (non vendue) est indiquée à part.</p>
-     <div class="tablewrap"><table class="reel pftab" style="min-width:540px"><thead><tr><th>Année</th><th>+/- réalisé</th><th>Dividendes</th><th>Frais SGI</th><th>Gain net réalisé</th></tr></thead><tbody>`;
-    years.forEach(y=>{ const d=py[y], net=d.realized+d.div-d.fee; sumNet+=net;
-      h+=`<tr class="sub"><td><b>${y}</b></td><td class="${d.realized>=0?'good':'bad'}">${moneyN(d.realized,true)}</td><td>${moneyN(d.div)}</td><td class="${d.fee>0?'bad':''}">${d.fee?'-'+moneyN(d.fee):moneyN(0)}</td><td class="${net>=0?'good':'bad'}" style="font-weight:700">${moneyN(net,true)}</td></tr>`; });
-    h+=`<tr class="grand"><td>Depuis le début</td><td></td><td></td><td></td><td class="${sumNet>=0?'good':'bad'}" style="font-weight:800">${moneyN(sumNet,true)}</td></tr>`;
-    h+=`</tbody></table></div>
-     <div class="kpis" style="margin-top:10px">${kpi('Gain net réalisé (cumul)',money(sumNet,true),sumNet>=0?'good':'bad')}${kpi('+/- value latente (à ce jour)',money(pvEur,true),pvEur>=0?'good':'bad')}${kpi('Performance totale',money(sumNet+pvEur,true),(sumNet+pvEur)>=0?'good':'bad')}</div>
-     <p class="note">« Performance totale » = tout ce que tu as gagné depuis le début (réalisé encaissé + latent encore en portefeuille).</p></div>`;
+  else if(sub==='journal'){
+    h+=`<div class="card"><h2>Journal des opérations</h2><p class="hint">Chaque opération met à jour automatiquement tes positions et tes espèces. Montants en € ou FCFA. <b>Achat/Vente</b> : Qté + Cours (+ Frais) ; <b>Approvisionnement / Retrait / Dividende / Frais SGI</b> : Montant.</p>
+     <div class="row" style="margin-bottom:8px"><button class="btn" data-act="addop">+ Ajouter une opération</button> <button class="btn" data-act="importops">📥 Importer (Cowork / relevés)</button></div>
+     <div class="tablewrap"><table class="reel pftab" style="min-width:880px"><thead><tr><th>Date</th><th>SGI</th><th>Type</th><th>Titre</th><th>Qté</th><th>Cours</th><th>Frais</th><th>Montant</th><th>Devise</th><th></th></tr></thead><tbody>`;
+    opsSorted().reverse().forEach(o=>{ const isTrade=(o.type==='achat'||o.type==='vente');
+      const montant = isTrade ? ((+o.qty||0)*(+o.price||0)+(o.type==='achat'?1:-1)*(+o.fees||0)) : (+o.amount||0);
+      h+=`<tr class="sub"><td>${dateCell(o.date,'op|'+o.id+'|date')}</td><td>${txtCell(o.sgi,'op|'+o.id+'|sgi')}</td><td>${selCellL(o.type||'achat','op|'+o.id+'|type',OP_TYPES,OP_TYPES.map(t=>OP_LABEL[t]))}</td><td>${isTrade?txtCell(o.titre,'op|'+o.id+'|titre'):'<span class="note">—</span>'}</td><td>${isTrade?inCell(o.qty,'op|'+o.id+'|qty','style="width:56px"'):''}</td><td>${isTrade?inCell(o.price,'op|'+o.id+'|price','style="width:76px"'):''}</td><td>${isTrade?inCell(o.fees,'op|'+o.id+'|fees','style="width:52px"'):''}</td><td>${isTrade?('<span class="note">'+num(montant)+'</span>'):inCell(o.amount,'op|'+o.id+'|amount','style="width:84px"')}</td><td>${selCellL(o.devise||'EUR','op|'+o.id+'|devise',['EUR','XOF'],['€','FCFA'])}</td><td><span class="del" data-act="delop|${o.id}">✕</span></td></tr>`; });
+    if(!pf().ops.length) h+=`<tr class="sub"><td colspan="10" class="note">Aucune opération. Clique « + Ajouter » ou « 📥 Importer ».</td></tr>`;
+    h+=`</tbody></table></div><p class="note">${pf().ops.length} opération(s) enregistrée(s).</p></div>`;
   }
-  // ===== Camemberts (filtrés) =====
-  const bySgi={}, byTitre={};
-  positions.forEach(p=>{ const e=eurOf(p.val,p.dev); bySgi[p.sgi]=(bySgi[p.sgi]||0)+e; byTitre[p.titre]=(byTitre[p.titre]||0)+e; });
-  if(positions.length){
-    h+=`<div class="card"><h2>Répartition ${mkt==='all'?'du portefeuille':'('+mkt+')'}</h2><div class="grid2">
-      <div><h3 style="font-size:14px;margin:0 0 6px">Par SGI</h3>${pieChart(Object.keys(bySgi).map(k=>({label:k,value:bySgi[k]})))}</div>
-      <div><h3 style="font-size:14px;margin:0 0 6px">Par titre</h3>${pieChart(Object.keys(byTitre).map(k=>({label:k,value:byTitre[k]})))}</div>
-    </div><p class="note">Valeurs converties en € pour la comparaison.</p></div>`;
-  }
-  // ===== Évolution — capital investi net (converti dans la devise d'affichage) =====
-  const opsF=opsSorted().filter(o=>inMkt(o.sgi));
-  if(opsF.length){
-    const first=opsF[0].date||TODAY(); let yy=+first.slice(0,4), mm=+first.slice(5,7)-1;
-    const now=new Date(); const labels=[], vals=[]; let cum=0;
-    const inv={};
-    opsF.forEach(o=>{ const key=(o.date||'').slice(0,7); let flow=0;
-      if(o.type==='depot') flow=eurOf(+o.amount||0,o.devise||'EUR');
-      else if(o.type==='retrait') flow=-eurOf(+o.amount||0,o.devise||'EUR');
-      inv[key]=(inv[key]||0)+flow; });
-    let g=0;
-    while(g++<80){ const key=yy+'-'+String(mm+1).padStart(2,'0'); cum+=(inv[key]||0); labels.push(MONTHS[mm]+' '+String(yy).slice(2)); vals.push(Math.round(dispFromEur(cum)));
-      if(yy===now.getFullYear()&&mm===now.getMonth()) break; mm++; if(mm>11){mm=0;yy++;} }
-    h+=`<div class="card"><h2>Évolution — capital investi net 📊 <span class="note">(${sym})</span></h2>
-     <p class="hint">Capital net apporté (approvisionnements − retraits) cumulé${mkt!=='all'?' — '+mkt:''}. Valeur actuelle : <b>${money(valEur)}</b>.</p>
-     ${lineChart(labels,[{name:'Capital investi',color:'var(--accent)',values:vals}],sym)}</div>`;
+  else if(sub==='perf'){
+    // Gains / pertes par action (+ investi + variation)
+    const keys=[...new Set([...Object.keys(perSec), ...positions.map(p=>p.key)])];
+    if(keys.length){
+      const rows=keys.map(k=>{ const ps=perSec[k], pos=positions.find(p=>p.key===k);
+        return {titre:pos?pos.titre:(ps?ps.titre:k), sgi:pos?pos.sgi:(ps?ps.sgi:''), invested:ps?ps.bought:0, realized:ps?ps.realized:0, latent:pos?eurOf(pos.pv,pos.dev):0}; })
+        .map(r=>Object.assign(r,{total:r.realized+r.latent, vp:r.invested?(r.realized+r.latent)/r.invested:0})).sort((a,b)=>b.total-a.total);
+      const tI=rows.reduce((s,r)=>s+r.invested,0), tR=rows.reduce((s,r)=>s+r.realized,0), tL=rows.reduce((s,r)=>s+r.latent,0);
+      h+=`<div class="card"><h2>Gains / pertes par action <span class="note">(${sym})</span></h2>
+       <p class="hint"><b>Investi</b> = total acheté. <b>Réalisé</b> = résultat des ventes (vs coût moyen). <b>Latent</b> = plus/moins-value sur ce que tu détiens. <b>Var.</b> = (réalisé + latent) / investi.</p>
+       <div class="tablewrap"><table class="reel pftab" style="min-width:640px"><thead><tr><th>Titre</th><th>SGI</th><th>Investi</th><th>+/- réalisé</th><th>+/- latent</th><th>Total</th><th>Var.</th></tr></thead><tbody>`;
+      rows.forEach(r=>{ h+=`<tr class="sub"><td><b>${esc(r.titre)}</b></td><td class="note">${esc(r.sgi)}</td><td>${moneyN(r.invested)}</td><td class="${r.realized>=0?'good':'bad'}">${moneyN(r.realized,true)}</td><td class="${r.latent>=0?'good':'bad'}">${moneyN(r.latent,true)}</td><td class="${r.total>=0?'good':'bad'}" style="font-weight:700">${moneyN(r.total,true)}</td><td class="${r.total>=0?'good':'bad'}">${r.invested?((r.vp>=0?'+':'')+pct(r.vp)):'—'}</td></tr>`; });
+      h+=`<tr class="grand"><td>Total</td><td></td><td>${moneyN(tI)}</td><td class="${tR>=0?'good':'bad'}">${moneyN(tR,true)}</td><td class="${tL>=0?'good':'bad'}">${moneyN(tL,true)}</td><td class="${(tR+tL)>=0?'good':'bad'}" style="font-weight:800">${moneyN(tR+tL,true)}</td><td class="${(tR+tL)>=0?'good':'bad'}">${tI?((tR+tL>=0?'+':'')+pct((tR+tL)/tI)):''}</td></tr>`;
+      h+=`</tbody></table></div></div>`;
+    }
+    // Performance par année
+    const py=anal.perYear, years=Object.keys(py).filter(y=>/^\d{4}$/.test(y)).sort();
+    if(years.length){
+      let sumNet=0;
+      h+=`<div class="card"><h2>Ma performance par année 🏆 <span class="note">(${sym})</span></h2>
+       <p class="hint">Ce que tu as <b>concrètement encaissé</b> par an : gains réalisés (ventes) + dividendes − frais SGI. La +/- value latente (non vendue) est indiquée à part.</p>
+       <div class="tablewrap"><table class="reel pftab" style="min-width:540px"><thead><tr><th>Année</th><th>+/- réalisé</th><th>Dividendes</th><th>Frais SGI</th><th>Gain net réalisé</th></tr></thead><tbody>`;
+      years.forEach(y=>{ const d=py[y], net=d.realized+d.div-d.fee; sumNet+=net;
+        h+=`<tr class="sub"><td><b>${y}</b></td><td class="${d.realized>=0?'good':'bad'}">${moneyN(d.realized,true)}</td><td>${moneyN(d.div)}</td><td class="${d.fee>0?'bad':''}">${d.fee?'-'+moneyN(d.fee):moneyN(0)}</td><td class="${net>=0?'good':'bad'}" style="font-weight:700">${moneyN(net,true)}</td></tr>`; });
+      h+=`<tr class="grand"><td>Depuis le début</td><td></td><td></td><td></td><td class="${sumNet>=0?'good':'bad'}" style="font-weight:800">${moneyN(sumNet,true)}</td></tr>`;
+      h+=`</tbody></table></div>
+       <div class="kpis" style="margin-top:10px">${kpi('Gain net réalisé (cumul)',money(sumNet,true),sumNet>=0?'good':'bad')}${kpi('+/- value latente',money(pvEur,true),pvEur>=0?'good':'bad')}${kpi('Performance totale',money(sumNet+pvEur,true),(sumNet+pvEur)>=0?'good':'bad')}</div>
+       <p class="note">« Performance totale » = tout ce que tu as gagné depuis le début (réalisé encaissé + latent encore en portefeuille).</p></div>`;
+    } else h+=`<div class="card"><p class="note">Ajoute des opérations pour voir ta performance.</p></div>`;
   }
   return h;
 }
@@ -1916,6 +1933,8 @@ document.addEventListener('click', e=>{
   if(mt && mt.dataset.pfcur){ state.ui.pfCur=mt.dataset.pfcur; save(); fullRender(); return; }
   if(mt && mt.dataset.pffilter){ state.ui.pfFilter=mt.dataset.pffilter; save(); fullRender(); return; }
   if(mt && mt.dataset.pfmkt){ state.ui.pfMkt=mt.dataset.pfmkt; save(); fullRender(); return; }
+  const isub=e.target.closest&&e.target.closest('[data-invsub]');
+  if(isub){ state.ui.invSub=isub.dataset.invsub; save(); fullRender(); return; }
   const sh=e.target.closest&&e.target.closest('[data-sort]');
   if(sh){ const k=sh.dataset.sort, s=state.ui.investSort||{key:'',dir:1}; state.ui.investSort = s.key===k?{key:k,dir:-s.dir}:{key:k,dir:1}; save(); fullRender(); return; }
   const rc=e.target.closest&&e.target.closest('[data-recap]');
@@ -1982,6 +2001,7 @@ document.addEventListener('click', e=>{
     case 'trfee': { const it=transList().find(x=>x.id===c[1]); if(it) it.feeMode = it.feeMode==='pct'?'eur':'pct'; break; }
     case 'importtr': openTrModal(); return;
     case 'addop': pf().ops.push({id:nid(),date:TODAY(),sgi:'Fortuneo',type:'achat',titre:'',qty:0,price:0,fees:0,amount:0,devise:'EUR'}); break;
+    case 'updcours': updateCryptoPrices(); return;
     case 'delop': pf().ops=pf().ops.filter(x=>x.id!==c[1]); break;
     case 'importops': openOpsModal(); return;
     case 'sumdimes': {
@@ -2186,6 +2206,24 @@ document.getElementById('opsClose').onclick=closeOpsModal;
 document.getElementById('opsModal').addEventListener('click', e=>{ if(e.target.id==='opsModal') closeOpsModal(); });
 document.getElementById('opsCopyCmd').onclick=()=>{ const ta=document.getElementById('opsCmd'); ta.select(); try{ navigator.clipboard.writeText(ta.value); }catch(e){} toast('Commande copiée'); };
 document.getElementById('opsImport').onclick=()=>{ const res=importOps(document.getElementById('opsPaste').value); document.getElementById('opsMsg').textContent=res.msg; if(res.ok){ fullRender(); setTimeout(()=>{ if(document.getElementById('opsModal')) closeOpsModal(); },900); } };
+// Mise à jour automatique des cours : crypto en direct (CoinGecko, CORS OK depuis le navigateur).
+// Euronext/BRVM ne sont pas accessibles depuis un site statique (CORS) → passer par Cowork (import cours).
+const CG_IDS={bitcoin:'bitcoin',btc:'bitcoin',ethereum:'ethereum',eth:'ethereum',bnb:'binancecoin',binancecoin:'binancecoin',solana:'solana',sol:'solana',cardano:'cardano',ada:'cardano',ripple:'ripple',xrp:'ripple',dogecoin:'dogecoin',doge:'dogecoin',polkadot:'polkadot',dot:'polkadot',litecoin:'litecoin',ltc:'litecoin',polygon:'matic-network',matic:'matic-network',avalanche:'avalanche-2',avax:'avalanche-2'};
+async function updateCryptoPrices(){
+  const cryptos=pfPositions().filter(p=>pfMarket(p.sgi)==='Crypto');
+  const others=pfPositions().filter(p=>pfMarket(p.sgi)!=='Crypto').length;
+  if(!cryptos.length){ toast(others?'Cours auto = crypto uniquement. Euronext/BRVM : via 📥 Importer (Cowork).':'Aucune position crypto.'); return; }
+  toast('Mise à jour des cours crypto…');
+  const ids=[...new Set(cryptos.map(p=>CG_IDS[(p.titre||'').toLowerCase().trim()]||(p.titre||'').toLowerCase().trim()))];
+  try{
+    const res=await fetch('https://api.coingecko.com/api/v3/simple/price?ids='+encodeURIComponent(ids.join(','))+'&vs_currencies=eur');
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const data=await res.json(); let n=0;
+    cryptos.forEach(p=>{ const id=CG_IDS[(p.titre||'').toLowerCase().trim()]||(p.titre||'').toLowerCase().trim(); if(data[id]&&data[id].eur){ pf().prices[p.key]=data[id].eur; n++; } });
+    if(n){ markEdit(); save(); fullRender(); }
+    toast(n? ('✅ '+n+' cours crypto à jour'+(others?' — Euronext/BRVM via Cowork':'')) : 'Cours crypto introuvables (vérifie le nom du titre).');
+  }catch(e){ toast('⚠️ MAJ crypto impossible : '+e.message); }
+}
 document.addEventListener('keydown', e=>{
   if((e.metaKey||e.ctrlKey) && (e.key==='z'||e.key==='Z')){ e.preventDefault(); if(e.shiftKey) redo(); else undo(); }
   else if((e.metaKey||e.ctrlKey) && (e.key==='y'||e.key==='Y')){ e.preventDefault(); redo(); }
