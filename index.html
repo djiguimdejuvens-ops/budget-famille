@@ -302,7 +302,7 @@
    DONNÉES & MODÈLE
    ========================================================= */
 const LS_KEY = 'budgetFamille_v1';
-const BUILD = '2026-06-22.12';   // version de code — doit être identique sur tous les appareils
+const BUILD = '2026-06-22.13';   // version de code — doit être identique sur tous les appareils
 const MONTHS = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
 const FOYER_GROUPS = [
   'Logement & charges','Courses & quotidien','Transport','Abonnements & services',
@@ -1393,7 +1393,7 @@ function renderInvest(){
     positions.forEach(p=>{ const cl=p.pv>=0?'good':'bad'; const meta=pf().meta[p.key]||{}; const tgt=(meta.target!=null&&meta.target!=='')?+meta.target:null; const toTgt=(tgt&&p.price)?(tgt-p.price)/p.price:null;
       h+=`<tr class="sub"><td><b>${esc(p.titre)}</b></td><td>${num(p.qty)}</td><td>${moneyN(eurOf(p.cmp,p.dev))}</td><td>${inCell((pf().prices[p.key]!=null&&pf().prices[p.key]!=='')?pfPriceVal(eurOf(+pf().prices[p.key],p.dev)):'', 'pfprice|'+p.key+'|'+p.dev,'style="width:72px"')}</td><td>${moneyN(eurOf(p.val,p.dev))}</td><td class="${cl}">${p.vp>=0?'+':''}${pct(p.vp)}</td><td class="${cl}" style="font-weight:700">${moneyN(eurOf(p.pv,p.dev),true)}</td><td>${inCell(tgt!=null?pfPriceVal(eurOf(tgt,p.dev)):'', 'ptarget|'+p.key+'|'+p.dev,'style="width:72px"')}</td><td class="${toTgt==null?'':(toTgt>=0?'good':'bad')}">${toTgt==null?'—':((toTgt>=0?'+':'')+pct(toTgt))}</td><td>${selCellL(meta.horizon||'','phorizon|'+p.key,HORIZONS,HORIZON_LABELS)}</td><td>${esc(p.sgi)}</td></tr>`; });
     h+=`<tr class="grand"><td>Total titres</td><td></td><td></td><td></td><td>${moneyN(valEur)}</td><td class="${pvEur>=0?'good':'bad'}">${invEur?((pvEur>=0?'+':'')+pct(pvEur/invEur)):''}</td><td class="${pvEur>=0?'good':'bad'}" style="font-weight:800">${moneyN(pvEur,true)}</td><td></td><td></td><td></td><td></td></tr>`;
-    h+=`</tbody></table></div><p class="note"><b>Objectif</b> = ton prix cible ; <b>% obj.</b> = chemin restant depuis le cours actuel. <b>Horizon</b> = échéance visée. « 🔄 Actualiser » = crypto en direct ; Euronext/BRVM via Cowork (📥 Journal).</p></div>`;
+    h+=`</tbody></table></div><p class="note"><b>Objectif</b> = ton prix cible ; <b>% obj.</b> = chemin restant depuis le cours actuel. <b>Horizon</b> = échéance visée. « 🔄 Actualiser les cours » récupère les cours en direct : <b>Euronext</b> (Yahoo), <b>BRVM</b> (brvm.org), <b>Crypto</b> (CoinGecko).</p></div>`;
     // Espèces + réconciliation
     h+=`<div class="card"><h2>Espèces disponibles par SGI <span class="note">(${sym})</span></h2>
      <p class="hint">« Calculé » = d'après tes opérations. Saisis ton <b>solde réel</b> (relevé courtier) : l'écart révèle ce qui manque (taxes/frais non saisis, versement oublié…).</p>
@@ -2021,7 +2021,7 @@ document.addEventListener('click', e=>{
     case 'trfee': { const it=transList().find(x=>x.id===c[1]); if(it) it.feeMode = it.feeMode==='pct'?'eur':'pct'; break; }
     case 'importtr': openTrModal(); return;
     case 'addop': pf().ops.push({id:nid(),date:TODAY(),sgi:'Fortuneo',type:'achat',titre:'',qty:0,price:0,fees:0,amount:0,devise:'EUR'}); break;
-    case 'updcours': updateCryptoPrices(); return;
+    case 'updcours': updatePrices(); return;
     case 'delop': pf().ops=pf().ops.filter(x=>x.id!==c[1]); break;
     case 'importops': openOpsModal(); return;
     case 'sumdimes': {
@@ -2229,26 +2229,38 @@ document.getElementById('opsImport').onclick=()=>{ const res=importOps(document.
 // Mise à jour automatique des cours : crypto en direct (CoinGecko, CORS OK depuis le navigateur).
 // Euronext/BRVM ne sont pas accessibles depuis un site statique (CORS) → passer par Cowork (import cours).
 const CG_IDS={bitcoin:'bitcoin',btc:'bitcoin',ethereum:'ethereum',eth:'ethereum',bnb:'binancecoin',binancecoin:'binancecoin',solana:'solana',sol:'solana',cardano:'cardano',ada:'cardano',ripple:'ripple',xrp:'ripple',dogecoin:'dogecoin',doge:'dogecoin',polkadot:'polkadot',dot:'polkadot',litecoin:'litecoin',ltc:'litecoin',polygon:'matic-network',matic:'matic-network',avalanche:'avalanche-2',avax:'avalanche-2'};
-async function updateCryptoPrices(){
-  const cryptos=pfPositions().filter(p=>pfMarket(p.sgi)==='Crypto');
-  const others=pfPositions().filter(p=>pfMarket(p.sgi)!=='Crypto').length;
-  if(!cryptos.length){ toast(others?'Cours auto = crypto uniquement. Euronext/BRVM : via 📥 Importer (Cowork).':'Aucune position crypto.'); return; }
-  toast('Mise à jour des cours crypto…');
-  const idOf=p=>CG_IDS[(p.titre||'').toLowerCase().trim()]||(p.titre||'').toLowerCase().trim().replace(/\s+/g,'-');
-  const ids=[...new Set(cryptos.map(idOf))];
-  const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(),12000);
-  try{
-    const url='https://api.coingecko.com/api/v3/simple/price?ids='+encodeURIComponent(ids.join(','))+'&vs_currencies=eur&_cb='+Date.now();
-    const res=await fetch(url,{signal:ctrl.signal,cache:'no-store'}); clearTimeout(to);
-    if(!res.ok) throw new Error('HTTP '+res.status+(res.status===429?' (trop de requêtes, réessaie dans 1 min)':''));
-    const data=await res.json(); let n=0; const miss=[];
-    cryptos.forEach(p=>{ const id=idOf(p); if(data[id]&&data[id].eur){ pf().prices[p.key]=data[id].eur; n++; } else miss.push(p.titre); });
-    if(n){ markEdit(); save(); fullRender(); }
-    let msg = n? ('✅ '+n+' cours crypto à jour') : '⚠️ Aucun cours trouvé';
-    if(miss.length) msg+=' · non reconnu : '+miss.join(', ');
-    if(others) msg+=' · Euronext/BRVM = Cowork';
-    toast(msg);
-  }catch(e){ clearTimeout(to); toast('⚠️ MAJ crypto impossible : '+(e.name==='AbortError'?'délai dépassé (réseau)':e.message)); }
+// Relais CORS (un site statique ne peut pas lire Yahoo/BRVM directement) : proxy + repli
+const PROXIES=['https://corsproxy.io/?url=','https://api.allorigins.win/raw?url='];
+async function proxyText(url){ let err;
+  for(const px of PROXIES){ const c=new AbortController(); const t=setTimeout(()=>c.abort(),13000);
+    try{ const r=await fetch(px+encodeURIComponent(url),{signal:c.signal,cache:'no-store'}); clearTimeout(t); if(r.ok) return await r.text(); err=new Error('HTTP '+r.status); }
+    catch(e){ clearTimeout(t); err=e; } }
+  throw err||new Error('proxy indisponible');
+}
+// Résolution automatique du ticker Yahoo d'une action Euronext par son nom (mise en cache)
+async function yahooSymbol(p){ const meta=pfMeta(p.key); if(meta.symbol) return meta.symbol;
+  try{ const tx=await proxyText('https://query1.finance.yahoo.com/v1/finance/search?q='+encodeURIComponent(p.titre)+'&quotesCount=8');
+    const j=JSON.parse(tx), qs=(j.quotes||[]).filter(x=>x.symbol);
+    const par=qs.find(x=>x.exchange==='PAR')||qs.find(x=>/\.PA$/.test(x.symbol))||qs[0];
+    if(par){ meta.symbol=par.symbol; return par.symbol; } }catch(e){}
+  return null; }
+// Mise à jour intégrée des cours : Crypto (CoinGecko) + BRVM (brvm.org) + Euronext (Yahoo), via relais CORS
+async function updatePrices(){
+  const positions=pfPositions(); if(!positions.length){ toast('Aucune position.'); return; }
+  toast('Mise a jour des cours...'); let done=0; const fail=[];
+  const cr=positions.filter(p=>pfMarket(p.sgi)==='Crypto');
+  if(cr.length){ try{ const idOf=p=>CG_IDS[(p.titre||'').toLowerCase().trim()]||(p.titre||'').toLowerCase().trim().replace(/\s+/g,'-'); const ids=[...new Set(cr.map(idOf))];
+    const r=await fetch('https://api.coingecko.com/api/v3/simple/price?ids='+encodeURIComponent(ids.join(','))+'&vs_currencies=eur&_cb='+Date.now(),{cache:'no-store'}); const d=await r.json();
+    cr.forEach(p=>{ const id=idOf(p); if(d[id]&&d[id].eur){ pf().prices[p.key]=d[id].eur; done++; } else fail.push(p.titre); }); }catch(e){ cr.forEach(p=>fail.push(p.titre)); } }
+  const bv=positions.filter(p=>pfMarket(p.sgi)==='BRVM');
+  if(bv.length){ try{ const h=await proxyText('https://www.brvm.org/en/cours-actions/0'); const map={}; const re=/<div class="item"><span>([A-Z0-9]{2,6})<\/span>&nbsp;<span>([\d\s ]+)<\/span>/g; let m; while((m=re.exec(h))){ const px=parseFloat(m[2].replace(/[\s ]/g,'')); if(!isNaN(px)) map[m[1]]=px; }
+    bv.forEach(p=>{ const t=(p.titre||'').toUpperCase().trim(); if(map[t]!=null){ pf().prices[p.key]=map[t]; done++; } else fail.push(p.titre); }); }catch(e){ bv.forEach(p=>fail.push(p.titre)); } }
+  const eu=positions.filter(p=>pfMarket(p.sgi)==='Euronext');
+  for(const p of eu){ const sym=await yahooSymbol(p); if(!sym){ fail.push(p.titre+' (ticker ?)'); continue; }
+    try{ const tx=await proxyText('https://query1.finance.yahoo.com/v8/finance/chart/'+sym+'?interval=1d&range=1d'); const j=JSON.parse(tx); const price=j.chart&&j.chart.result&&j.chart.result[0]&&j.chart.result[0].meta&&j.chart.result[0].meta.regularMarketPrice;
+      if(price){ pf().prices[p.key]=price; done++; } else fail.push(p.titre); }catch(e){ fail.push(p.titre); } }
+  if(done){ markEdit(); save(); fullRender(); }
+  toast('OK '+done+' cours a jour'+(fail.length?(' - echec : '+fail.slice(0,3).join(', ')+(fail.length>3?'...':'')):''));
 }
 document.addEventListener('keydown', e=>{
   if((e.metaKey||e.ctrlKey) && (e.key==='z'||e.key==='Z')){ e.preventDefault(); if(e.shiftKey) redo(); else undo(); }
