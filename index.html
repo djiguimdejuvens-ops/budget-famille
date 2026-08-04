@@ -302,7 +302,7 @@
    DONNÉES & MODÈLE
    ========================================================= */
 const LS_KEY = 'budgetFamille_v1';
-const BUILD = '2026-06-22.13';   // version de code — doit être identique sur tous les appareils
+const BUILD = '2026-06-22.14';   // version de code — doit être identique sur tous les appareils
 const MONTHS = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
 const FOYER_GROUPS = [
   'Logement & charges','Courses & quotidien','Transport','Abonnements & services',
@@ -1321,6 +1321,8 @@ function dispFromEur(e){ return pfCur()==='XOF'? e/xofRate() : e; }
 function money(vEur,signed){ const x=dispFromEur(vEur); const body = pfCur()==='XOF'? Math.round(x).toLocaleString('fr-FR')+' FCFA' : x.toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' €'; return (signed&&x>=0?'+':'')+body; }
 // Sans symbole de devise (tableaux denses / mobile) — la devise est rappelée dans l'en-tête
 function moneyN(vEur,signed){ const x=dispFromEur(vEur); const body = pfCur()==='XOF'? Math.round(x).toLocaleString('fr-FR') : x.toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2}); return (signed&&x>=0?'+':'')+body; }
+// Quantité : entier tel quel ; petites quantités (crypto) affichées avec assez de décimales
+function qtyFmt(n){ n=+n||0; if(Number.isInteger(n)) return n.toLocaleString('fr-FR'); const a=Math.abs(n); const dec=a>=1000?2:a>=1?4:a>=0.01?6:8; return n.toLocaleString('fr-FR',{maximumFractionDigits:dec}); }
 function pfPriceVal(vEur){ const x=dispFromEur(vEur); return pfCur()==='XOF'? String(Math.round(x)) : String(Math.round(x*100)/100); }
 function opsSorted(){ return pf().ops.slice().sort((a,b)=>String(a.date||'').localeCompare(String(b.date||''))); }
 // Positions courantes (qté>0) dérivées des achats/ventes, CMP en devise native
@@ -1347,6 +1349,19 @@ function pfCash(){
     else if(o.type==='retrait'||o.type==='frais') x.amount-=(+o.amount||0);
     else if(o.type==='achat') x.amount-=((+o.qty||0)*(+o.price||0)+(+o.fees||0));
     else if(o.type==='vente') x.amount+=((+o.qty||0)*(+o.price||0)-(+o.fees||0));
+  });
+  return Object.values(c);
+}
+// Détail du solde espèces par SGI (composantes du calcul, en devise native)
+function pfCashDetail(){
+  const c={};
+  pf().ops.forEach(o=>{ const sgi=o.sgi||'?', dev=o.devise||'EUR'; if(!c[sgi])c[sgi]={sgi,dev,dep:0,achat:0,vente:0,div:0,retrait:0,frais:0}; const x=c[sgi];
+    if(o.type==='depot') x.dep+=(+o.amount||0);
+    else if(o.type==='dividende') x.div+=(+o.amount||0);
+    else if(o.type==='retrait') x.retrait+=(+o.amount||0);
+    else if(o.type==='frais') x.frais+=(+o.amount||0);
+    else if(o.type==='achat') x.achat+=((+o.qty||0)*(+o.price||0)+(+o.fees||0));
+    else if(o.type==='vente') x.vente+=((+o.qty||0)*(+o.price||0)-(+o.fees||0));
   });
   return Object.values(c);
 }
@@ -1391,7 +1406,7 @@ function renderInvest(){
      <div class="tablewrap"><table class="reel pftab" style="min-width:940px"><thead><tr><th>Titre</th><th>Qté</th><th>CMP</th><th>Prix</th><th>Valeur</th><th>Var.</th><th>+/- value</th><th>Objectif</th><th>% obj.</th><th>Horizon</th><th>SGI</th></tr></thead><tbody>`;
     if(!positions.length) h+=`<tr class="sub"><td colspan="11" class="note">Aucune position pour ce filtre.</td></tr>`;
     positions.forEach(p=>{ const cl=p.pv>=0?'good':'bad'; const meta=pf().meta[p.key]||{}; const tgt=(meta.target!=null&&meta.target!=='')?+meta.target:null; const toTgt=(tgt&&p.price)?(tgt-p.price)/p.price:null;
-      h+=`<tr class="sub"><td><b>${esc(p.titre)}</b></td><td>${num(p.qty)}</td><td>${moneyN(eurOf(p.cmp,p.dev))}</td><td>${inCell((pf().prices[p.key]!=null&&pf().prices[p.key]!=='')?pfPriceVal(eurOf(+pf().prices[p.key],p.dev)):'', 'pfprice|'+p.key+'|'+p.dev,'style="width:72px"')}</td><td>${moneyN(eurOf(p.val,p.dev))}</td><td class="${cl}">${p.vp>=0?'+':''}${pct(p.vp)}</td><td class="${cl}" style="font-weight:700">${moneyN(eurOf(p.pv,p.dev),true)}</td><td>${inCell(tgt!=null?pfPriceVal(eurOf(tgt,p.dev)):'', 'ptarget|'+p.key+'|'+p.dev,'style="width:72px"')}</td><td class="${toTgt==null?'':(toTgt>=0?'good':'bad')}">${toTgt==null?'—':((toTgt>=0?'+':'')+pct(toTgt))}</td><td>${selCellL(meta.horizon||'','phorizon|'+p.key,HORIZONS,HORIZON_LABELS)}</td><td>${esc(p.sgi)}</td></tr>`; });
+      h+=`<tr class="sub"><td><b>${esc(p.titre)}</b></td><td>${qtyFmt(p.qty)}</td><td>${moneyN(eurOf(p.cmp,p.dev))}</td><td>${inCell((pf().prices[p.key]!=null&&pf().prices[p.key]!=='')?pfPriceVal(eurOf(+pf().prices[p.key],p.dev)):'', 'pfprice|'+p.key+'|'+p.dev,'style="width:72px"')}</td><td>${moneyN(eurOf(p.val,p.dev))}</td><td class="${cl}">${p.vp>=0?'+':''}${pct(p.vp)}</td><td class="${cl}" style="font-weight:700">${moneyN(eurOf(p.pv,p.dev),true)}</td><td>${inCell(tgt!=null?pfPriceVal(eurOf(tgt,p.dev)):'', 'ptarget|'+p.key+'|'+p.dev,'style="width:72px"')}</td><td class="${toTgt==null?'':(toTgt>=0?'good':'bad')}">${toTgt==null?'—':((toTgt>=0?'+':'')+pct(toTgt))}</td><td>${selCellL(meta.horizon||'','phorizon|'+p.key,HORIZONS,HORIZON_LABELS)}</td><td>${esc(p.sgi)}</td></tr>`; });
     h+=`<tr class="grand"><td>Total titres</td><td></td><td></td><td></td><td>${moneyN(valEur)}</td><td class="${pvEur>=0?'good':'bad'}">${invEur?((pvEur>=0?'+':'')+pct(pvEur/invEur)):''}</td><td class="${pvEur>=0?'good':'bad'}" style="font-weight:800">${moneyN(pvEur,true)}</td><td></td><td></td><td></td><td></td></tr>`;
     h+=`</tbody></table></div><p class="note"><b>Objectif</b> = ton prix cible ; <b>% obj.</b> = chemin restant depuis le cours actuel. <b>Horizon</b> = échéance visée. « 🔄 Actualiser les cours » récupère les cours en direct : <b>Euronext</b> (Yahoo), <b>BRVM</b> (brvm.org), <b>Crypto</b> (CoinGecko).</p></div>`;
     // Espèces + réconciliation
@@ -1403,6 +1418,16 @@ function renderInvest(){
     cashArr.forEach(x=>{ const calcEur=eurOf(x.amount,x.dev); tCalc+=calcEur; const rc=pf().realCash[x.sgi]; const hasR=(rc!=null); if(hasR){anyReal=true;tReal+=rc;} const ecart=hasR?calcEur-rc:null;
       h+=`<tr class="sub"><td>${esc(x.sgi)}</td><td class="${x.amount<0?'bad':''}">${moneyN(calcEur)}</td><td>${inCell(hasR?pfPriceVal(rc):'', 'realcash|'+x.sgi,'style="width:96px"')}</td><td class="${ecart==null?'':(Math.abs(ecart)<0.5?'neutral':'bad')}">${ecart==null?'—':moneyN(ecart,true)}</td></tr>`; });
     h+=`<tr class="grand"><td>Total</td><td>${moneyN(tCalc)}</td><td>${anyReal?moneyN(tReal):'—'}</td><td>${anyReal?moneyN(tCalc-tReal,true):'—'}</td></tr></tbody></table></div></div>`;
+    // Détail du solde par SGI (pour localiser l'écart)
+    const detail=pfCashDetail().filter(x=>inMkt(x.sgi));
+    if(detail.length){
+      h+=`<div class="card"><h2>Détail du solde espèces <span class="note">(${sym})</span></h2>
+       <p class="hint">solde = <b>dépôts + ventes + dividendes − achats − retraits − frais</b>. Compare chaque colonne à ton relevé courtier pour repérer l'opération manquante ou fausse.</p>
+       <div class="tablewrap"><table class="reel pftab" style="min-width:660px"><thead><tr><th>SGI</th><th>Dépôts</th><th>Ventes</th><th>Dividendes</th><th>− Achats</th><th>− Retraits</th><th>− Frais</th><th>= Solde</th></tr></thead><tbody>`;
+      detail.forEach(x=>{ const solde=x.dep+x.vente+x.div-x.achat-x.retrait-x.frais;
+        h+=`<tr class="sub"><td>${esc(x.sgi)}</td><td>${moneyN(eurOf(x.dep,x.dev))}</td><td>${moneyN(eurOf(x.vente,x.dev))}</td><td>${moneyN(eurOf(x.div,x.dev))}</td><td>${moneyN(eurOf(x.achat,x.dev))}</td><td>${moneyN(eurOf(x.retrait,x.dev))}</td><td>${moneyN(eurOf(x.frais,x.dev))}</td><td class="${solde<0?'bad':''}" style="font-weight:700">${moneyN(eurOf(solde,x.dev))}</td></tr>`; });
+      h+=`</tbody></table></div></div>`;
+    }
     // Publications de résultats
     if(positions.length){
       const wp=positions.map(p=>{ const meta=pf().meta[p.key]||{}; return {titre:p.titre,sgi:p.sgi,pub:meta.pub||'',key:p.key}; });
