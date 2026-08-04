@@ -302,7 +302,7 @@
    DONNÉES & MODÈLE
    ========================================================= */
 const LS_KEY = 'budgetFamille_v1';
-const BUILD = '2026-06-22.14';   // version de code — doit être identique sur tous les appareils
+const BUILD = '2026-06-22.15';   // version de code — doit être identique sur tous les appareils
 const MONTHS = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
 const FOYER_GROUPS = [
   'Logement & charges','Courses & quotidien','Transport','Abonnements & services',
@@ -1412,12 +1412,14 @@ function renderInvest(){
     // Espèces + réconciliation
     h+=`<div class="card"><h2>Espèces disponibles par SGI <span class="note">(${sym})</span></h2>
      <p class="hint">« Calculé » = d'après tes opérations. Saisis ton <b>solde réel</b> (relevé courtier) : l'écart révèle ce qui manque (taxes/frais non saisis, versement oublié…).</p>
-     <div class="tablewrap"><table class="reel pftab" style="min-width:480px"><thead><tr><th>SGI / courtier</th><th>Calculé</th><th>Solde réel</th><th>Écart</th></tr></thead><tbody>`;
+     <div class="tablewrap"><table class="reel pftab" style="min-width:560px"><thead><tr><th>SGI / courtier</th><th>Calculé</th><th>Solde réel</th><th>Écart</th><th>Corriger</th></tr></thead><tbody>`;
     if(!cashArr.length) h+=`<tr class="sub"><td colspan="4" class="note">—</td></tr>`;
     let tCalc=0, tReal=0, anyReal=false;
     cashArr.forEach(x=>{ const calcEur=eurOf(x.amount,x.dev); tCalc+=calcEur; const rc=pf().realCash[x.sgi]; const hasR=(rc!=null); if(hasR){anyReal=true;tReal+=rc;} const ecart=hasR?calcEur-rc:null;
-      h+=`<tr class="sub"><td>${esc(x.sgi)}</td><td class="${x.amount<0?'bad':''}">${moneyN(calcEur)}</td><td>${inCell(hasR?pfPriceVal(rc):'', 'realcash|'+x.sgi,'style="width:96px"')}</td><td class="${ecart==null?'':(Math.abs(ecart)<0.5?'neutral':'bad')}">${ecart==null?'—':moneyN(ecart,true)}</td></tr>`; });
-    h+=`<tr class="grand"><td>Total</td><td>${moneyN(tCalc)}</td><td>${anyReal?moneyN(tReal):'—'}</td><td>${anyReal?moneyN(tCalc-tReal,true):'—'}</td></tr></tbody></table></div></div>`;
+      const needFix=(x.amount<-0.5)||(hasR&&Math.abs(ecart)>=0.5);
+      h+=`<tr class="sub"><td>${esc(x.sgi)}</td><td class="${x.amount<0?'bad':''}">${moneyN(calcEur)}</td><td>${inCell(hasR?pfPriceVal(rc):'', 'realcash|'+x.sgi,'style="width:96px"')}</td><td class="${ecart==null?'':(Math.abs(ecart)<0.5?'neutral':'bad')}">${ecart==null?'—':moneyN(ecart,true)}</td><td>${needFix?'<span class="miniadd" data-act="balcash|'+esc(x.sgi)+'">⚖️ équilibrer</span>':''}</td></tr>`; });
+    h+=`<tr class="grand"><td>Total</td><td>${moneyN(tCalc)}</td><td>${anyReal?moneyN(tReal):'—'}</td><td>${anyReal?moneyN(tCalc-tReal,true):'—'}</td><td></td></tr></tbody></table></div>
+     <p class="note">⚖️ « équilibrer » crée une opération d'ajustement pour aligner le calcul sur ton solde réel (ou sur 0 si aucun solde saisi), datée au 1ᵉʳ mouvement du courtier. Reclasse-la en <b>Dividende</b> dans le Journal si c'est un dividende.</p></div>`;
     // Détail du solde par SGI (pour localiser l'écart)
     const detail=pfCashDetail().filter(x=>inMkt(x.sgi));
     if(detail.length){
@@ -1865,7 +1867,7 @@ function applyAux(c, el){
     case 'ptarget': { const key=c[1]+'|'+c[2], rowDev=c[3]||'EUR'; if(el.value===''){ delete pfMeta(key).target; break; } const eur=pfCur()==='XOF'?n*xofRate():n; pfMeta(key).target = rowDev==='XOF'?eur/xofRate():eur; break; }
     case 'phorizon': pfMeta(c[1]+'|'+c[2]).horizon = v; break;
     case 'ppub': pfMeta(c[1]+'|'+c[2]).pub = v; break;
-    case 'realcash': { const sgi=c[1]; if(el.value==='') delete pf().realCash[sgi]; else pf().realCash[sgi]=n; break; }
+    case 'realcash': { const sgi=c[1]; if(el.value==='') delete pf().realCash[sgi]; else pf().realCash[sgi]= (pfCur()==='XOF'? n*xofRate() : n); break; }
     case 'goal': { const it=(state.goals||[]).find(x=>x.id===c[1]); if(it){ it[c[2]] = (c[2]==='target'||c[2]==='current')?n:v; } break; }
     case 'excm': { const it=excList().find(x=>x.id===c[1]); if(it) it.month=Math.max(0,MONTHS.indexOf(v)); break; }
     case 'excl': { const it=excList().find(x=>x.id===c[1]); if(it) it.label=v; break; }
@@ -2047,6 +2049,15 @@ document.addEventListener('click', e=>{
     case 'importtr': openTrModal(); return;
     case 'addop': pf().ops.push({id:nid(),date:TODAY(),sgi:'Fortuneo',type:'achat',titre:'',qty:0,price:0,fees:0,amount:0,devise:'EUR'}); break;
     case 'updcours': updatePrices(); return;
+    case 'balcash': { const sgi=c[1]; const cd=pfCashDetail().find(x=>x.sgi===sgi); if(!cd) break; const dev=cd.dev;
+      const computed=cd.dep+cd.vente+cd.div-cd.achat-cd.retrait-cd.frais;
+      const rc=pf().realCash[sgi]; const targetNative = rc!=null? (dev==='XOF'? rc/xofRate() : rc) : 0;  // realCash stocké en €
+      const adj=targetNative-computed; if(Math.abs(adj)<0.5) break;
+      const dates=pf().ops.filter(o=>(o.sgi||'?')===sgi && /^\d{4}-\d{2}-\d{2}$/.test(o.date||'')).map(o=>o.date).sort();
+      const dt=dates[0]||TODAY();
+      pf().ops.push({id:nid(),date:dt,sgi,type:adj>0?'depot':'retrait',titre:'Ajustement (à catégoriser)',qty:0,price:0,fees:0,amount:Math.round(Math.abs(adj)*100)/100,devise:dev});
+      toast('Ajustement '+(adj>0?'+':'-')+Math.round(Math.abs(adj))+' '+(dev==='XOF'?'FCFA':'€')+' créé le '+dt+' — reclasse-le si besoin');
+      break; }
     case 'delop': pf().ops=pf().ops.filter(x=>x.id!==c[1]); break;
     case 'importops': openOpsModal(); return;
     case 'sumdimes': {
