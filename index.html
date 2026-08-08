@@ -310,7 +310,7 @@
    DONNÉES & MODÈLE
    ========================================================= */
 const LS_KEY = 'budgetFamille_v1';
-const BUILD = '2026-08-08.16';   // version de code — doit être identique sur tous les appareils
+const BUILD = '2026-08-08.17';   // version de code — doit être identique sur tous les appareils
 const MONTHS = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
 const FOYER_GROUPS = [
   'Logement & charges','Courses & quotidien','Transport','Abonnements & services',
@@ -2255,17 +2255,20 @@ function openOpsModal(){ document.getElementById('opsCmd').value=OPS_CMD; docume
 function closeOpsModal(){ document.getElementById('opsModal').classList.remove('show'); }
 function importOps(txt){
   let data=null; try{ data=JSON.parse(txt); }catch(e){ const m=txt&&txt.match(/[\[{][\s\S]*[\]}]/); if(m){ try{ data=JSON.parse(m[0]); }catch(_){}}}
-  let ops=null,prices=null;
-  if(Array.isArray(data)) ops=data; else if(data&&typeof data==='object'){ ops=data.ops; prices=data.prices; }
+  let ops=null,prices=null,replace=null;
+  if(Array.isArray(data)) ops=data; else if(data&&typeof data==='object'){ ops=data.ops; prices=data.prices; replace=data.replace; }
   if(!Array.isArray(ops)) return {ok:false,msg:'⚠️ JSON invalide : attendu un tableau d\'opérations, ou {ops:[...],prices:{...}}.'};
   const norm=o=>({date:o.date||'',sgi:(o.sgi||'').trim(),type:OP_TYPES.includes(o.type)?o.type:'achat',titre:(o.titre||'').trim(),qty:+o.qty||0,price:+o.price||0,fees:+o.fees||0,amount:+o.amount||0,devise:(o.devise==='XOF'||o.devise==='FCFA')?'XOF':'EUR'});
   // signature pour éviter les doublons (ré-imports / sources qui se recoupent)
   const sig=o=>[o.date,o.sgi,o.type,o.titre,Math.round(o.qty*1e4),Math.round(o.price*100),Math.round(o.amount*100),o.devise].join('|');
+  snapshot(true);
+  let removed=0;
+  if(Array.isArray(replace)&&replace.length){ const rl=replace.map(s=>(''+s).toLowerCase().trim()).filter(Boolean); const before=pf().ops.length; pf().ops=pf().ops.filter(o=>{ const sgi=(o.sgi||'').toLowerCase(); const mkt=pfMarket(o.sgi).toLowerCase(); return !rl.some(r=> sgi===r || sgi.indexOf(r)>=0 || mkt===r); }); removed=before-pf().ops.length; }
   const seen=new Set(pf().ops.map(x=>sig(norm(x))));
-  let n=0,dup=0; snapshot(true);
+  let n=0,dup=0;
   ops.forEach(o=>{ if(!o||typeof o!=='object') return; const v=norm(o), s=sig(v); if(seen.has(s)){ dup++; return; } seen.add(s); pf().ops.push(Object.assign({id:nid()},v)); n++; });
   if(prices&&typeof prices==='object') Object.keys(prices).forEach(k=>{ const val=+prices[k]; if(!isNaN(val)) pf().prices[k]=val; });
-  markEdit(); save(); return {ok:true,msg:'✅ '+n+' opération(s) importée(s)'+(dup?' — '+dup+' doublon(s) ignoré(s)':'')+(prices?' + cours mis à jour':'')+'.'};
+  markEdit(); save(); return {ok:true,msg:'✅ '+n+' opération(s) importée(s)'+(removed?' — '+removed+' remplacée(s)':'')+(dup?' — '+dup+' doublon(s) ignoré(s)':'')+(prices?' + cours mis à jour':'')+'.'};
 }
 function openCorisModal(){ const el=document.getElementById('corisPaste'); if(el) el.value=''; const m=document.getElementById('corisMsg'); if(m) m.textContent=''; document.getElementById('corisModal').classList.add('show'); }
 function closeCorisModal(){ document.getElementById('corisModal').classList.remove('show'); }

@@ -1,6 +1,6 @@
 /* Service worker — réseau d'abord (toujours la dernière version en ligne),
    cache de secours pour le hors-ligne. Mise à jour automatique. */
-const CACHE = 'budget-cache-2026-08-08-16';
+const CACHE = 'budget-cache-2026-08-08-17';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil((async () => {
   const keys = await caches.keys();
