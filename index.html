@@ -297,12 +297,20 @@
   <p class="note" id="opsMsg"></p>
 </div></div>
 
+<div class="modal" id="corisModal"><div class="modalbox recapbox">
+  <div class="row" style="justify-content:space-between;align-items:center"><h3>🇧🇫 Relevé Coris — corriger tout le portefeuille BRVM</h3><button class="btn sm" id="corisClose">✕ Fermer</button></div>
+  <p class="hint"><b>Méthode pérenne, sans Claude.</b> Ouvre ton relevé Coris « <b>Mouvements liquidités</b> » (Excel / Numbers), sélectionne <b>tout le tableau avec la ligne d'en-tête</b>, copie (⌘C), colle ci-dessous puis clique <b>Remplacer</b>. L'appli reconstruit à l'identique tes positions BRVM et ton solde espèces (dépôts, achats, ventes, dividendes, frais de tenue de compte).</p>
+  <p class="hint" style="margin-top:6px">⚠️ <b>Toutes tes opérations Coris / BRVM actuelles seront remplacées</b> par ce relevé. Fortuneo et Binance ne sont pas touchés. (Tu peux aussi coller un JSON d'opérations.)</p>
+  <textarea id="corisPaste" placeholder="Colle ici le tableau Coris copié depuis Excel / Numbers (avec l'en-tête : Type mvt | Date | N° document | Libellé | Brut | Frais | Taxes | Débit | Crédit | Solde…)" style="width:100%;height:180px;font-family:monospace;font-size:11px"></textarea>
+  <div class="row" style="justify-content:space-between;align-items:center;margin-top:10px"><span class="note" id="corisMsg"></span><button class="btn primary" id="corisImport">Remplacer les opérations Coris</button></div>
+</div></div>
+
 <script>
 /* =========================================================
    DONNÉES & MODÈLE
    ========================================================= */
 const LS_KEY = 'budgetFamille_v1';
-const BUILD = '2026-06-22.15';   // version de code — doit être identique sur tous les appareils
+const BUILD = '2026-08-08.16';   // version de code — doit être identique sur tous les appareils
 const MONTHS = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
 const FOYER_GROUPS = [
   'Logement & charges','Courses & quotidien','Transport','Abonnements & services',
@@ -1468,7 +1476,7 @@ function renderInvest(){
   }
   else if(sub==='journal'){
     h+=`<div class="card"><h2>Journal des opérations</h2><p class="hint">Chaque opération met à jour automatiquement tes positions et tes espèces. Montants en € ou FCFA. <b>Achat/Vente</b> : Qté + Cours (+ Frais) ; <b>Approvisionnement / Retrait / Dividende / Frais SGI</b> : Montant.</p>
-     <div class="row" style="margin-bottom:8px"><button class="btn" data-act="addop">+ Ajouter une opération</button> <button class="btn" data-act="importops">📥 Importer (Cowork / relevés)</button></div>
+     <div class="row" style="margin-bottom:8px"><button class="btn" data-act="addop">+ Ajouter une opération</button> <button class="btn" data-act="importcoris">🇧🇫 Relevé Coris (remplace)</button> <button class="btn" data-act="importops">📥 Importer (Cowork / relevés)</button></div>
      <div class="tablewrap"><table class="reel pftab" style="min-width:880px"><thead><tr><th>Date</th><th>SGI</th><th>Type</th><th>Titre</th><th>Qté</th><th>Cours</th><th>Frais</th><th>Montant</th><th>Devise</th><th></th></tr></thead><tbody>`;
     opsSorted().reverse().forEach(o=>{ const isTrade=(o.type==='achat'||o.type==='vente');
       const montant = isTrade ? ((+o.qty||0)*(+o.price||0)+(o.type==='achat'?1:-1)*(+o.fees||0)) : (+o.amount||0);
@@ -2060,6 +2068,7 @@ document.addEventListener('click', e=>{
       break; }
     case 'delop': pf().ops=pf().ops.filter(x=>x.id!==c[1]); break;
     case 'importops': openOpsModal(); return;
+    case 'importcoris': openCorisModal(); return;
     case 'sumdimes': {
       const re=/d[îi]me|offrande|don/i; let s=0;
       Y().foyer.forEach(l=>{ if(re.test(l.name)) s+=l.planned.reduce((a,v)=>a+v,0); });
@@ -2258,10 +2267,73 @@ function importOps(txt){
   if(prices&&typeof prices==='object') Object.keys(prices).forEach(k=>{ const val=+prices[k]; if(!isNaN(val)) pf().prices[k]=val; });
   markEdit(); save(); return {ok:true,msg:'✅ '+n+' opération(s) importée(s)'+(dup?' — '+dup+' doublon(s) ignoré(s)':'')+(prices?' + cours mis à jour':'')+'.'};
 }
+function openCorisModal(){ const el=document.getElementById('corisPaste'); if(el) el.value=''; const m=document.getElementById('corisMsg'); if(m) m.textContent=''; document.getElementById('corisModal').classList.add('show'); }
+function closeCorisModal(){ document.getElementById('corisModal').classList.remove('show'); }
+// Parse le relevé Coris « Mouvements liquidités » (copié depuis Excel/Numbers) -> opérations de l'appli.
+function parseCorisReleve(txt){
+  const strip=x=>(''+x).replace(/[\s ]/g,'');
+  const clean=x=>{ const v=parseFloat(strip(x).replace(',','.')); return isNaN(v)?0:v; };
+  const fnum=s=>{ if(s==null) return 0; let v=strip(s).replace(/[^\d.,\-]/g,'').replace(',','.'); v=parseFloat(v); return isNaN(v)?0:v; };
+  const frdate=s=>{ s=(''+s).trim(); let m=s.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/); if(m){ let y=m[3]; if(y.length===2) y='20'+y; return y+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0'); } m=s.match(/(\d{4})-(\d{2})-(\d{2})/); if(m) return m[0]; const n=parseFloat((''+s).replace(',','.')); if(n>40000&&n<60000){ const d=new Date(Date.UTC(1899,11,30)+Math.round(n)*86400000); return d.toISOString().slice(0,10); } return s; };
+  const nrm=s=>(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  const lines=(txt||'').replace(/\r/g,'').split('\n').filter(l=>l.trim()!=='');
+  if(!lines.length) return [];
+  const delim = lines[0].indexOf('\t')>=0 ? '\t' : (lines[0].indexOf(';')>=0 ? ';' : null);
+  const split = l => delim ? l.split(delim).map(s=>s.trim()) : l.split(/\s{2,}/).map(s=>s.trim());
+  let idx={type:0,date:1,lib:3,brut:4,frais:5,taxe:6,deb:7,cred:8}, start=0;
+  const h0=split(lines[0]).map(nrm);
+  if(h0.some(x=>x.indexOf('libell')>=0)){
+    const find=(...ps)=>h0.findIndex(x=>ps.some(p=>x.indexOf(p)>=0));
+    idx={type:find('type','mvt'),date:find('date'),lib:find('libell'),brut:find('brut'),frais:find('frais'),taxe:find('taxe'),deb:find('debit'),cred:find('credit')};
+    start=1;
+  }
+  const g=(f,i)=> (i>=0 && i<f.length)? f[i] : '';
+  const ops=[];
+  for(let i=start;i<lines.length;i++){
+    const f=split(lines[i]); if(f.length<3) continue;
+    const nT=nrm(g(f,idx.type));
+    const lib=g(f,idx.lib)||'';
+    const brut=fnum(g(f,idx.brut)), frais=fnum(g(f,idx.frais)), taxe=fnum(g(f,idx.taxe)), deb=fnum(g(f,idx.deb)), cred=fnum(g(f,idx.cred));
+    const date=frdate(g(f,idx.date));
+    const ma=lib.match(/Achat\s+([\d\s ]+?)\s+([A-Za-z][A-Za-z0-9]*)\s*\(\s*Cours\s*:?\s*([\d\s .,]+)\)/i);
+    const mv=lib.match(/Vente\s+([\d\s ]+?)\s+([A-Za-z][A-Za-z0-9]*)\s*\(\s*Cours\s*:?\s*([\d\s .,]+)\)/i);
+    const mdv=lib.match(/DIVIDENDES?\s+[\d\s ]+\s+([A-Za-z][A-Za-z0-9]*)/i);
+    if(nT.indexOf('achat')>=0 && ma) ops.push({date,sgi:'Coris Bourse',type:'achat',titre:ma[2].toUpperCase(),qty:clean(ma[1]),price:clean(ma[3]),fees:frais+taxe,amount:brut,devise:'XOF'});
+    else if(nT.indexOf('vente')>=0 && mv) ops.push({date,sgi:'Coris Bourse',type:'vente',titre:mv[2].toUpperCase(),qty:clean(mv[1]),price:clean(mv[3]),fees:frais+taxe,amount:brut,devise:'XOF'});
+    else if(nT.indexOf('depot')>=0||nT.indexOf('versement')>=0||nT.indexOf('virement')>=0||nT.indexOf('approvision')>=0) ops.push({date,sgi:'Coris Bourse',type:'depot',titre:'',qty:0,price:0,fees:0,amount:cred||brut,devise:'XOF'});
+    else if(nT.indexOf('dividende')>=0) ops.push({date,sgi:'Coris Bourse',type:'dividende',titre:mdv?mdv[1].toUpperCase():'',qty:0,price:0,fees:0,amount:cred||brut,devise:'XOF'});
+    else if(nT.indexOf('retrait')>=0) ops.push({date,sgi:'Coris Bourse',type:'retrait',titre:'',qty:0,price:0,fees:0,amount:deb||brut,devise:'XOF'});
+    else if(nT.indexOf('tenue')>=0||nT.indexOf('frais')>=0||nT.indexOf('facturation')>=0||nT.indexOf('commission')>=0||nT.indexOf('agios')>=0) ops.push({date,sgi:'Coris Bourse',type:'frais',titre:(lib||'Frais').slice(0,48),qty:0,price:0,fees:0,amount:deb||(frais+taxe)||brut,devise:'XOF'});
+  }
+  return ops;
+}
+// Remplace TOUTES les opérations BRVM/Coris par le relevé collé (tableau Coris ou JSON).
+function importCoris(txt){
+  txt=(txt||'').trim();
+  if(!txt) return {ok:false,msg:'⚠️ Colle d\'abord ton relevé Coris (ou un JSON).'};
+  let ops=null;
+  try{ const d=JSON.parse(txt); if(Array.isArray(d)) ops=d; else if(d&&Array.isArray(d.ops)) ops=d.ops; }catch(e){}
+  if(ops) ops=ops.map(o=>({date:o.date||'',sgi:'Coris Bourse',type:OP_TYPES.includes(o.type)?o.type:'achat',titre:(o.titre||'').trim(),qty:+o.qty||0,price:+o.price||0,fees:+o.fees||0,amount:+o.amount||0,devise:'XOF'}));
+  else ops=parseCorisReleve(txt);
+  if(!ops.length) return {ok:false,msg:'⚠️ Aucune opération reconnue. Copie bien tout le tableau AVEC l\'en-tête (Type mvt / Date / Libellé / Brut / Frais / Taxes / Débit / Crédit).'};
+  snapshot(true);
+  const removed=pf().ops.filter(o=>pfMarket(o.sgi)==='BRVM').length;
+  pf().ops=pf().ops.filter(o=>pfMarket(o.sgi)!=='BRVM');
+  ops.forEach(o=>pf().ops.push(Object.assign({id:nid()},o)));
+  Object.keys(pf().realCash||{}).forEach(k=>{ if(pfMarket(k)==='BRVM') delete pf().realCash[k]; });
+  const cd=pfCashDetail().find(x=>x.sgi==='Coris Bourse');
+  const solde=cd?(cd.dep+cd.vente+cd.div-cd.achat-cd.retrait-cd.frais):0;
+  if(cd) pf().realCash['Coris Bourse']=eurOf(solde,'XOF');
+  markEdit(); save();
+  return {ok:true,msg:'✅ '+ops.length+' opération(s) Coris importée(s), '+removed+' ancienne(s) remplacée(s). Solde espèces Coris calculé : '+Math.round(solde).toLocaleString('fr-FR')+' FCFA.'};
+}
 document.getElementById('opsClose').onclick=closeOpsModal;
 document.getElementById('opsModal').addEventListener('click', e=>{ if(e.target.id==='opsModal') closeOpsModal(); });
 document.getElementById('opsCopyCmd').onclick=()=>{ const ta=document.getElementById('opsCmd'); ta.select(); try{ navigator.clipboard.writeText(ta.value); }catch(e){} toast('Commande copiée'); };
 document.getElementById('opsImport').onclick=()=>{ const res=importOps(document.getElementById('opsPaste').value); document.getElementById('opsMsg').textContent=res.msg; if(res.ok){ fullRender(); setTimeout(()=>{ if(document.getElementById('opsModal')) closeOpsModal(); },900); } };
+document.getElementById('corisClose').onclick=closeCorisModal;
+document.getElementById('corisModal').addEventListener('click', e=>{ if(e.target.id==='corisModal') closeCorisModal(); });
+document.getElementById('corisImport').onclick=()=>{ const res=importCoris(document.getElementById('corisPaste').value); document.getElementById('corisMsg').textContent=res.msg; if(res.ok) fullRender(); };
 // Mise à jour automatique des cours : crypto en direct (CoinGecko, CORS OK depuis le navigateur).
 // Euronext/BRVM ne sont pas accessibles depuis un site statique (CORS) → passer par Cowork (import cours).
 const CG_IDS={bitcoin:'bitcoin',btc:'bitcoin',ethereum:'ethereum',eth:'ethereum',bnb:'binancecoin',binancecoin:'binancecoin',solana:'solana',sol:'solana',cardano:'cardano',ada:'cardano',ripple:'ripple',xrp:'ripple',dogecoin:'dogecoin',doge:'dogecoin',polkadot:'polkadot',dot:'polkadot',litecoin:'litecoin',ltc:'litecoin',polygon:'matic-network',matic:'matic-network',avalanche:'avalanche-2',avax:'avalanche-2'};
