@@ -425,7 +425,9 @@ function secInvest(){
 
 /* ===== édition native : écrit dans budgetFamille_v1 (tes vraies données) ===== */
 const LIVE=(()=>{try{const r=localStorage.getItem('budgetFamille_v1');return !!(r&&JSON.parse(r).years);}catch(e){return false;}})();
-function save(){ if(!LIVE) return false; try{ state.lastEdit=Date.now(); localStorage.setItem('budgetFamille_v1',JSON.stringify(state)); return true; }catch(e){ return false; } }
+let UNDO=[];
+function save(){ if(!LIVE) return false; try{ const old=localStorage.getItem('budgetFamille_v1'); if(old){ UNDO.push(old); if(UNDO.length>40)UNDO.shift(); } state.lastEdit=Date.now(); localStorage.setItem('budgetFamille_v1',JSON.stringify(state)); return true; }catch(e){ return false; } }
+function undoChange(){ if(!UNDO.length){ toast('Rien à annuler.'); return; } const prev=UNDO.pop(); try{ state=JSON.parse(prev); localStorage.setItem('budgetFamille_v1',prev); if(!state.years[YEARK])YEARK=Object.keys(state.years)[0]; document.getElementById('detailSheet').classList.remove('on'); DETAIL=null; render(); toast('Annulé ✓'); }catch(e){ toast('Impossible d\'annuler.'); } }
 function roundRule(n){ n=Number(n)||0; return Math.abs(n)<50?Math.round(n*10)/10:Math.round(n); }
 function parseNum(v){ if(v==null||v==='')return 0; let s=(''+v).trim().replace(/€/g,'').replace(/\s/g,'').replace(/,/g,'.').replace(/^=/,''); if(!s)return 0; if(/[+\-*/()]/.test(s)&&/^[0-9.+\-*/()]+$/.test(s)){ try{ const r=Function('"use strict";return ('+s+')')(); if(typeof r==='number'&&isFinite(r))return r; }catch(e){} } const f=parseFloat(s); return isNaN(f)?0:f; }
 function jsq(s){ return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
@@ -448,6 +450,8 @@ function renderDetail(){
   if(DETAIL.level==='import'){ return renderImportDetail(); }
   if(DETAIL.level==='ad'){ return renderADDetail(); }
   if(DETAIL.level==='year'){ return renderYearDetail(); }
+  if(DETAIL.level==='fullimport'){ return renderFullImportDetail(); }
+  if(DETAIL.level==='deduc'){ return renderDeducDetail(); }
   if(DETAIL.level==='group'){
     const {kind,group,person}=DETAIL; const lines = kind==='foyer'? Y().foyer.filter(l=>l.group===group) : ((Y().persons[person].cats)||[]).filter(l=>l.group===group);
     const tot=lines.reduce((s,l)=>s+sumM(m=> kind==='foyer'?(l.planned[m]||0):catVal(person,l,m,'planned')),0);
@@ -708,8 +712,57 @@ function secSaisie(){
   return h;
 }
 
-const NAV=[{k:'accueil',i:'🏠',l:'Accueil',p:1},{k:'saisie',i:'✍️',l:'Saisie',p:1},{k:'budget',i:'🎯',l:'Budget',p:1},{k:'patrimoine',i:'🏦',l:'Patrimoine',p:1},{k:'invest',i:'📈',l:'Invest'},{k:'analyse',i:'📊',l:'Analyse'},{k:'revenus',i:'💰',l:'Revenus'},{k:'objectifs',i:'🎖️',l:'Objectifs'},{k:'exceptionnel',i:'💎',l:'Exceptionnel'},{k:'transferts',i:'🌍',l:'Transferts'}];
-const SECT={accueil:secAccueil,saisie:secSaisie,analyse:secAnalyse,budget:secBudget,revenus:secRevenus,objectifs:secObjectifs,exceptionnel:secExceptionnel,transferts:secTransferts,invest:secInvest,patrimoine:secPatrimoine};
+/* --- Sauvegarde / Export / Import complet --- */
+function exportData(){ try{ const blob=new Blob([JSON.stringify(state)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='budget-famille-'+new Date().toISOString().slice(0,10)+'.json'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),2000); toast('Sauvegarde téléchargée'); }catch(e){ toast('Export impossible'); } }
+function copyData(){ try{ navigator.clipboard.writeText(JSON.stringify(state)); toast('Toutes tes données copiées'); }catch(e){ openFullImport(); toast('Copie auto impossible — sélectionne le texte'); } }
+function openFullImport(){ DETAIL={level:'fullimport'}; showDetail(); }
+function renderFullImportDetail(){ const head=document.getElementById('detailHead'),body=document.getElementById('detailBody');
+  head.innerHTML=`<div class="dhead"><button class="bk" onclick="closeDetail()">✕</button><h3>📥 Restaurer une sauvegarde</h3></div>`;
+  body.innerHTML=`<div class="note" style="margin:0 2px 8px">Colle une sauvegarde JSON complète. ⚠️ Cela <b>remplace TOUTES</b> tes données actuelles (annulable ensuite avec ↩️).</div>
+    <textarea id="fullTA" style="width:100%;height:150px;border-radius:12px;border:1.5px solid var(--line);background:var(--bg2);color:var(--ink);font-family:monospace;font-size:11px;padding:10px"></textarea>
+    <button class="delbtn" style="width:100%;margin-top:10px;padding:12px" onclick="doImportFull()">Remplacer mes données</button><div class="note" id="fullMsg" style="margin-top:8px;text-align:center"></div>`;
+}
+function doImportFull(){ const el=document.getElementById('fullTA'); let d=null; try{ d=JSON.parse((el?el.value:'').trim()); }catch(e){} const m=document.getElementById('fullMsg'); if(!d||!d.years){ if(m)m.textContent='⚠️ JSON invalide (doit contenir "years").'; return; } if(!confirm('Remplacer TOUTES tes données par cette sauvegarde ?'))return; save(); state=d; if(!state.fx)state.fx={FCFA:0.001524}; localStorage.setItem('budgetFamille_v1',JSON.stringify(state)); YEARK=(state.years[YEARK])?YEARK:Object.keys(state.years)[0]; closeDetail(); toast('Sauvegarde restaurée ✓'); }
+function setThemeMode(mode){ try{ localStorage.setItem('budgetV3_theme',mode); }catch(e){} if(mode==='auto')document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme',mode); render(); }
+function currentTheme(){ try{ return localStorage.getItem('budgetV3_theme')||'auto'; }catch(e){ return 'auto'; } }
+function setFx(v){ if(!state.fx)state.fx={}; state.fx.FCFA=parseNum(v)||0.001524; save(); render(); }
+function resetAll(){ if(!confirm('⚠️ Tout effacer et repartir de zéro ? Exporte d\'abord une sauvegarde !'))return; if(!confirm('Vraiment sûr ? Cette action efface toutes tes données.'))return; localStorage.removeItem('budgetFamille_v1'); location.reload(); }
+function secParams(){ setTitle('Paramètres'); const th=currentTheme();
+  let h=`<div class="sec"><h2>🎨 Thème</h2></div><div class="seg">${[['auto','Auto'],['light','Clair'],['dark','Sombre']].map(o=>`<button class="${th===o[0]?'on':''}" onclick="setThemeMode('${o[0]}')">${o[1]}</button>`).join('')}</div>`;
+  h+=`<div class="sec"><h2>💾 Sauvegarde de mes données</h2></div><div class="card"><div class="note" style="margin-bottom:10px">Exporte régulièrement pour ne rien perdre — tu pourras restaurer sur n'importe quel appareil.</div><div class="row" style="gap:8px;flex-wrap:wrap;padding:0"><button class="editbtn" onclick="exportData()">⬇️ Exporter</button><button class="editbtn" onclick="copyData()">📋 Copier</button><button class="editbtn" onclick="openFullImport()">📥 Restaurer</button></div></div>`;
+  h+=`<div class="sec"><h2>💱 Taux de change</h2></div><div class="card"><div class="frow"><label>1 FCFA =</label><input class="fin" inputmode="decimal" value="${state.fx&&state.fx.FCFA?state.fx.FCFA:0.001524}" onchange="setFx(this.value)"><span class="note">€</span></div><div class="note">Conversion FCFA ⇄ € (BRVM, transferts, avoirs).</div></div>`;
+  h+=`<div class="sec"><h2>↩️ Annuler</h2></div><div class="card"><button class="editbtn" style="width:100%" onclick="undoChange()">↩️ Annuler la dernière modification${UNDO.length?' ('+UNDO.length+')':''}</button></div>`;
+  h+=`<div class="sec"><h2>Autres</h2></div><div class="card"><div class="row clk" onclick="location.href='/budget-famille/classic/'"><div class="ic" style="background:var(--accent-soft);color:var(--accent)">🗄️</div><div class="nm"><b>Ancienne appli</b><span>sauvegarde & fonctions non encore portées</span></div><div class="chev">›</div></div></div>`;
+  h+=`<div class="card"><button class="delbtn" style="width:100%;padding:12px" onclick="resetAll()">🗑️ Tout réinitialiser</button></div>`;
+  return h;
+}
+/* --- Défiscalisation (dons / dîme -> réduction d'impôt) --- */
+function dedList(){ if(!state.deductions)state.deductions=[]; return state.deductions; }
+function dedItem(id){ return dedList().find(d=>d.id===id); }
+function openDeduc(id){ DETAIL={level:'deduc',id}; showDetail(); }
+function setDeduc(id,field,val){ const d=dedItem(id); if(!d)return; d[field]=(field==='montant'||field==='rate')?parseNum(val):(field==='month'?(+val||0):val); save(); if(DETAIL)renderDetail(); else render(); }
+function addDeduc(){ const d={id:newId(),month:MONTH,label:'Don / dîme',montant:0,rate:66}; dedList().push(d); save(); openDeduc(d.id); }
+function delDeduc(id){ if(!confirm('Supprimer ?'))return; state.deductions=dedList().filter(d=>d.id!==id); save(); closeDetail(); }
+function renderDeducDetail(){ const head=document.getElementById('detailHead'),body=document.getElementById('detailBody'); const d=dedItem(DETAIL.id); if(!d){closeDetail();return;} const red=(d.montant||0)*(d.rate||0)/100;
+  head.innerHTML=`<div class="dhead"><button class="bk" onclick="closeDetail()">✕</button><h3>${esc(d.label||'Don')}</h3><span class="tot pos">−${eur(red)}</span></div>`;
+  body.innerHTML=`<div class="card" style="margin:0">
+    <div class="frow"><label>Libellé</label><input class="fin" value="${esc(d.label||'')}" onchange="setDeduc('${d.id}','label',this.value)"></div>
+    <div class="frow"><label>Mois</label><select class="msel" onchange="setDeduc('${d.id}','month',this.value)">${MONTHS.map((mn,mi)=>`<option value="${mi}" ${(+d.month||0)===mi?'selected':''}>${mn}</option>`).join('')}</select></div>
+    <div class="frow"><label>Montant</label><input class="fin" inputmode="decimal" placeholder="0" value="${d.montant?num(d.montant):''}" onchange="setDeduc('${d.id}','montant',this.value)"></div>
+    <div class="frow"><label>Réduction</label><input class="fin" inputmode="decimal" value="${d.rate!=null?d.rate:66}" onchange="setDeduc('${d.id}','rate',this.value)"><span class="note">%</span></div>
+  </div><div class="note" style="margin:8px 2px">Réduction d'impôt estimée : <b>${eur(red)}</b> (${d.rate||0}% de ${eur(d.montant||0)}).</div>
+  <button class="delbtn" style="width:100%;padding:12px" onclick="delDeduc('${d.id}')">Supprimer</button>`;
+}
+function secDefisc(){ setTitle('Défiscalisation'); const list=dedList(); const tot=list.reduce((s,d)=>s+(d.montant||0),0); const red=list.reduce((s,d)=>s+(d.montant||0)*(d.rate||0)/100,0);
+  let h=`<div class="card"><div class="hero"><div class="lbl">Réduction d'impôt estimée</div><div class="big pos">−${eur(red)}</div><div class="sub">sur ${eur(tot)} de dons / dîme déductibles</div></div></div>`;
+  h+=`<div class="sec"><h2>Dons & dîme ${YEARK}</h2><span class="lnk" onclick="addDeduc()">＋ Ajouter</span></div><div class="card">`;
+  if(!list.length)h+=`<div class="note" style="text-align:center;padding:14px">Ajoute tes dons/dîme déductibles (réduction ~66 %).</div>`;
+  list.slice().sort((a,b)=>(a.month||0)-(b.month||0)).forEach((d,i)=>h+=catRow(d.label||'Don', d.montant||0, MONTHS[d.month||0]+' · réduction '+eur((d.montant||0)*(d.rate||0)/100), i, {avatar:'⛪',amtHtml:eur(d.montant||0),onclick:`openDeduc('${d.id}')`}));
+  h+=`</div><div class="note" style="text-align:center;margin-top:6px">Indicatif — vérifie les règles fiscales applicables.</div>`;
+  return h;
+}
+const NAV=[{k:'accueil',i:'🏠',l:'Accueil',p:1},{k:'saisie',i:'✍️',l:'Saisie',p:1},{k:'budget',i:'🎯',l:'Budget',p:1},{k:'patrimoine',i:'🏦',l:'Patrimoine',p:1},{k:'invest',i:'📈',l:'Invest'},{k:'analyse',i:'📊',l:'Analyse'},{k:'revenus',i:'💰',l:'Revenus'},{k:'objectifs',i:'🎖️',l:'Objectifs'},{k:'exceptionnel',i:'💎',l:'Exceptionnel'},{k:'transferts',i:'🌍',l:'Transferts'},{k:'defisc',i:'⛪',l:'Défiscalisation'},{k:'params',i:'⚙️',l:'Paramètres'}];
+const SECT={accueil:secAccueil,saisie:secSaisie,analyse:secAnalyse,budget:secBudget,revenus:secRevenus,objectifs:secObjectifs,exceptionnel:secExceptionnel,transferts:secTransferts,invest:secInvest,patrimoine:secPatrimoine,defisc:secDefisc,params:secParams};
 function setTitle(t){ const a=document.getElementById('title'); if(a)a.textContent=t; }
 function kpi(k,v,cls){ return `<div class="kpi"><div class="k">${k}</div><div class="v ${cls||''}">${v}</div></div>`; }
 function chgMonth(d){ MONTH=(MONTH+d+12)%12; render(); }
@@ -730,7 +783,7 @@ function render(){
   if(people.length && TAB!=='accueil' && TAB!=='analyse'){ h+=`<div class="banner">${LIVE?(TAB==='invest'?'✅ <b>Journal éditable</b> — onglet Journal : ajoute/modifie une opération, ou importe ton relevé Coris.':'✅ <b>Modifiable ici</b> — touche une ligne / un champ pour éditer.'):'Aperçu démo — sur ton appareil, tout est enregistré.'}</div>`; }
   s.innerHTML=`<div class="fade">${h}</div>`; s.scrollTop=0; renderNav(); if(TAB==='invest'&&PFQ)pfFilterInvest(PFQ);
 }
-function toggleTheme(){ const cur=document.documentElement.getAttribute('data-theme'); const dark=matchMedia('(prefers-color-scheme: dark)').matches; const next=cur==='dark'?'light':cur==='light'?'dark':(dark?'light':'dark'); document.documentElement.setAttribute('data-theme',next); }
+function toggleTheme(){ const cur=document.documentElement.getAttribute('data-theme'); const dark=matchMedia('(prefers-color-scheme: dark)').matches; const next=cur==='dark'?'light':cur==='light'?'dark':(dark?'light':'dark'); setThemeMode(next); }
 function openYearSheet(){ DETAIL={level:'year'}; showDetail(); }
 function switchYear(y){ if(state.years[y]!=null){ YEARK=+y; MONTH=(+y===new Date().getFullYear())?new Date().getMonth():0; } closeDetail(); }
 function createYear(y){ y=+y; if(!state.years[y]){ const src=JSON.parse(JSON.stringify(Y())); (src.foyer||[]).forEach(l=>{ l.real=Array(12).fill(0); }); Object.keys(src.persons||{}).forEach(p=>{ (src.persons[p].cats||[]).forEach(l=>{ l.real=Array(12).fill(0); }); }); src.exceptional=[]; src.transfers=[]; state.years[y]=src; save(); } YEARK=y; MONTH=(y===new Date().getFullYear())?new Date().getMonth():0; closeDetail(); }
@@ -746,6 +799,7 @@ document.getElementById('plusSheet').addEventListener('click',e=>{ if(e.target.i
 document.getElementById('detailSheet').addEventListener('click',e=>{ if(e.target.id==='detailSheet')closeDetail(); });
 function pfFilterInvest(q){ q=(q||'').toLowerCase().trim(); document.querySelectorAll('[data-invrow]').forEach(el=>{ const t=(el.getAttribute('data-invrow')||'').toLowerCase(); el.style.display=(!q||t.indexOf(q)>=0)?'':'none'; }); }
 document.addEventListener('input',e=>{ if(e.target&&e.target.id==='pfsearch'){ PFQ=e.target.value; pfFilterInvest(PFQ); } });
+(function(){ try{ const t=currentTheme(); if(t&&t!=='auto')document.documentElement.setAttribute('data-theme',t); }catch(e){} })();
 render();
 if('serviceWorker' in navigator && location.protocol.startsWith('http')){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
 </script>
