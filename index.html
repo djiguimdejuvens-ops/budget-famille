@@ -205,6 +205,7 @@ function num(n){ n=Number(n)||0; const neg=n<0; n=Math.abs(n); let s; if(n<50){ 
 function eur(n){ return num(n)+' €'; }
 function pctI(x){ return Math.round(x*100)+' %'; }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function fmtDT(ts){ if(!ts) return ''; const d=new Date(ts), p=n=>String(n).padStart(2,'0'); return p(d.getDate())+'/'+p(d.getMonth()+1)+' '+p(d.getHours())+':'+p(d.getMinutes()); }
 function qtyFmt(n){ n=+n||0; if(n===0)return'0'; const a=Math.abs(n); if(a<1)return n.toFixed(6).replace(/0+$/,'').replace('.',','); if(a<1000&&!Number.isInteger(n))return n.toFixed(2).replace('.',','); return Math.round(n).toLocaleString('fr-FR'); }
 
 const PAL=['#3b82f6','#f97316','#8b5cf6','#14b8a6','#ec4899','#f59e0b','#a855f7','#22c55e','#6366f1','#ef4444','#06b6d4','#84cc16','#eab308','#f472b6','#0ea5e9','#fb7185'];
