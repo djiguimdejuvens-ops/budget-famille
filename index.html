@@ -121,6 +121,11 @@ svg{display:block}
 .delbtn{border:none;background:rgba(244,63,106,.14);color:var(--red);border-radius:11px;padding:8px 12px;font-weight:800;font-size:13px;cursor:pointer}
 .nameedit{flex:1;text-align:left;width:auto;padding:9px 11px;border-radius:11px;border:1.5px solid var(--line);background:var(--bg2);color:var(--ink);font-size:15px;font-weight:700}
 .saverow{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
+.msel{width:100%;padding:10px 11px;border-radius:11px;border:1.5px solid var(--line);background:var(--bg2);color:var(--ink);font-size:15px;font-weight:700;-webkit-appearance:none;appearance:none}
+.frow{display:flex;align-items:center;gap:10px;padding:7px 2px}
+.frow>label{width:92px;color:var(--muted);font-size:13px;font-weight:700;flex:0 0 92px}
+.fin{flex:1;min-width:0;padding:10px 11px;border-radius:11px;border:1.5px solid var(--line);background:var(--bg2);color:var(--ink);font-size:15px;font-weight:600}
+.fin:focus,.msel:focus{outline:none;border-color:var(--accent);background:var(--card)}
 @media (min-width:900px){
   .sheetbox{max-width:560px;border-radius:22px;margin-bottom:6vh}
   .sheet{align-items:center}
@@ -349,24 +354,24 @@ function secObjectifs(){
 
 function secExceptionnel(){
   setTitle('Exceptionnel');
-  const list=excList();
+  const list=excList(); let fx=false; list.forEach(e=>{ if(!e.id){ e.id=newId(); fx=true; } }); if(fx) save();
   const tE=list.filter(e=>excNat(e.nature).cash>0).reduce((s,e)=>s+(e.montant||0),0), tS=list.filter(e=>excNat(e.nature).cash<0).reduce((s,e)=>s+(e.montant||0),0);
   let h=`<div class="grid2"><div class="kpi"><div class="k">➕ Entrées exceptionnelles</div><div class="v pos">${eur(tE)}</div></div><div class="kpi"><div class="k">➖ Sorties exceptionnelles</div><div class="v neg">${eur(tS)}</div></div></div>`;
-  if(!list.length){ h+=`<div class="card"><div class="note" style="text-align:center;padding:16px">Aucun événement exceptionnel enregistré.</div></div>`; return h; }
-  h+=`<div class="sec"><h2>Événements ${YEARK}</h2></div><div class="card">`;
-  list.slice().sort((a,b)=>(a.month||0)-(b.month||0)).forEach((e,i)=>{ const nat=excNat(e.nature); h+=catRow(e.libelle||e.name||nat.lbl, e.montant||0, nat.lbl+' · '+MONTHS[e.month||0], i, {avatar:nat.cash>0?'💎':'💥',amtHtml:`<span class="${nat.cash>0?'pos':'neg'}">${nat.cash>0?'+':'-'}${eur(e.montant||0)}</span>`}); }); h+=`</div>`;
+  h+=`<div class="sec"><h2>Événements ${YEARK}</h2><span class="lnk" onclick="addExc()">＋ Ajouter</span></div><div class="card">`;
+  if(!list.length) h+=`<div class="note" style="text-align:center;padding:14px">Aucun événement. Touche « ＋ Ajouter ».</div>`;
+  list.slice().sort((a,b)=>(a.month||0)-(b.month||0)).forEach((e,i)=>{ const nat=excNat(e.nature); h+=catRow(e.libelle||e.name||nat.lbl, e.montant||0, nat.lbl+' · '+MONTHS[e.month||0], i, {avatar:nat.cash>0?'💎':'💥',amtHtml:`<span class="${nat.cash>0?'pos':'neg'}">${nat.cash>0?'+':'-'}${eur(e.montant||0)}</span>`, onclick:`openExc('${e.id}')`}); }); h+=`</div>`;
   return h;
 }
 
 function secTransferts(){
   setTitle('Transferts');
-  const list=transList();
+  const list=transList(); let fx=false; list.forEach(t=>{ if(!t.id){ t.id=newId(); fx=true; } }); if(fx) save();
   let tEur=0,tFees=0,tFcfa=0; list.forEach(t=>{tEur+=t.eur||0;tFees+=trFee(t);tFcfa+=t.fcfa||0;});
   let h=`<div class="grid2"><div class="kpi"><div class="k">💶 Total envoyé</div><div class="v">${eur(tEur+tFees)}</div></div><div class="kpi"><div class="k">🌍 Reçu (FCFA)</div><div class="v">${Math.round(tFcfa).toLocaleString('fr-FR')}</div></div></div>`;
-  if(!list.length){ h+=`<div class="card"><div class="note" style="text-align:center;padding:16px">Aucun transfert enregistré.</div></div>`; return h; }
-  h+=`<div class="card tight"><div class="note">Frais totaux : <b>${eur(tFees)}</b> · Taux moyen : <b>1 € = ${tEur?Math.round(tFcfa/tEur).toLocaleString('fr-FR'):'—'} FCFA</b></div></div>`;
-  h+=`<div class="sec"><h2>${list.length} envoi(s)</h2></div><div class="card">`;
-  list.slice().reverse().forEach((t,i)=>{ const cost=(t.eur||0)+trFee(t); const prov=t.provider||'Transfert'; h+=catRow(t.beneficiary||prov, cost, prov+(t.motif?' · '+t.motif:'')+(t.date?' · '+t.date:''), i, {avatar:'💸',amtHtml:eur(cost), amtSub:Math.round(t.fcfa||0).toLocaleString('fr-FR')+' FCFA'}); }); h+=`</div>`;
+  if(list.length) h+=`<div class="card tight"><div class="note">Frais totaux : <b>${eur(tFees)}</b> · Taux moyen : <b>1 € = ${tEur?Math.round(tFcfa/tEur).toLocaleString('fr-FR'):'—'} FCFA</b></div></div>`;
+  h+=`<div class="sec"><h2>${list.length} envoi(s)</h2><span class="lnk" onclick="addTr()">＋ Ajouter</span></div><div class="card">`;
+  if(!list.length) h+=`<div class="note" style="text-align:center;padding:14px">Aucun transfert. Touche « ＋ Ajouter ».</div>`;
+  list.slice().reverse().forEach((t,i)=>{ const cost=(t.eur||0)+trFee(t); const prov=t.provider||'Transfert'; h+=catRow(t.beneficiary||prov, cost, prov+(t.motif?' · '+t.motif:'')+(t.date?' · '+t.date:''), i, {avatar:'💸',amtHtml:eur(cost), amtSub:Math.round(t.fcfa||0).toLocaleString('fr-FR')+' FCFA', onclick:`openTr('${t.id}')`}); }); h+=`</div>`;
   return h;
 }
 
@@ -409,6 +414,8 @@ function showDetail(){ document.getElementById('detailSheet').classList.add('on'
 function renderDetail(){
   if(!DETAIL) return; const head=document.getElementById('detailHead'), body=document.getElementById('detailBody');
   if(DETAIL.level==='salary'||DETAIL.level==='income'){ return renderIncomeDetail(); }
+  if(DETAIL.level==='exc'){ return renderExcDetail(); }
+  if(DETAIL.level==='tr'){ return renderTrDetail(); }
   if(DETAIL.level==='group'){
     const {kind,group,person}=DETAIL; const lines = kind==='foyer'? Y().foyer.filter(l=>l.group===group) : ((Y().persons[person].cats)||[]).filter(l=>l.group===group);
     const tot=lines.reduce((s,l)=>s+sumM(m=> kind==='foyer'?(l.planned[m]||0):catVal(person,l,m,'planned')),0);
@@ -444,6 +451,40 @@ function addIncome(p,kind){ const it={id:newId(),name:kind==='extras'?'Autre ent
 function delIncome(p,kind,id){ if(!confirm('Supprimer cette entrée ?'))return; Y().persons[p][kind]=(Y().persons[p][kind]||[]).filter(x=>x.id!==id); save(); closeDetail(); }
 function setEpObj(p,val){ Y().persons[p].epargneObjectif=roundRule(parseNum(val)); save(); render(); }
 function setStartCash(val){ state.startCash=roundRule(parseNum(val)); save(); render(); }
+/* --- édition Exceptionnel --- */
+function excItem(id){ return (Y().exceptional||[]).find(e=>e.id===id); }
+function openExc(id){ DETAIL={level:'exc',id}; showDetail(); }
+function setExc(id,field,val){ const e=excItem(id); if(!e)return; if(field==='montant')e.montant=roundRule(parseNum(val)); else if(field==='month')e.month=+val||0; else e[field]=val; save(); if(DETAIL)renderDetail(); else render(); }
+function addExc(){ const e={id:newId(),nature:'conso',month:MONTH,libelle:'Nouvel événement',montant:0}; (Y().exceptional||(Y().exceptional=[])).push(e); save(); openExc(e.id); }
+function delExc(id){ if(!confirm('Supprimer cet événement ?'))return; Y().exceptional=(Y().exceptional||[]).filter(e=>e.id!==id); save(); closeDetail(); }
+function renderExcDetail(){ const head=document.getElementById('detailHead'), body=document.getElementById('detailBody'); const e=excItem(DETAIL.id); if(!e){ closeDetail(); return; } const nat=excNat(e.nature);
+  head.innerHTML=`<div class="dhead"><button class="bk" onclick="closeDetail()">✕</button><h3>${esc(e.libelle||nat.lbl)}</h3><span class="tot ${nat.cash>0?'pos':'neg'}">${nat.cash>0?'+':'-'}${eur(e.montant||0)}</span></div>`;
+  const nats=[['revenu','Revenu exceptionnel (+)'],['remb','Remboursement (+)'],['conso','Conso exceptionnelle (−)'],['don','Don (−)']];
+  body.innerHTML=`<div class="card" style="margin:0">
+    <div class="frow"><label>Libellé</label><input class="fin" value="${esc(e.libelle||'')}" onchange="setExc('${e.id}','libelle',this.value)"></div>
+    <div class="frow"><label>Nature</label><select class="msel" onchange="setExc('${e.id}','nature',this.value)">${nats.map(o=>`<option value="${o[0]}" ${e.nature===o[0]?'selected':''}>${o[1]}</option>`).join('')}</select></div>
+    <div class="frow"><label>Mois</label><select class="msel" onchange="setExc('${e.id}','month',this.value)">${MONTHS.map((mn,mi)=>`<option value="${mi}" ${(+e.month||0)===mi?'selected':''}>${mn}</option>`).join('')}</select></div>
+    <div class="frow"><label>Montant</label><input class="fin" inputmode="decimal" placeholder="0" value="${e.montant?num(e.montant):''}" onchange="setExc('${e.id}','montant',this.value)"></div>
+  </div><button class="delbtn" style="width:100%;margin-top:12px;padding:12px" onclick="delExc('${e.id}')">Supprimer cet événement</button>`; }
+/* --- édition Transferts € -> FCFA --- */
+function trItem(id){ return (Y().transfers||[]).find(t=>t.id===id); }
+function openTr(id){ DETAIL={level:'tr',id}; showDetail(); }
+function setTr(id,field,val){ const t=trItem(id); if(!t)return; t[field]=(field==='eur'||field==='fees'||field==='fcfa')?parseNum(val):val; save(); if(DETAIL)renderDetail(); else render(); }
+function trFeeToggle(id){ const t=trItem(id); if(!t)return; t.feeMode=t.feeMode==='pct'?'eur':'pct'; save(); renderDetail(); }
+function addTr(){ const t={id:newId(),date:new Date().toISOString().slice(0,10),provider:'TapTapSend',beneficiary:'',motif:'',eur:0,fees:0,feeMode:'eur',fcfa:0}; (Y().transfers||(Y().transfers=[])).push(t); save(); openTr(t.id); }
+function delTr(id){ if(!confirm('Supprimer cet envoi ?'))return; Y().transfers=(Y().transfers||[]).filter(t=>t.id!==id); save(); closeDetail(); }
+function renderTrDetail(){ const head=document.getElementById('detailHead'), body=document.getElementById('detailBody'); const t=trItem(DETAIL.id); if(!t){ closeDetail(); return; } const fe=trFee(t), cost=(t.eur||0)+fe;
+  head.innerHTML=`<div class="dhead"><button class="bk" onclick="closeDetail()">✕</button><h3>${esc(t.beneficiary||t.provider||'Transfert')}</h3><span class="tot">${eur(cost)}<small style="display:block;font-size:11px;color:var(--muted);font-weight:600;text-align:right">coût</small></span></div>`;
+  body.innerHTML=`<div class="card" style="margin:0">
+    <div class="frow"><label>Date</label><input class="fin" type="date" value="${esc(t.date||'')}" onchange="setTr('${t.id}','date',this.value)"></div>
+    <div class="frow"><label>Service</label><input class="fin" value="${esc(t.provider||'')}" onchange="setTr('${t.id}','provider',this.value)"></div>
+    <div class="frow"><label>Bénéf.</label><input class="fin" value="${esc(t.beneficiary||'')}" onchange="setTr('${t.id}','beneficiary',this.value)"></div>
+    <div class="frow"><label>Motif</label><input class="fin" value="${esc(t.motif||'')}" onchange="setTr('${t.id}','motif',this.value)"></div>
+    <div class="frow"><label>Montant €</label><input class="fin" inputmode="decimal" placeholder="0" value="${t.eur?num(t.eur):''}" onchange="setTr('${t.id}','eur',this.value)"></div>
+    <div class="frow"><label>Frais</label><input class="fin" inputmode="decimal" placeholder="0" value="${t.fees?num(t.fees):''}" onchange="setTr('${t.id}','fees',this.value)"><button class="editbtn" onclick="trFeeToggle('${t.id}')" title="Basculer € / %">${t.feeMode==='pct'?'%':'€'}</button></div>
+    <div class="frow"><label>Reçu FCFA</label><input class="fin" inputmode="decimal" placeholder="0" value="${t.fcfa?Math.round(t.fcfa):''}" onchange="setTr('${t.id}','fcfa',this.value)"></div>
+  </div><div class="note" style="margin:8px 2px">Coût total <b>${eur(cost)}</b> (dont frais ${eur(fe)}) · Taux : 1 € = ${t.eur?Math.round((t.fcfa||0)/t.eur).toLocaleString('fr-FR'):'—'} FCFA</div>
+  <button class="delbtn" style="width:100%;padding:12px" onclick="delTr('${t.id}')">Supprimer cet envoi</button>`; }
 function m12rows(getV,onCh){ let h=''; for(let m=0;m<12;m++){ const v=getV(m); h+=`<div class="mrow ${m===MONTH?'today':''}"><div class="ml">${MONTHS[m]}</div><input class="medit" style="width:130px" inputmode="decimal" placeholder="0" value="${v?num(v):''}" onchange="${onCh}(${m},this.value)"></div>`; } return h; }
 function renderIncomeDetail(){
   const head=document.getElementById('detailHead'), body=document.getElementById('detailBody');
@@ -490,7 +531,7 @@ function render(){
   const s=document.getElementById('scroll'); let h='';
   if(!people.length){ h=`<div class="card"><div class="note">Aucune donnée sur cet appareil. Ouvre d'abord l'appli complète pour saisir ton budget, puis reviens ici.</div></div>`; }
   else { const head=`<div class="deskhead"><h1>${(NAV.find(n=>n.k===TAB)||{}).l||''}</h1><div class="note">${esc(MONTHS[MONTH])} ${YEARK}</div></div>`; h=head+(SECT[TAB]||secAccueil)(); }
-  if(people.length){ if(TAB==='saisie'||TAB==='budget'||TAB==='revenus'||TAB==='objectifs'){ h+=`<div class="banner">${LIVE?'✅ <b>Modifiable ici</b> — touche une ligne / un champ pour éditer.':'Aperçu démo — sur ton appareil, tout est enregistré.'}</div>`; } else if(TAB==='invest'||TAB==='transferts'||TAB==='exceptionnel'){ h+=`<div class="banner">✏️ L'édition de cet écran arrive très bientôt en natif. En attendant : <span style="text-decoration:underline;cursor:pointer;font-weight:800" onclick="location.href='/budget-famille/classic/'">appli classique&nbsp;›</span></div>`; } }
+  if(people.length){ if(TAB==='saisie'||TAB==='budget'||TAB==='revenus'||TAB==='objectifs'||TAB==='exceptionnel'||TAB==='transferts'){ h+=`<div class="banner">${LIVE?'✅ <b>Modifiable ici</b> — touche une ligne / un champ pour éditer.':'Aperçu démo — sur ton appareil, tout est enregistré.'}</div>`; } else if(TAB==='invest'){ h+=`<div class="banner">✏️ L'édition du portefeuille arrive bientôt en natif. En attendant : <span style="text-decoration:underline;cursor:pointer;font-weight:800" onclick="location.href='/budget-famille/classic/'">appli classique&nbsp;›</span></div>`; } }
   s.innerHTML=`<div class="fade">${h}</div>`; s.scrollTop=0; renderNav();
 }
 function toggleTheme(){ const cur=document.documentElement.getAttribute('data-theme'); const dark=matchMedia('(prefers-color-scheme: dark)').matches; const next=cur==='dark'?'light':cur==='light'?'dark':(dark?'light':'dark'); document.documentElement.setAttribute('data-theme',next); }
