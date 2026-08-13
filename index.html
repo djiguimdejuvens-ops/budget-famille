@@ -165,9 +165,9 @@ let state = load() || {people:[],currentYear:2026,years:{2026:{foyer:[],persons:
 let YEARK = (state.years&&state.years[state.currentYear])? state.currentYear : Object.keys(state.years||{})[0];
 let MONTH = (state.ui&&state.ui.month!=null)? +state.ui.month : new Date().getMonth(); if(MONTH<0||MONTH>11) MONTH=new Date().getMonth();
 const people = (state.people&&state.people.length)? state.people : Object.keys((state.years[YEARK]||{}).persons||{});
-let TAB='accueil', AMODE='sorties', BSCOPE='Foyer', BPER='mois', UICUR='EUR', UIMKT='all', ISUB='actifs';
-try{ const u=JSON.parse(localStorage.getItem('budgetV3_ui')||'{}'); TAB=u.tab||TAB;AMODE=u.amode||AMODE;BSCOPE=u.bscope||BSCOPE;BPER=u.bper||BPER;UICUR=u.cur||UICUR;UIMKT=u.mkt||UIMKT;ISUB=u.isub||ISUB; }catch(e){}
-function saveUI(){ try{ localStorage.setItem('budgetV3_ui',JSON.stringify({tab:TAB,amode:AMODE,bscope:BSCOPE,bper:BPER,cur:UICUR,mkt:UIMKT,isub:ISUB})); }catch(e){} }
+let TAB='accueil', AMODE='sorties', BSCOPE='Foyer', BPER='mois', UICUR='EUR', UIMKT='all', ISUB='actifs', ASCOPE='Foyer', APER='mois', PFQ='';
+try{ const u=JSON.parse(localStorage.getItem('budgetV3_ui')||'{}'); TAB=u.tab||TAB;AMODE=u.amode||AMODE;BSCOPE=u.bscope||BSCOPE;BPER=u.bper||BPER;UICUR=u.cur||UICUR;UIMKT=u.mkt||UIMKT;ISUB=u.isub||ISUB;ASCOPE=u.ascope||ASCOPE;APER=u.aper||APER; }catch(e){}
+function saveUI(){ try{ localStorage.setItem('budgetV3_ui',JSON.stringify({tab:TAB,amode:AMODE,bscope:BSCOPE,bper:BPER,cur:UICUR,mkt:UIMKT,isub:ISUB,ascope:ASCOPE,aper:APER})); }catch(e){} }
 const MONTHS=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 const MSHORT=['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
 function Y(){ return state.years[YEARK]; }
@@ -215,7 +215,7 @@ function tint(hex){ return hex+'22'; }
 
 function donut(slices,big,sub){
   const total=slices.reduce((s,x)=>s+Math.max(0,x.value),0)||1; const R=54,C=2*Math.PI*R; let off=0;
-  const rings=slices.filter(s=>s.value>0).map(s=>{ const len=s.value/total*C; const seg=`<circle cx="70" cy="70" r="${R}" fill="none" stroke="${s.color}" stroke-width="16" stroke-dasharray="${len} ${C-len}" stroke-dashoffset="${-off}" transform="rotate(-90 70 70)"/>`; off+=len; return seg; }).join('');
+  const rings=slices.filter(s=>s.value>0).map(s=>{ const len=s.value/total*C; const seg=`<circle cx="70" cy="70" r="${R}" fill="none" stroke="${s.color}" stroke-width="16" stroke-dasharray="${len} ${C-len}" stroke-dashoffset="${-off}" transform="rotate(-90 70 70)" style="cursor:pointer"><title>${esc(s.label||'')}</title></circle>`; off+=len; return seg; }).join('');
   return `<div class="donutwrap"><svg width="172" height="172" viewBox="0 0 140 140">${rings}<text x="70" y="66" text-anchor="middle" fill="var(--ink)" style="font:850 19px -apple-system">${esc(big)}</text><text x="70" y="86" text-anchor="middle" fill="var(--muted)" style="font:600 11px -apple-system">${esc(sub)}</text></svg></div>`;
 }
 function progress(pct,color){ const w=Math.max(0,Math.min(100,pct*100)); return `<div class="bar"><i style="width:${w}%;background:${color||'var(--accent)'}"></i></div>`; }
@@ -228,11 +228,13 @@ function lineChart(vals,labels){
   const pts=vals.map((v,i)=>[pad+i*(W-2*pad)/Math.max(1,vals.length-1), H-pad-(v-min)/rng*(H-2*pad)]);
   const d=pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
   const area=d+` L ${pts[pts.length-1][0].toFixed(1)} ${H-pad} L ${pts[0][0].toFixed(1)} ${H-pad} Z`;
-  const zero=H-pad-(0-min)/rng*(H-2*pad);
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="none"><defs><linearGradient id="lg" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="var(--accent)" stop-opacity=".28"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs><line x1="0" x2="${W}" y1="${zero}" y2="${zero}" stroke="var(--line)" stroke-width="1"/><path d="${area}" fill="url(#lg)"/><path d="${d}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+  const zero=H-pad-(0-min)/rng*(H-2*pad); const sp=(W-2*pad)/Math.max(1,vals.length-1);
+  const dots=pts.map(p=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.2" fill="var(--accent)"/>`).join('');
+  const bands=pts.map((p,i)=>`<rect x="${(p[0]-sp/2).toFixed(1)}" y="0" width="${sp.toFixed(1)}" height="${H}" fill="transparent" style="cursor:pointer"><title>${esc((labels&&labels[i])||('#'+(i+1)))} : ${eur(vals[i])}</title></rect>`).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="none"><defs><linearGradient id="lg" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="var(--accent)" stop-opacity=".28"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs><line x1="0" x2="${W}" y1="${zero}" y2="${zero}" stroke="var(--line)" stroke-width="1"/><path d="${area}" fill="url(#lg)"/><path d="${d}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>${dots}${bands}</svg>`;
 }
 function catRow(name,amount,subtitle,i,opts){ opts=opts||{}; const st=opts.style||catStyle(name,i);
-  return `<div class="row ${opts.onclick?'clk':''}" ${opts.onclick?`onclick="${opts.onclick}"`:''}>
+  return `<div class="row ${opts.onclick?'clk':''}" ${opts.frow?`data-invrow="${esc(opts.frow)}"`:''} ${opts.onclick?`onclick="${opts.onclick}"`:''}>
     <div class="ic ${opts.sm?'sm':''}" style="background:${tint(st.color)};color:${st.color}">${opts.avatar||st.emoji}</div>
     <div class="nm"><b>${esc(name)}</b><span>${esc(subtitle||'')}</span></div>
     <div class="amt">${opts.amtHtml||eur(amount)}${opts.amtSub?`<small>${esc(opts.amtSub)}</small>`:''}</div>${opts.onclick?'<div class="chev">›</div>':''}</div>`;
@@ -275,17 +277,29 @@ function secAccueil(){
 
 function secAnalyse(){
   setTitle('Analyse');
-  const m=MONTH,f=fOf(m);
-  let h=monthSel()+`<div class="seg"><button class="${AMODE==='entrees'?'on':''}" onclick="setUI('amode','entrees')">Entrées</button><button class="${AMODE==='sorties'?'on':''}" onclick="setUI('amode','sorties')">Sorties</button></div>`;
-  let items=[],total=0,center;
-  if(AMODE==='entrees'){ let sal=people.reduce((s,p)=>s+(Y().persons[p].salary[m]||0),0); if(sal>0)items.push({name:'Salaires',amount:sal}); people.forEach(p=>{ (Y().persons[p].extras||[]).forEach(e=>{const v=e.amounts[m]||0;if(v>0)items.push({name:(e.name||'Autre entrée')+' · '+p,amount:v});}); (Y().persons[p].persoExtras||[]).forEach(e=>{const v=e.amounts[m]||0;if(v>0)items.push({name:(e.name||'Revenu perso')+' · '+p,amount:v});}); }); total=items.reduce((s,x)=>s+x.amount,0); center='Revenus';
-  } else { foyerGroups().forEach(g=>{const v=foyerGroupTotal(g,m,f);if(v>0)items.push({name:g,amount:v});}); people.forEach(p=>{persoGroups(p).forEach(g=>{const v=persoGroupTotal(p,g,m,f);if(v>0)items.push({name:g+' · '+p,amount:v});});}); total=items.reduce((s,x)=>s+x.amount,0); center='Dépenses'; }
-  items.sort((a,b)=>b.amount-a.amount); items.forEach((it,i)=>it.style=catStyle(it.name,i));
-  const slices=items.map((it,i)=>({value:it.amount,color:AMODE==='entrees'?['#22c55e','#16a34a','#4ade80','#86efac','#34d399','#10b981'][i%6]:it.style.color}));
-  h+=`<div class="card">${donut(slices.length?slices:[{value:1,color:'var(--line)'}],eur(total),center)}<div class="note" style="text-align:center">${realizedMonth(m)?'Réel saisi':'Prévu'} · ${esc(MONTHS[m])} ${YEARK}</div></div>`;
-  if(AMODE==='sorties'){ const rev=people.reduce((s,p)=>s+personFullIncome(p,m),0),ratio=rev>0?total/rev:0; h+=`<div class="card tight"><div class="barlbl"><b>💸 Dépenses / Revenus</b><span style="font-weight:800;color:${ratio>1?'var(--red)':'var(--green-ink)'}">${pctI(ratio)}</span></div><div class="note">${eur(total)} sur ${eur(rev)}</div>${progress(ratio,ratio>1?'var(--red)':'var(--accent)')}</div>`; }
-  h+=`<div class="card">`; if(!items.length)h+=`<div class="note" style="text-align:center;padding:14px">Aucune ${AMODE==='entrees'?'entrée':'sortie'}.</div>`;
-  items.forEach((it,i)=>h+=catRow(it.name,it.amount,pctI(total>0?it.amount/total:0)+' du total',i,{style:it.style})); h+=`</div>`;
+  const scopes=['Foyer',...people];
+  let h=`<div class="seg">${scopes.map(s=>`<button class="${ASCOPE===s?'on':''}" onclick="setUI('ascope','${jsq(s)}')">${esc(s)}</button>`).join('')}</div>`;
+  h+=`<div class="seg sub"><button class="${APER==='mois'?'on':''}" onclick="setUI('aper','mois')">Mois</button><button class="${APER==='annee'?'on':''}" onclick="setUI('aper','annee')">Année ${YEARK}</button></div>`;
+  if(APER==='mois') h+=monthSel();
+  h+=`<div class="seg sub"><button class="${AMODE==='entrees'?'on':''}" onclick="setUI('amode','entrees')">Entrées</button><button class="${AMODE==='sorties'?'on':''}" onclick="setUI('amode','sorties')">Sorties</button></div>`;
+  const per=APER==='mois', scope=ASCOPE, ff=(m)=> per? fOf(m):'planned', M=(fn)=> per? fn(MONTH):sumM(fn);
+  let items=[],center;
+  if(AMODE==='entrees'){ center='Revenus'; const pl= scope==='Foyer'? people:[scope];
+    const sal=M(m=>pl.reduce((s,p)=>s+(Y().persons[p].salary[m]||0),0)); if(sal>0)items.push({name:'Salaire'+(scope==='Foyer'?'s':''),amount:sal});
+    pl.forEach(p=>{ (Y().persons[p].extras||[]).forEach(e=>{ const v=M(m=>e.amounts[m]||0); if(v>0)items.push({name:(e.name||'Autre entrée')+(scope==='Foyer'?' · '+p:''),amount:v}); }); (Y().persons[p].persoExtras||[]).forEach(e=>{ const v=M(m=>e.amounts[m]||0); if(v>0)items.push({name:(e.name||'Revenu perso')+(scope==='Foyer'?' · '+p:''),amount:v}); }); });
+  } else { center='Dépenses';
+    if(scope==='Foyer'){ foyerGroups().forEach(g=>{ const v=M(m=>foyerGroupTotal(g,m,ff(m))); if(v>0)items.push({name:g,amount:v}); }); people.forEach(p=>{ persoGroups(p).forEach(g=>{ const v=M(m=>persoGroupTotal(p,g,m,ff(m))); if(v>0)items.push({name:g+' · '+p,amount:v}); }); }); }
+    else { const p=scope; foyerGroups().forEach(g=>{ const v=M(m=>prorata(p,m)*foyerGroupTotal(g,m,ff(m))); if(v>0)items.push({name:g+' (part foyer)',amount:v}); }); persoGroups(p).forEach(g=>{ const v=M(m=>persoGroupTotal(p,g,m,ff(m))); if(v>0)items.push({name:g,amount:v}); }); }
+  }
+  const total=items.reduce((s,x)=>s+x.amount,0);
+  items.sort((a,b)=>b.amount-a.amount);
+  const GREENS=['#22c55e','#16a34a','#4ade80','#86efac','#34d399','#10b981','#0ea5e9','#14b8a6'];
+  items.forEach((it,i)=>{ it.color=AMODE==='entrees'?GREENS[i%GREENS.length]:catStyle(it.name,i).color; it.emoji=catStyle(it.name,i).emoji; });
+  const slices=items.map(it=>({value:it.amount,color:it.color,label:it.name+' : '+eur(it.amount)+' ('+pctI(total>0?it.amount/total:0)+')'}));
+  h+=`<div class="card">${donut(slices.length?slices:[{value:1,color:'var(--line)'}],eur(total),center)}<div class="note" style="text-align:center;margin-top:2px">${per?((realizedMonth(MONTH)?'Réel':'Prévu')+' · '+esc(MONTHS[MONTH])+' '+YEARK):'Année '+YEARK+' (prévu)'} · ${esc(scope)}</div></div>`;
+  if(AMODE==='sorties'){ const rev= scope==='Foyer'? M(m=>people.reduce((s,p)=>s+personFullIncome(p,m),0)) : M(m=>personFullIncome(scope,m)); const ratio=rev>0?total/rev:0; h+=`<div class="card tight"><div class="barlbl"><b>💸 Dépenses / Revenus</b><span style="font-weight:800;color:${ratio>1?'var(--red)':'var(--green-ink)'}">${pctI(ratio)}</span></div><div class="note">${eur(total)} sur ${eur(rev)}</div>${progress(ratio,ratio>1?'var(--red)':'var(--accent)')}</div>`; }
+  h+=`<div class="card">`; if(!items.length)h+=`<div class="note" style="text-align:center;padding:14px">Aucune ${AMODE==='entrees'?'entrée':'sortie'} sur cette période.</div>`;
+  items.forEach((it,i)=>h+=catRow(it.name,it.amount,pctI(total>0?it.amount/total:0)+' du total',i,{style:{emoji:it.emoji,color:it.color}})); h+=`</div>`;
   return h;
 }
 
@@ -401,9 +415,11 @@ function secInvest(){
   let cashE=0; Object.keys(cash).forEach(sgi=>{ if(inMkt(sgi))cashE+=eurOf(cash[sgi].amt,cash[sgi].dev); }); const realE=pfRealized(UIMKT);
   h+=`<div class="card"><div class="hero" style="padding:18px 8px 10px"><div class="lbl">Total ${UIMKT==='all'?'portefeuille':UIMKT}</div><div class="big">${money(valE+cashE)}</div><div class="sub ${pvE>=0?'pos':'neg'}">${money(pvE,true)} de +/- value latente${invE?` · ${pctI(pvE/invE)}`:''}</div></div>${pu?`<div class="note" style="text-align:center">Cours : ${fmtDT(pu.at)} · ${pu.ok} à jour${pu.fail?' · '+pu.fail+' échec':''}</div>`:''}<div class="kgrid">${kpi('📈 Titres',money(valE))}${kpi('💵 Espèces',money(cashE))}${kpi('💰 +/- value réalisée',money(realE,true),realE>=0?'pos':'neg')}${kpi('🧮 Investi',money(invE))}</div></div>`;
   if(pos.length){ const slices=pos.map((p,i)=>({value:eurOf(p.val,p.dev),color:catStyle(p.titre,i).color})); h+=`<div class="card">${donut(slices,money(valE),'Titres')}<div class="note" style="text-align:center">Répartition par titre</div></div>`; }
-  h+=`<div class="sec"><h2>Mes positions</h2><span class="lnk" onclick="setUI('isub','journal')">Journal ›</span></div><div class="card">`;
+  h+=`<div class="sec"><h2>Mes positions</h2><span class="lnk" onclick="setUI('isub','journal')">Journal ›</span></div>`;
+  if(pos.length>4) h+=`<input id="pfsearch" type="text" placeholder="🔎 filtrer par titre / marché" value="${esc(PFQ)}" style="width:100%;padding:9px 12px;border-radius:12px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);font-size:14px;margin-bottom:8px">`;
+  h+=`<div class="card">`;
   if(!pos.length)h+=`<div class="note" style="text-align:center;padding:12px">Aucune position sur ce marché.</div>`;
-  pos.forEach((p,i)=>h+=catRow(p.titre, eurOf(p.val,p.dev), p.sgi+' · '+qtyFmt(p.qty)+' × '+num(dispEur(eurOf(p.price,p.dev))), i, {amtHtml:money(eurOf(p.val,p.dev)), amtSub:(p.pv>=0?'+':'')+money(eurOf(p.pv,p.dev))+' ('+(p.vp>=0?'+':'')+pctI(p.vp)+')'})); h+=`</div>`;
+  pos.forEach((p,i)=>h+=catRow(p.titre, eurOf(p.val,p.dev), p.sgi+' · '+qtyFmt(p.qty)+' × '+num(dispEur(eurOf(p.price,p.dev))), i, {frow:p.titre+' '+p.sgi, amtHtml:money(eurOf(p.val,p.dev)), amtSub:(p.pv>=0?'+':'')+money(eurOf(p.pv,p.dev))+' ('+(p.vp>=0?'+':'')+pctI(p.vp)+')'})); h+=`</div>`;
   return h;
 }
 
@@ -431,6 +447,7 @@ function renderDetail(){
   if(DETAIL.level==='coris'){ return renderCorisDetail(); }
   if(DETAIL.level==='import'){ return renderImportDetail(); }
   if(DETAIL.level==='ad'){ return renderADDetail(); }
+  if(DETAIL.level==='year'){ return renderYearDetail(); }
   if(DETAIL.level==='group'){
     const {kind,group,person}=DETAIL; const lines = kind==='foyer'? Y().foyer.filter(l=>l.group===group) : ((Y().persons[person].cats)||[]).filter(l=>l.group===group);
     const tot=lines.reduce((s,l)=>s+sumM(m=> kind==='foyer'?(l.planned[m]||0):catVal(person,l,m,'planned')),0);
@@ -696,7 +713,7 @@ const SECT={accueil:secAccueil,saisie:secSaisie,analyse:secAnalyse,budget:secBud
 function setTitle(t){ const a=document.getElementById('title'); if(a)a.textContent=t; }
 function kpi(k,v,cls){ return `<div class="kpi"><div class="k">${k}</div><div class="v ${cls||''}">${v}</div></div>`; }
 function chgMonth(d){ MONTH=(MONTH+d+12)%12; render(); }
-function setUI(k,v){ if(k==='amode')AMODE=v; else if(k==='bscope')BSCOPE=v; else if(k==='bper')BPER=v; else if(k==='cur')UICUR=v; else if(k==='mkt')UIMKT=v; else if(k==='isub')ISUB=v; saveUI(); render(); }
+function setUI(k,v){ if(k==='amode')AMODE=v; else if(k==='bscope')BSCOPE=v; else if(k==='bper')BPER=v; else if(k==='cur')UICUR=v; else if(k==='mkt')UIMKT=v; else if(k==='isub')ISUB=v; else if(k==='ascope')ASCOPE=v; else if(k==='aper')APER=v; saveUI(); render(); }
 function setTab(k){ TAB=k; saveUI(); closePlus(); render(); }
 function openPlus(){ document.getElementById('plusSheet').classList.add('on'); }
 function closePlus(){ document.getElementById('plusSheet').classList.remove('on'); }
@@ -711,14 +728,24 @@ function render(){
   if(!people.length){ h=`<div class="card"><div class="note">Aucune donnée sur cet appareil. Ouvre d'abord l'appli complète pour saisir ton budget, puis reviens ici.</div></div>`; }
   else { const head=`<div class="deskhead"><h1>${(NAV.find(n=>n.k===TAB)||{}).l||''}</h1><div class="note">${esc(MONTHS[MONTH])} ${YEARK}</div></div>`; let body=''; try{ body=(SECT[TAB]||secAccueil)(); }catch(err){ console.error('render '+TAB, err); body=`<div class="card"><h2 style="margin:0 0 6px">⚠️ Souci d'affichage</h2><div class="note">L'onglet « ${esc((NAV.find(n=>n.k===TAB)||{}).l||TAB)} » a rencontré une erreur : <b>${esc((err&&err.message)||err)}</b>.<br>Fais-moi une capture. Tes données sont intactes (voir l'<span style="text-decoration:underline;cursor:pointer" onclick="location.href='/budget-famille/classic/'">ancienne appli</span>).</div></div>`; } h=head+body; }
   if(people.length && TAB!=='accueil' && TAB!=='analyse'){ h+=`<div class="banner">${LIVE?(TAB==='invest'?'✅ <b>Journal éditable</b> — onglet Journal : ajoute/modifie une opération, ou importe ton relevé Coris.':'✅ <b>Modifiable ici</b> — touche une ligne / un champ pour éditer.'):'Aperçu démo — sur ton appareil, tout est enregistré.'}</div>`; }
-  s.innerHTML=`<div class="fade">${h}</div>`; s.scrollTop=0; renderNav();
+  s.innerHTML=`<div class="fade">${h}</div>`; s.scrollTop=0; renderNav(); if(TAB==='invest'&&PFQ)pfFilterInvest(PFQ);
 }
 function toggleTheme(){ const cur=document.documentElement.getAttribute('data-theme'); const dark=matchMedia('(prefers-color-scheme: dark)').matches; const next=cur==='dark'?'light':cur==='light'?'dark':(dark?'light':'dark'); document.documentElement.setAttribute('data-theme',next); }
-function nextYear(){ const ks=Object.keys(state.years||{}); if(ks.length<2){alert('Année : '+YEARK);return;} YEARK=ks[(ks.indexOf(String(YEARK))+1)%ks.length]; render(); }
+function openYearSheet(){ DETAIL={level:'year'}; showDetail(); }
+function switchYear(y){ if(state.years[y]!=null){ YEARK=+y; MONTH=(+y===new Date().getFullYear())?new Date().getMonth():0; } closeDetail(); }
+function createYear(y){ y=+y; if(!state.years[y]){ const src=JSON.parse(JSON.stringify(Y())); (src.foyer||[]).forEach(l=>{ l.real=Array(12).fill(0); }); Object.keys(src.persons||{}).forEach(p=>{ (src.persons[p].cats||[]).forEach(l=>{ l.real=Array(12).fill(0); }); }); src.exceptional=[]; src.transfers=[]; state.years[y]=src; save(); } YEARK=y; MONTH=(y===new Date().getFullYear())?new Date().getMonth():0; closeDetail(); }
+function renderYearDetail(){ const head=document.getElementById('detailHead'),body=document.getElementById('detailBody'); const ys=Object.keys(state.years).map(Number).sort((a,b)=>a-b); const minY=Math.min(...ys),maxY=Math.max(...ys);
+  head.innerHTML=`<div class="dhead"><button class="bk" onclick="closeDetail()">✕</button><h3>📅 Années</h3></div>`;
+  let h='<div class="card" style="margin:0">'; ys.forEach(y=>{ const on=y===+YEARK; h+=`<div class="row clk" onclick="switchYear(${y})"><div class="ic" style="background:${on?'var(--accent)':'var(--accent-soft)'};color:${on?'#fff':'var(--accent)'}">📅</div><div class="nm"><b>${y}</b><span>${on?'année en cours':'toucher pour ouvrir'}</span></div><div class="chev">›</div></div>`; }); h+='</div>';
+  h+=`<div class="row" style="gap:8px;padding:10px 0"><button class="editbtn" onclick="createYear(${minY-1})">＋ Créer ${minY-1}</button><button class="editbtn" onclick="createYear(${maxY+1})">＋ Créer ${maxY+1}</button></div><div class="note" style="text-align:center">Une nouvelle année reprend ton <b>budget prévu</b> (le réel repart à zéro ; exceptionnel & transferts vides). Le portefeuille bourse est commun à toutes les années.</div>`;
+  body.innerHTML=h;
+}
 ['themeBtn','themeBtn2'].forEach(id=>{const e=document.getElementById(id);if(e)e.onclick=toggleTheme;});
-['yearBtn','yearBtn2'].forEach(id=>{const e=document.getElementById(id);if(e)e.onclick=nextYear;});
+['yearBtn','yearBtn2'].forEach(id=>{const e=document.getElementById(id);if(e)e.onclick=openYearSheet;});
 document.getElementById('plusSheet').addEventListener('click',e=>{ if(e.target.id==='plusSheet')closePlus(); });
 document.getElementById('detailSheet').addEventListener('click',e=>{ if(e.target.id==='detailSheet')closeDetail(); });
+function pfFilterInvest(q){ q=(q||'').toLowerCase().trim(); document.querySelectorAll('[data-invrow]').forEach(el=>{ const t=(el.getAttribute('data-invrow')||'').toLowerCase(); el.style.display=(!q||t.indexOf(q)>=0)?'':'none'; }); }
+document.addEventListener('input',e=>{ if(e.target&&e.target.id==='pfsearch'){ PFQ=e.target.value; pfFilterInvest(PFQ); } });
 render();
 if('serviceWorker' in navigator && location.protocol.startsWith('http')){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
 </script>
