@@ -613,25 +613,38 @@ function renderADDetail(){ const head=document.getElementById('detailHead'),body
     <div class="frow"><label>Devise</label><select class="msel" onchange="setAD('${kind}','${id}','devise',this.value)"><option value="EUR" ${(a.devise||'EUR')==='EUR'?'selected':''}>€ (EUR)</option><option value="XOF" ${(a.devise==='XOF'||a.devise==='FCFA')?'selected':''}>FCFA (XOF)</option></select></div>
   </div><button class="delbtn" style="width:100%;margin-top:12px;padding:12px" onclick="delAD('${kind}','${id}')">Supprimer</button>`;
 }
+function brokerDeposits(){ if(!hasPf())return 0; let s=0; (state.pf.ops||[]).forEach(o=>{ if(o.type==='depot')s+=eurOf(+o.amount||0,o.devise||'EUR'); else if(o.type==='retrait')s-=eurOf(+o.amount||0,o.devise||'EUR'); }); return s; }
+function tresorerieBudget(){ let sav=0; for(let m=0;m<12;m++){ if(realizedMonth(m)){ people.forEach(p=>sav+=epargne(p,m,'real')); sav+=commonSaving(m,'real'); } }
+  const exc=(excList()||[]).reduce((s,e)=>s+excNat(e.nature).cash*(e.montant||0),0); const broker=brokerDeposits();
+  return {start:state.startCash||0, sav, exc, broker, total:(state.startCash||0)+sav+exc-broker}; }
+function recalerTreso(){ const t=tresorerieBudget(); const v=prompt("Ton solde LIQUIDE réel aujourd'hui (€) — total de tes comptes courant + épargne (hors bourse) :", Math.round(t.total)); if(v==null)return; const real=parseNum(v); state.startCash=Math.round(real - t.sav - t.exc + t.broker); save(); render(); }
 function secPatrimoine(){
   setTitle('Patrimoine'); ensureAD();
+  const tr=tresorerieBudget();
   const bourse=pfValueEur()+pfCashEur();
   const avo=(state.assets||[]).reduce((s,a)=>s+toEUR(a.value,a.devise),0);
   const det=(state.debts||[]).reduce((s,a)=>s+toEUR(a.value,a.devise),0);
-  const net=avo+bourse-det;
-  let h=`<div class="card"><div class="hero"><div class="lbl">Patrimoine net</div><div class="big ${net>=0?'pos':'neg'}">${eur(net)}</div><div class="sub">avoirs + bourse − dettes</div></div>
-    <div class="kgrid">${kpi('🏦 Avoirs',eur(avo))}${kpi('📈 Bourse',eur(bourse))}${kpi('💳 Dettes',eur(det),det>0?'neg':'')}${kpi('💎 Net',eur(net),net>=0?'pos':'neg')}</div></div>`;
-  h+=`<div class="sec"><h2>Placements en bourse</h2><span class="lnk" onclick="setTab('invest')">Détail ›</span></div><div class="card">`+catRow('Portefeuille (titres + espèces)',bourse,'BRVM · Euronext · Crypto',0,{avatar:'📈',onclick:`setTab('invest')`})+`</div>`;
-  h+=`<div class="sec"><h2>Avoirs / actifs</h2><span class="lnk" onclick="addAD('asset')">＋ Ajouter</span></div><div class="card">`;
-  if(!(state.assets||[]).length)h+=`<div class="note" style="text-align:center;padding:12px">Ajoute tes avoirs hors bourse : livret, épargne, terrain, immobilier, autres placements…</div>`;
-  (state.assets||[]).forEach((a,i)=>h+=catRow(a.name||'Avoir', toEUR(a.value,a.devise), (a.devise==='XOF'||a.devise==='FCFA')?'FCFA':'€', i, {avatar:'🏦',onclick:`openAD('asset','${a.id}')`}));
+  const net=tr.total+bourse+avo-det;
+  let h=`<div class="card"><div class="hero"><div class="lbl">Patrimoine net</div><div class="big ${net>=0?'pos':'neg'}">${eur(net)}</div><div class="sub">trésorerie + bourse + avoirs − dettes</div></div>
+    <div class="kgrid">${kpi('💧 Trésorerie',eur(tr.total),tr.total<0?'neg':'')}${kpi('📈 Bourse',eur(bourse))}${kpi('🏠 Autres avoirs',eur(avo))}${kpi('💳 Dettes',eur(det),det>0?'neg':'')}</div></div>`;
+  h+=`<div class="sec"><h2>💧 Trésorerie (auto)</h2><span class="lnk" onclick="recalerTreso()">🔄 Recaler</span></div><div class="card">
+    <div class="subline" style="padding-left:2px"><span class="sn">Solde de départ</span><input class="medit" inputmode="decimal" value="${state.startCash?num(state.startCash):''}" placeholder="0" onchange="setStartCash(this.value)"></div>
+    <div class="subline"><span class="sn">+ Épargne réelle du budget (à date)</span><span class="sv ${tr.sav>=0?'pos':'neg'}">${tr.sav>=0?'+':''}${eur(tr.sav)}</span></div>
+    <div class="subline"><span class="sn">+ Résultat exceptionnel</span><span class="sv ${tr.exc>=0?'pos':(tr.exc<0?'neg':'')}">${tr.exc>=0?'+':''}${eur(tr.exc)}</span></div>
+    <div class="subline"><span class="sn">− Versements faits en bourse</span><span class="sv">${eur(tr.broker)}</span></div>
+    <div class="subline" style="border-top:2px solid var(--line)"><span class="sn"><b>= Trésorerie estimée</b></span><span class="sv" style="font-size:16px">${eur(tr.total)}</span></div>
+    <div class="note" style="margin-top:10px">Se met à jour <b>toute seule</b> depuis ton budget réel — pas de solde à tenir à la main. Quand tu reçois un relevé, touche <b>🔄 Recaler</b> et saisis ton vrai solde : j'ajuste le point de départ pour coller.</div></div>`;
+  h+=`<div class="sec"><h2>📈 Placements en bourse</h2><span class="lnk" onclick="setTab('invest')">Détail ›</span></div><div class="card">`+catRow('Portefeuille (titres + espèces)',bourse,'BRVM · Euronext · Crypto',0,{avatar:'📈',onclick:`setTab('invest')`})+`</div>`;
+  h+=`<div class="sec"><h2>🏠 Autres avoirs / biens</h2><span class="lnk" onclick="addAD('asset')">＋ Ajouter</span></div><div class="card">`;
+  if(!(state.assets||[]).length)h+=`<div class="note" style="text-align:center;padding:12px">Ce qui n'est PAS déjà compté ailleurs : immobilier, terrain, autres placements, cash…</div>`;
+  (state.assets||[]).forEach((a,i)=>h+=catRow(a.name||'Avoir', toEUR(a.value,a.devise), (a.devise==='XOF'||a.devise==='FCFA')?'FCFA':'€', i, {avatar:'🏠',onclick:`openAD('asset','${a.id}')`}));
   h+=`</div>`;
-  h+=`<div class="sec"><h2>Dettes</h2><span class="lnk" onclick="addAD('debt')">＋ Ajouter</span></div><div class="card">`;
+  h+=`<div class="sec"><h2>💳 Dettes</h2><span class="lnk" onclick="addAD('debt')">＋ Ajouter</span></div><div class="card">`;
   if(!(state.debts||[]).length)h+=`<div class="note" style="text-align:center;padding:12px">Aucune dette enregistrée. 🎉</div>`;
   (state.debts||[]).forEach((a,i)=>h+=catRow(a.name||'Dette', toEUR(a.value,a.devise), (a.devise==='XOF'||a.devise==='FCFA')?'FCFA':'€', i, {avatar:'💳',amtHtml:'−'+eur(toEUR(a.value,a.devise)),onclick:`openAD('debt','${a.id}')`}));
   h+=`</div>`;
   const annual=coupleSaving(); const rate=0.03; let bal=net; const proj=[net]; for(let y=1;y<=5;y++){ bal=bal*(1+rate)+annual; proj.push(Math.round(bal)); }
-  h+=`<div class="card"><div class="barlbl"><b>Projection 5 ans</b><span style="font-weight:800">${eur(proj[5])}</span></div>${lineChart(proj,['Auj','+1','+2','+3','+4','+5'])}<div class="note" style="text-align:center">Hypothèse : tu épargnes ${eur(annual)}/an, placé à 3 %/an (intérêts composés). Modifiable plus tard.</div></div>`;
+  h+=`<div class="card"><div class="barlbl"><b>Projection 5 ans</b><span style="font-weight:800">${eur(proj[5])}</span></div>${lineChart(proj,['Auj','+1','+2','+3','+4','+5'])}<div class="note" style="text-align:center">Si tu épargnes ${eur(annual)}/an, placé à 3 %/an (intérêts composés).</div></div>`;
   return h;
 }
 /* --- toast + mise à jour des cours --- */
