@@ -195,9 +195,9 @@ function epargneProj(p,m){ return realizedMonth(m)? epargne(p,m,'real') : epargn
 function personSaving(p){ let s=0; for(let m=0;m<12;m++) s+=epargneProj(p,m)+prorata(p,m)*(realizedMonth(m)?commonSaving(m,'real'):commonSaving(m,'planned')); return s; }
 function coupleSaving(){ let s=0; for(let m=0;m<12;m++){ people.forEach(p=>s+=epargneProj(p,m)); s+=(realizedMonth(m)?commonSaving(m,'real'):commonSaving(m,'planned')); } return s; }
 function sumM(fn){ let s=0; for(let m=0;m<12;m++)s+=fn(m); return s; }
-const EXC={revenu:{cash:1,lbl:'Revenu exceptionnel'},remb:{cash:1,lbl:'Remboursement'},conso:{cash:-1,lbl:'Conso exceptionnelle'},don:{cash:-1,lbl:'Don'}};
+const EXC={deblocage:{cash:1,patr:0,lbl:'Déblocage épargne / PEE'},emprunt:{cash:1,patr:0,lbl:'Emprunt reçu'},revenu:{cash:1,patr:1,lbl:'Revenu exceptionnel'},remboursement:{cash:-1,patr:0,lbl:"Remboursement d'emprunt"},investissement:{cash:-1,patr:0,lbl:"Placement / achat d'actif"},conso:{cash:-1,patr:-1,lbl:'Conso exceptionnelle'},don:{cash:-1,patr:-1,lbl:'Don'}};
 function excList(){ return (Y().exceptional)||[]; }
-function excNat(k){ return EXC[k]||{cash:-1,lbl:k}; }
+function excNat(k){ return EXC[k]||EXC.conso; }
 function transList(){ return (Y().transfers)||[]; }
 function trFee(t){ return t.feeMode==='pct'? (t.eur||0)*(t.fees||0)/100 : (t.fees||0); }
 
@@ -363,7 +363,7 @@ function secExceptionnel(){
   let h=`<div class="grid2"><div class="kpi"><div class="k">➕ Entrées exceptionnelles</div><div class="v pos">${eur(tE)}</div></div><div class="kpi"><div class="k">➖ Sorties exceptionnelles</div><div class="v neg">${eur(tS)}</div></div></div>`;
   h+=`<div class="sec"><h2>Événements ${YEARK}</h2><span class="lnk" onclick="addExc()">＋ Ajouter</span></div><div class="card">`;
   if(!list.length) h+=`<div class="note" style="text-align:center;padding:14px">Aucun événement. Touche « ＋ Ajouter ».</div>`;
-  list.slice().sort((a,b)=>(a.month||0)-(b.month||0)).forEach((e,i)=>{ const nat=excNat(e.nature); h+=catRow(e.libelle||e.name||nat.lbl, e.montant||0, nat.lbl+' · '+MONTHS[e.month||0], i, {avatar:nat.cash>0?'💎':'💥',amtHtml:`<span class="${nat.cash>0?'pos':'neg'}">${nat.cash>0?'+':'-'}${eur(e.montant||0)}</span>`, onclick:`openExc('${e.id}')`}); }); h+=`</div>`;
+  list.slice().sort((a,b)=>(a.month||0)-(b.month||0)).forEach((e,i)=>{ const nat=excNat(e.nature); h+=catRow(e.label||e.libelle||e.name||nat.lbl, e.montant||0, nat.lbl+' · '+MONTHS[e.month||0], i, {avatar:nat.cash>0?'💎':'💥',amtHtml:`<span class="${nat.cash>0?'pos':'neg'}">${nat.cash>0?'+':'-'}${eur(e.montant||0)}</span>`, onclick:`openExc('${e.id}')`}); }); h+=`</div>`;
   return h;
 }
 
@@ -470,13 +470,13 @@ function setStartCash(val){ state.startCash=roundRule(parseNum(val)); save(); re
 function excItem(id){ return (Y().exceptional||[]).find(e=>e.id===id); }
 function openExc(id){ DETAIL={level:'exc',id}; showDetail(); }
 function setExc(id,field,val){ const e=excItem(id); if(!e)return; if(field==='montant')e.montant=roundRule(parseNum(val)); else if(field==='month')e.month=+val||0; else e[field]=val; save(); if(DETAIL)renderDetail(); else render(); }
-function addExc(){ const e={id:newId(),nature:'conso',month:MONTH,libelle:'Nouvel événement',montant:0}; (Y().exceptional||(Y().exceptional=[])).push(e); save(); openExc(e.id); }
+function addExc(){ const e={id:newId(),nature:'conso',month:MONTH,label:'Nouvel événement',montant:0}; (Y().exceptional||(Y().exceptional=[])).push(e); save(); openExc(e.id); }
 function delExc(id){ if(!confirm('Supprimer cet événement ?'))return; Y().exceptional=(Y().exceptional||[]).filter(e=>e.id!==id); save(); closeDetail(); }
 function renderExcDetail(){ const head=document.getElementById('detailHead'), body=document.getElementById('detailBody'); const e=excItem(DETAIL.id); if(!e){ closeDetail(); return; } const nat=excNat(e.nature);
-  head.innerHTML=`<div class="dhead"><button class="bk" onclick="closeDetail()">✕</button><h3>${esc(e.libelle||nat.lbl)}</h3><span class="tot ${nat.cash>0?'pos':'neg'}">${nat.cash>0?'+':'-'}${eur(e.montant||0)}</span></div>`;
-  const nats=[['revenu','Revenu exceptionnel (+)'],['remb','Remboursement (+)'],['conso','Conso exceptionnelle (−)'],['don','Don (−)']];
+  head.innerHTML=`<div class="dhead"><button class="bk" onclick="closeDetail()">✕</button><h3>${esc(e.label||e.libelle||nat.lbl)}</h3><span class="tot ${nat.cash>0?'pos':'neg'}">${nat.cash>0?'+':'-'}${eur(e.montant||0)}</span></div>`;
+  const nats=[['deblocage','Déblocage épargne / PEE (+)'],['emprunt','Emprunt reçu (+)'],['revenu','Revenu exceptionnel (+)'],['remboursement',"Remboursement d'emprunt (−)"],['investissement',"Placement / achat d'actif (−)"],['conso','Conso exceptionnelle (−)'],['don','Don (−)']];
   body.innerHTML=`<div class="card" style="margin:0">
-    <div class="frow"><label>Libellé</label><input class="fin" value="${esc(e.libelle||'')}" onchange="setExc('${e.id}','libelle',this.value)"></div>
+    <div class="frow"><label>Libellé</label><input class="fin" value="${esc(e.label||e.libelle||'')}" onchange="setExc('${e.id}','label',this.value)"></div>
     <div class="frow"><label>Nature</label><select class="msel" onchange="setExc('${e.id}','nature',this.value)">${nats.map(o=>`<option value="${o[0]}" ${e.nature===o[0]?'selected':''}>${o[1]}</option>`).join('')}</select></div>
     <div class="frow"><label>Mois</label><select class="msel" onchange="setExc('${e.id}','month',this.value)">${MONTHS.map((mn,mi)=>`<option value="${mi}" ${(+e.month||0)===mi?'selected':''}>${mn}</option>`).join('')}</select></div>
     <div class="frow"><label>Montant</label><input class="fin" inputmode="decimal" placeholder="0" value="${e.montant?num(e.montant):''}" onchange="setExc('${e.id}','montant',this.value)"></div>
