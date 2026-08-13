@@ -309,6 +309,7 @@ function secBudget(){
   let h=`<div class="seg">${scopes.map(s=>`<button class="${BSCOPE===s?'on':''}" onclick="setUI('bscope','${esc(s)}')">${esc(s)}</button>`).join('')}</div>`;
   h+=`<div class="seg sub"><button class="${BPER==='mois'?'on':''}" onclick="setUI('bper','mois')">Mois</button><button class="${BPER==='annee'?'on':''}" onclick="setUI('bper','annee')">Année ${YEARK}</button></div>`;
   if(BPER==='mois')h+=monthSel();
+  h+=`<div class="card tight"><div class="barlbl"><b>📊 Dépenses mois par mois</b><span class="note">${esc(BSCOPE)} · ${YEARK}</span></div>${barChart(MSHORT.map((_,mm)=> BSCOPE==='Foyer'? foyerTotal(mm,realizedMonth(mm)?'real':'planned') : (persoTotal(BSCOPE,mm,realizedMonth(mm)?'real':'planned')+prorata(BSCOPE,mm)*foyerTotal(mm,realizedMonth(mm)?'real':'planned'))), MSHORT)}<div class="note" style="text-align:center;font-size:11px">Réel si saisi, sinon prévu · survole une barre</div></div>`;
   const per=BPER==='mois', P=(fn)=>per?fn(MONTH):sumM(fn);
   if(BSCOPE==='Foyer'){
     const cl = per? null : closedMonths();
@@ -419,7 +420,14 @@ function secInvest(){
   if(pos.length>4) h+=`<input id="pfsearch" type="text" placeholder="🔎 filtrer par titre / marché" value="${esc(PFQ)}" style="width:100%;padding:9px 12px;border-radius:12px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);font-size:14px;margin-bottom:8px">`;
   h+=`<div class="card">`;
   if(!pos.length)h+=`<div class="note" style="text-align:center;padding:12px">Aucune position sur ce marché.</div>`;
-  pos.forEach((p,i)=>h+=catRow(p.titre, eurOf(p.val,p.dev), p.sgi+' · '+qtyFmt(p.qty)+' × '+num(dispEur(eurOf(p.price,p.dev))), i, {frow:p.titre+' '+p.sgi, amtHtml:money(eurOf(p.val,p.dev)), amtSub:(p.pv>=0?'+':'')+money(eurOf(p.pv,p.dev))+' ('+(p.vp>=0?'+':'')+pctI(p.vp)+')'})); h+=`</div>`;
+  pos.forEach((p,i)=>{ const meta=(state.pf.meta&&state.pf.meta[p.key])||{}; const tgt=meta.target; const toTgt=(tgt&&p.price)?(tgt-p.price)/p.price:null; h+=catRow(p.titre, eurOf(p.val,p.dev), p.sgi+' · '+qtyFmt(p.qty)+' × '+num(dispEur(eurOf(p.price,p.dev)))+(tgt?' · 🎯 '+num(dispEur(eurOf(tgt,p.dev)))+(toTgt!=null?' ('+(toTgt>=0?'+':'')+pctI(toTgt)+')':''):''), i, {frow:p.titre+' '+p.sgi, onclick:`openPos('${jsq(p.key)}')`, amtHtml:money(eurOf(p.val,p.dev)), amtSub:(p.pv>=0?'+':'')+money(eurOf(p.pv,p.dev))+' ('+(p.vp>=0?'+':'')+pctI(p.vp)+')'}); }); h+=`</div>`;
+  // Réconciliation des espèces par compte
+  const cashSgis=Object.keys(cash).filter(sgi=>inMkt(sgi));
+  if(cashSgis.length){ h+=`<div class="sec"><h2>💵 Espèces par compte</h2></div><div class="card">`;
+    cashSgis.forEach(sgi=>{ const c=cash[sgi]; const sym=c.dev==='XOF'?'FCFA':'€'; const real=(state.pf.realCash&&state.pf.realCash[sgi]!=null)?state.pf.realCash[sgi]:null; const ecart=real!=null?(c.amt-real):null;
+      h+=`<div class="row" style="flex-wrap:wrap;gap:8px"><div class="nm"><b>${esc(sgi)}</b><span>calculé ${num(c.amt)} ${sym}${ecart!=null?' · écart '+num(ecart)+' '+sym:''}</span></div><input class="medit" style="width:120px" inputmode="decimal" placeholder="solde réel" value="${real!=null?num(real):''}" onchange="setRealCash('${jsq(sgi)}',this.value)">${(ecart!=null&&Math.abs(ecart)>=0.5)?`<button class="editbtn" title="Créer une opération d'ajustement" onclick="balCash('${jsq(sgi)}')">⚖️</button>`:''}</div>`;
+    }); h+=`</div><div class="note" style="text-align:center;margin-top:4px">Saisis ton solde réel (relevé courtier) : l'écart révèle une opération manquante. ⚖️ crée un ajustement daté du 1ᵉʳ mouvement.</div>`;
+  }
   return h;
 }
 
@@ -452,6 +460,7 @@ function renderDetail(){
   if(DETAIL.level==='year'){ return renderYearDetail(); }
   if(DETAIL.level==='fullimport'){ return renderFullImportDetail(); }
   if(DETAIL.level==='deduc'){ return renderDeducDetail(); }
+  if(DETAIL.level==='pos'){ return renderPosDetail(); }
   if(DETAIL.level==='group'){
     const {kind,group,person}=DETAIL; const lines = kind==='foyer'? Y().foyer.filter(l=>l.group===group) : ((Y().persons[person].cats)||[]).filter(l=>l.group===group);
     const tot=lines.reduce((s,l)=>s+sumM(m=> kind==='foyer'?(l.planned[m]||0):catVal(person,l,m,'planned')),0);
@@ -524,6 +533,24 @@ function renderTrDetail(){ const head=document.getElementById('detailHead'), bod
 /* --- Portefeuille : édition du journal d'opérations --- */
 function pfEnsure(){ if(!state.pf)state.pf={ops:[],prices:{},meta:{},realCash:{},priceMeta:{}}; if(!state.pf.ops)state.pf.ops=[]; if(!state.pf.prices)state.pf.prices={}; if(!state.pf.meta)state.pf.meta={}; if(!state.pf.priceMeta)state.pf.priceMeta={}; return state.pf; }
 function pfMeta2(key){ pfEnsure(); if(!state.pf.meta[key])state.pf.meta[key]={}; return state.pf.meta[key]; }
+const HORIZONS=[['','—'],['6m','6 mois'],['1an','1 an'],['18m','18 mois'],['3ans','3 ans']];
+function pfPos(key){ return pfPositions().find(p=>p.key===key); }
+function openPos(key){ DETAIL={level:'pos',key}; showDetail(); }
+function setPosPrice(key,val){ pfEnsure(); const v=parseNum(val); if(v)state.pf.prices[key]=v; else delete state.pf.prices[key]; save(); if(DETAIL)renderDetail(); else render(); }
+function setPosTarget(key,val){ const m=pfMeta2(key); const v=parseNum(val); if(v)m.target=v; else delete m.target; save(); if(DETAIL)renderDetail(); else render(); }
+function setPosHorizon(key,val){ pfMeta2(key).horizon=val; save(); if(DETAIL)renderDetail(); else render(); }
+function renderPosDetail(){ const head=document.getElementById('detailHead'),body=document.getElementById('detailBody'); const p=pfPos(DETAIL.key); if(!p){closeDetail();return;} const meta=pfMeta2(p.key); const dev=p.dev,sym=dev==='XOF'?'FCFA':'€'; const tgt=meta.target; const toTgt=(tgt&&p.price)?(tgt-p.price)/p.price:null; const cl=p.pv>=0?'pos':'neg';
+  head.innerHTML=`<div class="dhead"><button class="bk" onclick="closeDetail()">✕</button><h3>${esc(p.titre)}</h3><span class="tot">${money(eurOf(p.val,dev))}</span></div>`;
+  body.innerHTML=`<div class="card" style="margin:0 0 10px"><div class="grid2">${kpi('Quantité',qtyFmt(p.qty))}${kpi('CMP',num(p.cmp)+' '+sym)}${kpi('+/- value',(p.pv>=0?'+':'')+money(eurOf(p.pv,dev)),cl)}${kpi('Variation',(p.vp>=0?'+':'')+pctI(p.vp),cl)}</div></div>
+  <div class="card" style="margin:0">
+    <div class="frow"><label>Cours actuel</label><input class="fin" inputmode="decimal" value="${p.price?num(p.price):''}" onchange="setPosPrice('${jsq(p.key)}',this.value)"><span class="note">${sym}</span></div>
+    <div class="frow"><label>Objectif</label><input class="fin" inputmode="decimal" placeholder="prix cible" value="${tgt?num(tgt):''}" onchange="setPosTarget('${jsq(p.key)}',this.value)"><span class="note">${sym}</span></div>
+    <div class="frow"><label>% objectif</label><span style="flex:1;font-weight:800;padding:10px 2px" class="${toTgt==null?'note':(toTgt>=0?'pos':'neg')}">${toTgt==null?'— (fixe un objectif)':((toTgt>=0?'+':'')+pctI(toTgt)+' à parcourir')}</span></div>
+    <div class="frow"><label>Horizon</label><select class="msel" onchange="setPosHorizon('${jsq(p.key)}',this.value)">${HORIZONS.map(o=>`<option value="${o[0]}" ${(meta.horizon||'')===o[0]?'selected':''}>${o[1]}</option>`).join('')}</select></div>
+  </div><div class="note" style="margin-top:8px">${esc(p.sgi)} · valeur ${money(eurOf(p.val,dev))} · investi ${money(eurOf(p.qty*p.cmp,dev))}</div>`;
+}
+function setRealCash(sgi,val){ pfEnsure(); if(!state.pf.realCash)state.pf.realCash={}; state.pf.realCash[sgi]=parseNum(val); save(); render(); }
+function balCash(sgi){ pfEnsure(); const c=pfCash()[sgi]; if(!c)return; const computed=c.amt; const real=(state.pf.realCash&&state.pf.realCash[sgi]!=null)?state.pf.realCash[sgi]:0; const adj=real-computed; if(Math.abs(adj)<0.5){toast('Déjà équilibré ✓');return;} const dates=(state.pf.ops||[]).filter(o=>(o.sgi||'?')===sgi&&/^\d{4}-\d{2}-\d{2}/.test(o.date||'')).map(o=>o.date).sort(); const dt=dates[0]||new Date().toISOString().slice(0,10); state.pf.ops.push({id:newId(),date:dt,sgi,type:adj>0?'depot':'retrait',titre:'Ajustement',qty:0,price:0,fees:0,amount:Math.round(Math.abs(adj)*100)/100,devise:c.dev}); save(); render(); toast('Équilibré ✓'); }
 const OP_TYPES=['depot','achat','vente','retrait','dividende','frais'];
 const OP_LBL={depot:'Dépôt',achat:'Achat',vente:'Vente',retrait:'Retrait',dividende:'Dividende',frais:'Frais'};
 function opItem(id){ return pfEnsure().ops.find(o=>o.id===id); }
