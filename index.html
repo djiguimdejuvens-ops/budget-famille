@@ -146,11 +146,11 @@ svg{display:block}
   <aside class="sidebar">
     <div class="brand"><div class="logo">₿</div> Budget<br>Famille</div>
     <div id="sidenav"></div>
-    <div class="sidefoot"><a class="navi" href="/budget-famille/classic/" style="text-decoration:none" title="Saisir / modifier mes montants"><span class="ni">✏️</span>Modifier</a></div>
+    <div class="sidefoot"><a class="navi" href="/budget-famille/classic/" style="text-decoration:none" title="Ancienne interface, gardée en sauvegarde"><span class="ni">🗄️</span>Ancienne appli</a></div>
     <div class="sidefoot" style="margin-top:0"><button class="iconbtn" id="themeBtn2">◐</button><button class="iconbtn" id="yearBtn2">📅</button></div>
   </aside>
   <div class="app">
-    <div class="top"><button class="iconbtn" id="themeBtn">◐</button><h1 id="title">Accueil</h1><div class="right"><a class="iconbtn" href="/budget-famille/classic/" title="Modifier mes montants (appli classique)" style="text-decoration:none">✏️</a><button class="iconbtn" id="yearBtn">📅</button></div></div>
+    <div class="top"><button class="iconbtn" id="themeBtn">◐</button><h1 id="title">Accueil</h1><div class="right"><a class="iconbtn" href="/budget-famille/classic/" title="Ancienne appli (sauvegarde)" style="text-decoration:none">🗄️</a><button class="iconbtn" id="yearBtn">📅</button></div></div>
     <div class="scroll" id="scroll"></div>
     <nav class="tabbar" id="tabbar"></nav>
   </div>
@@ -376,23 +376,30 @@ function secTransferts(){
 }
 
 function secInvest(){
-  setTitle('Investissements');
-  if(!hasPf()){ let h=`<div class="card"><div class="hero"><div class="lbl">Portefeuille</div><div class="big">—</div><div class="sub">Aucune opération dans cet aperçu.</div></div></div><div class="banner">Ouvre l'appli complète pour gérer BRVM · Euronext · crypto. <span style="text-decoration:underline;cursor:pointer" onclick="location.href='/budget-famille/classic/'">Ouvrir ›</span></div>`; return h; }
+  setTitle('Investissements'); pfEnsure();
+  const sub=ISUB==='journal'?'journal':'actifs';
+  let h=`<div class="seg"><button class="${sub==='actifs'?'on':''}" onclick="setUI('isub','actifs')">📊 Actifs</button><button class="${sub==='journal'?'on':''}" onclick="setUI('isub','journal')">🧾 Journal</button></div>`;
+  if(sub==='journal'){
+    const ops=(state.pf.ops||[]).slice().sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+    h+=`<div class="row" style="gap:8px;padding:2px 0"><button class="editbtn" onclick="addOp()">＋ Opération</button><button class="editbtn" onclick="openCoris()">🇧🇫 Relevé Coris</button></div>`;
+    h+=`<div class="card">`; if(!ops.length)h+=`<div class="note" style="text-align:center;padding:14px">Aucune opération. Touche « ＋ Opération » ou importe ton relevé Coris.</div>`;
+    ops.forEach((o,i)=>{ const isT=o.type==='achat'||o.type==='vente'; const amt=isT?((+o.qty||0)*(+o.price||0)+(o.type==='achat'?1:-1)*(+o.fees||0)):(+o.amount||0); const inflow=(o.type==='vente'||o.type==='depot'||o.type==='dividende');
+      h+=catRow((OP_LBL[o.type]||o.type)+(isT&&o.titre?' '+o.titre:''), eurOf(amt,o.devise), (o.sgi||'')+' · '+(o.date||'')+(isT?' · '+qtyFmt(o.qty)+'×'+num(o.price):''), i, {avatar:inflow?'🟢':'🔴', amtHtml:(inflow?'+':'−')+money(eurOf(amt,o.devise)), onclick:`openOp('${o.id}')`}); });
+    h+=`</div>`; return h;
+  }
+  if(!hasPf()){ h+=`<div class="card"><div class="hero"><div class="lbl">Portefeuille</div><div class="big">—</div><div class="sub">Aucune opération encore.</div></div></div><div class="row" style="gap:8px;padding:2px 0"><button class="editbtn" onclick="addOp()">＋ Ajouter une opération</button><button class="editbtn" onclick="openCoris()">🇧🇫 Relevé Coris</button></div>`; return h; }
   const mkts=['all','Euronext','BRVM','Crypto']; const inMkt=sgi=>UIMKT==='all'||pfMarket(sgi)===UIMKT;
-  let h=`<div class="seg" style="margin-bottom:6px">${mkts.map(k=>`<button class="${UIMKT===k?'on':''}" onclick="setUI('mkt','${k}')">${k==='all'?'Tout':k}</button>`).join('')}</div>`;
-  h+=`<div class="seg sub"><button class="${UICUR==='EUR'?'on':''}" onclick="setUI('cur','EUR')">€ Euro</button><button class="${UICUR==='XOF'?'on':''}" onclick="setUI('cur','XOF')">FCFA</button></div>`;
+  h+=`<div class="seg sub" style="margin-top:4px">${mkts.map(k=>`<button class="${UIMKT===k?'on':''}" onclick="setUI('mkt','${k}')">${k==='all'?'Tout':k}</button>`).join('')}</div>`;
+  h+=`<div class="row" style="gap:8px;padding:2px 0"><button class="editbtn" onclick="updatePrices()">🔄 Actualiser les cours</button><button class="editbtn" onclick="setUI('cur','${UICUR==='EUR'?'XOF':'EUR'}')">${UICUR==='EUR'?'Voir en FCFA':'Voir en €'}</button></div>`;
+  const pu=state.pf.pricesUpdatedInfo;
   const pos=pfPositions().filter(p=>inMkt(p.sgi)); const cash=pfCash();
   let valE=0,invE=0; pos.forEach(p=>{valE+=eurOf(p.val,p.dev);invE+=eurOf(p.qty*p.cmp,p.dev);}); const pvE=valE-invE;
-  let cashE=0; Object.keys(cash).forEach(sgi=>{ if(inMkt(sgi)) cashE+=eurOf(cash[sgi].amt,cash[sgi].dev); });
-  const realE=pfRealized(UIMKT);
-  h+=`<div class="card"><div class="hero" style="padding:18px 8px 10px"><div class="lbl">Total ${UIMKT==='all'?'portefeuille':UIMKT}</div><div class="big">${money(valE+cashE)}</div><div class="sub ${pvE>=0?'pos':'neg'}">${money(pvE,true)} de +/- value latente${invE?` · ${pctI(pvE/invE)}`:''}</div></div><div class="kgrid">${kpi('📈 Titres',money(valE))}${kpi('💵 Espèces',money(cashE))}${kpi('💰 +/- value réalisée',money(realE,true),realE>=0?'pos':'neg')}${kpi('🧮 Investi',money(invE))}</div></div>`;
+  let cashE=0; Object.keys(cash).forEach(sgi=>{ if(inMkt(sgi))cashE+=eurOf(cash[sgi].amt,cash[sgi].dev); }); const realE=pfRealized(UIMKT);
+  h+=`<div class="card"><div class="hero" style="padding:18px 8px 10px"><div class="lbl">Total ${UIMKT==='all'?'portefeuille':UIMKT}</div><div class="big">${money(valE+cashE)}</div><div class="sub ${pvE>=0?'pos':'neg'}">${money(pvE,true)} de +/- value latente${invE?` · ${pctI(pvE/invE)}`:''}</div></div>${pu?`<div class="note" style="text-align:center">Cours : ${fmtDT(pu.at)} · ${pu.ok} à jour${pu.fail?' · '+pu.fail+' échec':''}</div>`:''}<div class="kgrid">${kpi('📈 Titres',money(valE))}${kpi('💵 Espèces',money(cashE))}${kpi('💰 +/- value réalisée',money(realE,true),realE>=0?'pos':'neg')}${kpi('🧮 Investi',money(invE))}</div></div>`;
   if(pos.length){ const slices=pos.map((p,i)=>({value:eurOf(p.val,p.dev),color:catStyle(p.titre,i).color})); h+=`<div class="card">${donut(slices,money(valE),'Titres')}<div class="note" style="text-align:center">Répartition par titre</div></div>`; }
-  h+=`<div class="sec"><h2>Mes positions</h2><span class="lnk" onclick="location.href='/budget-famille/classic/'">Détail complet ›</span></div><div class="card">`;
+  h+=`<div class="sec"><h2>Mes positions</h2><span class="lnk" onclick="setUI('isub','journal')">Journal ›</span></div><div class="card">`;
   if(!pos.length)h+=`<div class="note" style="text-align:center;padding:12px">Aucune position sur ce marché.</div>`;
-  pos.forEach((p,i)=>h+=catRow(p.titre, eurOf(p.val,p.dev), p.sgi+' · '+qtyFmt(p.qty)+' titres', i, {amtHtml:money(eurOf(p.val,p.dev)), amtSub:(p.pv>=0?'+':'')+money(eurOf(p.pv,p.dev))+' ('+(p.vp>=0?'+':'')+pctI(p.vp)+')'})); h+=`</div>`;
-  const ops=(state.pf.ops||[]).filter(o=>inMkt(o.sgi)).slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,6);
-  if(ops.length){ h+=`<div class="sec"><h2>Dernières opérations</h2></div><div class="card">`; const OPL={depot:'Dépôt',achat:'Achat',vente:'Vente',retrait:'Retrait',dividende:'Dividende',frais:'Frais'};
-    ops.forEach((o,i)=>{ const isT=o.type==='achat'||o.type==='vente'; const amt=isT?((+o.qty||0)*(+o.price||0)+(o.type==='achat'?1:-1)*(+o.fees||0)):(+o.amount||0); h+=catRow((OPL[o.type]||o.type)+(isT?' '+o.titre:''), eurOf(amt,o.devise), (o.sgi||'')+' · '+(o.date||''), i, {avatar:(o.type==='vente'||o.type==='depot'||o.type==='dividende')?'🟢':'🔴', amtHtml:money(eurOf(amt,o.devise))}); }); h+=`</div>`; }
+  pos.forEach((p,i)=>h+=catRow(p.titre, eurOf(p.val,p.dev), p.sgi+' · '+qtyFmt(p.qty)+' × '+num(dispEur(eurOf(p.price,p.dev))), i, {amtHtml:money(eurOf(p.val,p.dev)), amtSub:(p.pv>=0?'+':'')+money(eurOf(p.pv,p.dev))+' ('+(p.vp>=0?'+':'')+pctI(p.vp)+')'})); h+=`</div>`;
   return h;
 }
 
@@ -416,6 +423,8 @@ function renderDetail(){
   if(DETAIL.level==='salary'||DETAIL.level==='income'){ return renderIncomeDetail(); }
   if(DETAIL.level==='exc'){ return renderExcDetail(); }
   if(DETAIL.level==='tr'){ return renderTrDetail(); }
+  if(DETAIL.level==='op'){ return renderOpDetail(); }
+  if(DETAIL.level==='coris'){ return renderCorisDetail(); }
   if(DETAIL.level==='group'){
     const {kind,group,person}=DETAIL; const lines = kind==='foyer'? Y().foyer.filter(l=>l.group===group) : ((Y().persons[person].cats)||[]).filter(l=>l.group===group);
     const tot=lines.reduce((s,l)=>s+sumM(m=> kind==='foyer'?(l.planned[m]||0):catVal(person,l,m,'planned')),0);
@@ -485,6 +494,95 @@ function renderTrDetail(){ const head=document.getElementById('detailHead'), bod
     <div class="frow"><label>Reçu FCFA</label><input class="fin" inputmode="decimal" placeholder="0" value="${t.fcfa?Math.round(t.fcfa):''}" onchange="setTr('${t.id}','fcfa',this.value)"></div>
   </div><div class="note" style="margin:8px 2px">Coût total <b>${eur(cost)}</b> (dont frais ${eur(fe)}) · Taux : 1 € = ${t.eur?Math.round((t.fcfa||0)/t.eur).toLocaleString('fr-FR'):'—'} FCFA</div>
   <button class="delbtn" style="width:100%;padding:12px" onclick="delTr('${t.id}')">Supprimer cet envoi</button>`; }
+/* --- Portefeuille : édition du journal d'opérations --- */
+function pfEnsure(){ if(!state.pf)state.pf={ops:[],prices:{},meta:{},realCash:{},priceMeta:{}}; if(!state.pf.ops)state.pf.ops=[]; if(!state.pf.prices)state.pf.prices={}; if(!state.pf.meta)state.pf.meta={}; if(!state.pf.priceMeta)state.pf.priceMeta={}; return state.pf; }
+function pfMeta2(key){ pfEnsure(); if(!state.pf.meta[key])state.pf.meta[key]={}; return state.pf.meta[key]; }
+const OP_TYPES=['depot','achat','vente','retrait','dividende','frais'];
+const OP_LBL={depot:'Dépôt',achat:'Achat',vente:'Vente',retrait:'Retrait',dividende:'Dividende',frais:'Frais'};
+function opItem(id){ return pfEnsure().ops.find(o=>o.id===id); }
+function openOp(id){ DETAIL={level:'op',id}; showDetail(); }
+function setOp(id,field,val){ const o=opItem(id); if(!o)return; if(['qty','price','fees','amount'].includes(field))o[field]=parseNum(val); else o[field]=val; save(); if(DETAIL)renderDetail(); else render(); }
+function addOp(){ pfEnsure(); const o={id:newId(),date:new Date().toISOString().slice(0,10),sgi:'Fortuneo',type:'achat',titre:'',qty:0,price:0,fees:0,amount:0,devise:'EUR'}; state.pf.ops.push(o); save(); openOp(o.id); }
+function delOp(id){ if(!confirm('Supprimer cette opération ?'))return; state.pf.ops=pfEnsure().ops.filter(o=>o.id!==id); save(); closeDetail(); }
+function renderOpDetail(){ const head=document.getElementById('detailHead'),body=document.getElementById('detailBody'); const o=opItem(DETAIL.id); if(!o){closeDetail();return;} const isT=o.type==='achat'||o.type==='vente'; const dev=o.devise||'EUR'; const amt=isT?((+o.qty||0)*(+o.price||0)+(o.type==='achat'?1:-1)*(+o.fees||0)):(+o.amount||0);
+  head.innerHTML=`<div class="dhead"><button class="bk" onclick="closeDetail()">✕</button><h3>${OP_LBL[o.type]||o.type}${isT&&o.titre?' · '+esc(o.titre):''}</h3><span class="tot">${money(eurOf(amt,dev))}</span></div>`;
+  let h=`<div class="card" style="margin:0">
+    <div class="frow"><label>Date</label><input class="fin" type="date" value="${esc(o.date||'')}" onchange="setOp('${o.id}','date',this.value)"></div>
+    <div class="frow"><label>Compte</label><input class="fin" value="${esc(o.sgi||'')}" placeholder="Fortuneo, Coris Bourse, Binance…" onchange="setOp('${o.id}','sgi',this.value)"></div>
+    <div class="frow"><label>Type</label><select class="msel" onchange="setOp('${o.id}','type',this.value)">${OP_TYPES.map(t=>`<option value="${t}" ${o.type===t?'selected':''}>${OP_LBL[t]}</option>`).join('')}</select></div>`;
+  if(isT){ h+=`<div class="frow"><label>Titre</label><input class="fin" value="${esc(o.titre||'')}" onchange="setOp('${o.id}','titre',this.value)"></div>
+    <div class="frow"><label>Quantité</label><input class="fin" inputmode="decimal" value="${o.qty?qtyFmt(o.qty):''}" onchange="setOp('${o.id}','qty',this.value)"></div>
+    <div class="frow"><label>Cours</label><input class="fin" inputmode="decimal" value="${o.price?num(o.price):''}" onchange="setOp('${o.id}','price',this.value)"></div>
+    <div class="frow"><label>Frais</label><input class="fin" inputmode="decimal" value="${o.fees?num(o.fees):''}" onchange="setOp('${o.id}','fees',this.value)"></div>`;
+  } else { h+=`<div class="frow"><label>Libellé</label><input class="fin" value="${esc(o.titre||'')}" placeholder="(optionnel)" onchange="setOp('${o.id}','titre',this.value)"></div>
+    <div class="frow"><label>Montant</label><input class="fin" inputmode="decimal" value="${o.amount?num(o.amount):''}" onchange="setOp('${o.id}','amount',this.value)"></div>`; }
+  h+=`<div class="frow"><label>Devise</label><select class="msel" onchange="setOp('${o.id}','devise',this.value)"><option value="EUR" ${dev==='EUR'?'selected':''}>€ (EUR)</option><option value="XOF" ${dev==='XOF'?'selected':''}>FCFA (XOF)</option></select></div></div>
+    <button class="delbtn" style="width:100%;margin-top:12px;padding:12px" onclick="delOp('${o.id}')">Supprimer cette opération</button>`;
+  body.innerHTML=h;
+}
+/* --- Import relevé Coris (remplace les opérations BRVM) --- */
+function openCoris(){ DETAIL={level:'coris'}; showDetail(); }
+function renderCorisDetail(){ const head=document.getElementById('detailHead'),body=document.getElementById('detailBody');
+  head.innerHTML=`<div class="dhead"><button class="bk" onclick="closeDetail()">✕</button><h3>🇧🇫 Relevé Coris</h3></div>`;
+  body.innerHTML=`<div class="note" style="margin:0 2px 8px">Colle ton relevé « Mouvements liquidités » (copié depuis Excel/Numbers, avec l'en-tête). Il <b>remplace</b> toutes tes opérations BRVM/Coris (Fortuneo & Binance non touchés).</div>
+    <textarea id="corisTA" placeholder="Type mvt   Date   N° document   Libellé   Brut   Frais   Taxes   Débit   Crédit …" style="width:100%;height:150px;border-radius:12px;border:1.5px solid var(--line);background:var(--bg2);color:var(--ink);font-family:monospace;font-size:11px;padding:10px"></textarea>
+    <button class="editbtn" style="width:100%;margin-top:10px;padding:12px" onclick="doImportCoris()">Remplacer les opérations Coris</button>
+    <div class="note" id="corisMsg" style="margin-top:8px;text-align:center"></div>`;
+}
+function doImportCoris(){ const el=document.getElementById('corisTA'); const res=importCoris(el?el.value:''); const m=document.getElementById('corisMsg'); if(m)m.textContent=res.msg; if(res.ok) setTimeout(closeDetail,1000); }
+function parseCorisReleve(txt){
+  const clean=x=>{ const v=parseFloat((''+x).replace(/[\s]/g,'').replace(',','.')); return isNaN(v)?0:v; };
+  const fnum=s=>{ if(s==null)return 0; let v=(''+s).replace(/[\s]/g,'').replace(/[^\d.,\-]/g,'').replace(',','.'); v=parseFloat(v); return isNaN(v)?0:v; };
+  const frdate=s=>{ s=(''+s).trim(); let m=s.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/); if(m){ let y=m[3]; if(y.length===2)y='20'+y; return y+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0'); } m=s.match(/(\d{4})-(\d{2})-(\d{2})/); if(m)return m[0]; const n=parseFloat((''+s).replace(',','.')); if(n>40000&&n<60000){ const d=new Date(Date.UTC(1899,11,30)+Math.round(n)*86400000); return d.toISOString().slice(0,10); } return s; };
+  const nrm=s=>(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  const lines=(txt||'').replace(/\r/g,'').split('\n').filter(l=>l.trim()!=='');
+  if(!lines.length)return [];
+  const delim=lines[0].indexOf('\t')>=0?'\t':(lines[0].indexOf(';')>=0?';':null);
+  const split=l=>delim?l.split(delim).map(s=>s.trim()):l.split(/\s{2,}/).map(s=>s.trim());
+  let idx={type:0,date:1,lib:3,brut:4,frais:5,taxe:6,deb:7,cred:8},start=0;
+  const h0=split(lines[0]).map(nrm);
+  if(h0.some(x=>x.indexOf('libell')>=0)){ const find=(...ps)=>h0.findIndex(x=>ps.some(p=>x.indexOf(p)>=0)); idx={type:find('type','mvt'),date:find('date'),lib:find('libell'),brut:find('brut'),frais:find('frais'),taxe:find('taxe'),deb:find('debit'),cred:find('credit')}; start=1; }
+  const g=(f,i)=>(i>=0&&i<f.length)?f[i]:'';
+  const ops=[];
+  for(let i=start;i<lines.length;i++){ const f=split(lines[i]); if(f.length<3)continue;
+    const nT=nrm(g(f,idx.type)); const lib=g(f,idx.lib)||''; const brut=fnum(g(f,idx.brut)),frais=fnum(g(f,idx.frais)),taxe=fnum(g(f,idx.taxe)),deb=fnum(g(f,idx.deb)),cred=fnum(g(f,idx.cred)); const date=frdate(g(f,idx.date));
+    const ma=lib.match(/Achat\s+([\d\s]+?)\s+([A-Za-z][A-Za-z0-9]*)\s*\(\s*Cours\s*:?\s*([\d\s.,]+)\)/i);
+    const mv=lib.match(/Vente\s+([\d\s]+?)\s+([A-Za-z][A-Za-z0-9]*)\s*\(\s*Cours\s*:?\s*([\d\s.,]+)\)/i);
+    const mdv=lib.match(/DIVIDENDES?\s+[\d\s]+\s+([A-Za-z][A-Za-z0-9]*)/i);
+    if(nT.indexOf('achat')>=0&&ma)ops.push({date,sgi:'Coris Bourse',type:'achat',titre:ma[2].toUpperCase(),qty:clean(ma[1]),price:clean(ma[3]),fees:frais+taxe,amount:brut,devise:'XOF'});
+    else if(nT.indexOf('vente')>=0&&mv)ops.push({date,sgi:'Coris Bourse',type:'vente',titre:mv[2].toUpperCase(),qty:clean(mv[1]),price:clean(mv[3]),fees:frais+taxe,amount:brut,devise:'XOF'});
+    else if(nT.indexOf('depot')>=0||nT.indexOf('versement')>=0||nT.indexOf('virement')>=0)ops.push({date,sgi:'Coris Bourse',type:'depot',titre:'',qty:0,price:0,fees:0,amount:cred||brut,devise:'XOF'});
+    else if(nT.indexOf('dividende')>=0)ops.push({date,sgi:'Coris Bourse',type:'dividende',titre:mdv?mdv[1].toUpperCase():'',qty:0,price:0,fees:0,amount:cred||brut,devise:'XOF'});
+    else if(nT.indexOf('retrait')>=0)ops.push({date,sgi:'Coris Bourse',type:'retrait',titre:'',qty:0,price:0,fees:0,amount:deb||brut,devise:'XOF'});
+    else if(nT.indexOf('tenue')>=0||nT.indexOf('frais')>=0||nT.indexOf('facturation')>=0||nT.indexOf('commission')>=0)ops.push({date,sgi:'Coris Bourse',type:'frais',titre:(lib||'Frais').slice(0,48),qty:0,price:0,fees:0,amount:deb||(frais+taxe)||brut,devise:'XOF'});
+  }
+  return ops;
+}
+function importCoris(txt){ txt=(txt||'').trim(); if(!txt)return {ok:false,msg:'Colle d\'abord ton relevé Coris.'};
+  let ops=null; try{ const d=JSON.parse(txt); if(Array.isArray(d))ops=d; else if(d&&Array.isArray(d.ops))ops=d.ops; }catch(e){}
+  if(ops)ops=ops.map(o=>({date:o.date||'',sgi:'Coris Bourse',type:OP_TYPES.includes(o.type)?o.type:'achat',titre:(o.titre||'').trim(),qty:+o.qty||0,price:+o.price||0,fees:+o.fees||0,amount:+o.amount||0,devise:'XOF'}));
+  else ops=parseCorisReleve(txt);
+  if(!ops.length)return {ok:false,msg:'⚠️ Rien reconnu. Copie tout le tableau AVEC l\'en-tête.'};
+  pfEnsure(); const removed=state.pf.ops.filter(o=>pfMarket(o.sgi)==='BRVM').length; state.pf.ops=state.pf.ops.filter(o=>pfMarket(o.sgi)!=='BRVM'); ops.forEach(o=>state.pf.ops.push(Object.assign({id:newId()},o))); save();
+  return {ok:true,msg:'✅ '+ops.length+' opération(s) importée(s), '+removed+' remplacée(s).'};
+}
+/* --- toast + mise à jour des cours --- */
+function toast(msg){ let t=document.getElementById('toastbox'); if(!t){ t=document.createElement('div'); t.id='toastbox'; t.style.cssText='position:fixed;left:50%;bottom:100px;transform:translateX(-50%);background:var(--accent);color:#fff;padding:11px 18px;border-radius:12px;font-weight:800;font-size:13px;z-index:200;box-shadow:var(--shadow);max-width:90%;text-align:center;transition:opacity .3s'; document.body.appendChild(t); } t.textContent=msg; t.style.opacity='1'; clearTimeout(window.__tt); window.__tt=setTimeout(()=>{t.style.opacity='0';},2800); }
+const CG_IDS={bitcoin:'bitcoin',btc:'bitcoin',ethereum:'ethereum',eth:'ethereum',bnb:'binancecoin',binancecoin:'binancecoin',solana:'solana',sol:'solana',cardano:'cardano',ada:'cardano',ripple:'ripple',xrp:'ripple',dogecoin:'dogecoin',doge:'dogecoin',polkadot:'polkadot',dot:'polkadot',litecoin:'litecoin',ltc:'litecoin',polygon:'matic-network',matic:'matic-network',avalanche:'avalanche-2',avax:'avalanche-2'};
+const PROXIES=['https://corsproxy.io/?url=','https://api.allorigins.win/raw?url='];
+async function proxyText(url){ let err; for(const px of PROXIES){ const c=new AbortController(); const t=setTimeout(()=>c.abort(),13000); try{ const r=await fetch(px+encodeURIComponent(url),{signal:c.signal,cache:'no-store'}); clearTimeout(t); if(r.ok)return await r.text(); err=new Error('HTTP '+r.status); }catch(e){ clearTimeout(t); err=e; } } throw err||new Error('proxy indisponible'); }
+async function yahooSymbol(p){ const meta=pfMeta2(p.key); if(meta.symbol)return meta.symbol; try{ const tx=await proxyText('https://query1.finance.yahoo.com/v1/finance/search?q='+encodeURIComponent(p.titre)+'&quotesCount=8'); const j=JSON.parse(tx),qs=(j.quotes||[]).filter(x=>x.symbol); const par=qs.find(x=>x.exchange==='PAR')||qs.find(x=>/\.PA$/.test(x.symbol))||qs[0]; if(par){ meta.symbol=par.symbol; return par.symbol; } }catch(e){} return null; }
+async function updatePrices(){ pfEnsure(); const positions=pfPositions(); if(!positions.length){ toast('Aucune position.'); return; } toast('Mise à jour des cours…'); let done=0; const fail=[]; const now=Date.now();
+  const okp=(p,src)=>{ state.pf.priceMeta[p.key]={at:now,src,ok:true}; done++; }; const failp=(p,l)=>{ state.pf.priceMeta[p.key]={at:now,ok:false}; fail.push(l||p.titre); };
+  const cr=positions.filter(p=>pfMarket(p.sgi)==='Crypto');
+  if(cr.length){ try{ const idOf=p=>CG_IDS[(p.titre||'').toLowerCase().trim()]||(p.titre||'').toLowerCase().trim().replace(/\s+/g,'-'); const ids=[...new Set(cr.map(idOf))]; const r=await fetch('https://api.coingecko.com/api/v3/simple/price?ids='+encodeURIComponent(ids.join(','))+'&vs_currencies=eur&_cb='+now,{cache:'no-store'}); const d=await r.json(); cr.forEach(p=>{ const id=idOf(p); if(d[id]&&d[id].eur){ state.pf.prices[p.key]=d[id].eur; okp(p,'CoinGecko'); } else failp(p); }); }catch(e){ cr.forEach(p=>failp(p)); } }
+  const bv=positions.filter(p=>pfMarket(p.sgi)==='BRVM');
+  if(bv.length){ try{ const h=await proxyText('https://www.brvm.org/en/cours-actions/0'); const map={}; const re=/<div class="item"><span>([A-Z0-9]{2,6})<\/span>&nbsp;<span>([\d\s]+)<\/span>/g; let m; while((m=re.exec(h))){ const px=parseFloat(m[2].replace(/[\s]/g,'')); if(!isNaN(px))map[m[1]]=px; } const keys=Object.keys(map);
+    bv.forEach(p=>{ const meta=pfMeta2(p.key); const t=(p.titre||'').toUpperCase().trim(); const sym=(meta.symbol||'').toUpperCase().trim(); let px=null; if(sym&&map[sym]!=null)px=map[sym]; else if(map[t]!=null)px=map[t]; else if(t.length>=3){ const k=keys.find(k=>k.startsWith(t)||t.startsWith(k)); if(k)px=map[k]; } if(px!=null){ state.pf.prices[p.key]=px; okp(p,'BRVM'); } else failp(p); }); }catch(e){ bv.forEach(p=>failp(p)); } }
+  const eu=positions.filter(p=>pfMarket(p.sgi)==='Euronext');
+  for(const p of eu){ const sym=await yahooSymbol(p); if(!sym){ failp(p,p.titre+' (ticker ?)'); continue; } try{ const tx=await proxyText('https://query1.finance.yahoo.com/v8/finance/chart/'+sym+'?interval=1d&range=1d'); const j=JSON.parse(tx); const price=j.chart&&j.chart.result&&j.chart.result[0]&&j.chart.result[0].meta&&j.chart.result[0].meta.regularMarketPrice; if(price){ state.pf.prices[p.key]=price; okp(p,'Yahoo'); } else failp(p); }catch(e){ failp(p); } }
+  state.pf.pricesUpdatedInfo={at:now,ok:done,fail:fail.length}; save(); render(); toast('OK '+done+' cours à jour'+(fail.length?(' · échec : '+fail.slice(0,3).join(', ')):''));
+}
 function m12rows(getV,onCh){ let h=''; for(let m=0;m<12;m++){ const v=getV(m); h+=`<div class="mrow ${m===MONTH?'today':''}"><div class="ml">${MONTHS[m]}</div><input class="medit" style="width:130px" inputmode="decimal" placeholder="0" value="${v?num(v):''}" onchange="${onCh}(${m},this.value)"></div>`; } return h; }
 function renderIncomeDetail(){
   const head=document.getElementById('detailHead'), body=document.getElementById('detailBody');
@@ -517,7 +615,7 @@ const SECT={accueil:secAccueil,saisie:secSaisie,analyse:secAnalyse,budget:secBud
 function setTitle(t){ const a=document.getElementById('title'); if(a)a.textContent=t; }
 function kpi(k,v,cls){ return `<div class="kpi"><div class="k">${k}</div><div class="v ${cls||''}">${v}</div></div>`; }
 function chgMonth(d){ MONTH=(MONTH+d+12)%12; render(); }
-function setUI(k,v){ if(k==='amode')AMODE=v; else if(k==='bscope')BSCOPE=v; else if(k==='bper')BPER=v; else if(k==='cur')UICUR=v; else if(k==='mkt')UIMKT=v; saveUI(); render(); }
+function setUI(k,v){ if(k==='amode')AMODE=v; else if(k==='bscope')BSCOPE=v; else if(k==='bper')BPER=v; else if(k==='cur')UICUR=v; else if(k==='mkt')UIMKT=v; else if(k==='isub')ISUB=v; saveUI(); render(); }
 function setTab(k){ TAB=k; saveUI(); closePlus(); render(); }
 function openPlus(){ document.getElementById('plusSheet').classList.add('on'); }
 function closePlus(){ document.getElementById('plusSheet').classList.remove('on'); }
@@ -531,7 +629,7 @@ function render(){
   const s=document.getElementById('scroll'); let h='';
   if(!people.length){ h=`<div class="card"><div class="note">Aucune donnée sur cet appareil. Ouvre d'abord l'appli complète pour saisir ton budget, puis reviens ici.</div></div>`; }
   else { const head=`<div class="deskhead"><h1>${(NAV.find(n=>n.k===TAB)||{}).l||''}</h1><div class="note">${esc(MONTHS[MONTH])} ${YEARK}</div></div>`; h=head+(SECT[TAB]||secAccueil)(); }
-  if(people.length){ if(TAB==='saisie'||TAB==='budget'||TAB==='revenus'||TAB==='objectifs'||TAB==='exceptionnel'||TAB==='transferts'){ h+=`<div class="banner">${LIVE?'✅ <b>Modifiable ici</b> — touche une ligne / un champ pour éditer.':'Aperçu démo — sur ton appareil, tout est enregistré.'}</div>`; } else if(TAB==='invest'){ h+=`<div class="banner">✏️ L'édition du portefeuille arrive bientôt en natif. En attendant : <span style="text-decoration:underline;cursor:pointer;font-weight:800" onclick="location.href='/budget-famille/classic/'">appli classique&nbsp;›</span></div>`; } }
+  if(people.length && TAB!=='accueil' && TAB!=='analyse'){ h+=`<div class="banner">${LIVE?(TAB==='invest'?'✅ <b>Journal éditable</b> — onglet Journal : ajoute/modifie une opération, ou importe ton relevé Coris.':'✅ <b>Modifiable ici</b> — touche une ligne / un champ pour éditer.'):'Aperçu démo — sur ton appareil, tout est enregistré.'}</div>`; }
   s.innerHTML=`<div class="fade">${h}</div>`; s.scrollTop=0; renderNav();
 }
 function toggleTheme(){ const cur=document.documentElement.getAttribute('data-theme'); const dark=matchMedia('(prefers-color-scheme: dark)').matches; const next=cur==='dark'?'light':cur==='light'?'dark':(dark?'light':'dark'); document.documentElement.setAttribute('data-theme',next); }
