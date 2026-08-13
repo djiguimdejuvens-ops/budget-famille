@@ -381,13 +381,13 @@ function secInvest(){
   let h=`<div class="seg"><button class="${sub==='actifs'?'on':''}" onclick="setUI('isub','actifs')">📊 Actifs</button><button class="${sub==='journal'?'on':''}" onclick="setUI('isub','journal')">🧾 Journal</button></div>`;
   if(sub==='journal'){
     const ops=(state.pf.ops||[]).slice().sort((a,b)=>String(b.date).localeCompare(String(a.date)));
-    h+=`<div class="row" style="gap:8px;padding:2px 0"><button class="editbtn" onclick="addOp()">＋ Opération</button><button class="editbtn" onclick="openCoris()">🇧🇫 Relevé Coris</button></div>`;
-    h+=`<div class="card">`; if(!ops.length)h+=`<div class="note" style="text-align:center;padding:14px">Aucune opération. Touche « ＋ Opération » ou importe ton relevé Coris.</div>`;
+    h+=`<div class="row" style="gap:8px;padding:2px 0;flex-wrap:wrap"><button class="editbtn" onclick="addOp()">＋ Opération</button><button class="editbtn" onclick="openCoris()">🇧🇫 Relevé Coris</button><button class="editbtn" onclick="openImport()">📥 Importer JSON</button></div>`;
+    h+=`<div class="card">`; if(!ops.length)h+=`<div class="note" style="text-align:center;padding:14px">Aucune opération. Touche « ＋ Opération », « Importer JSON » ou ton relevé Coris.</div>`;
     ops.forEach((o,i)=>{ const isT=o.type==='achat'||o.type==='vente'; const amt=isT?((+o.qty||0)*(+o.price||0)+(o.type==='achat'?1:-1)*(+o.fees||0)):(+o.amount||0); const inflow=(o.type==='vente'||o.type==='depot'||o.type==='dividende');
       h+=catRow((OP_LBL[o.type]||o.type)+(isT&&o.titre?' '+o.titre:''), eurOf(amt,o.devise), (o.sgi||'')+' · '+(o.date||'')+(isT?' · '+qtyFmt(o.qty)+'×'+num(o.price):''), i, {avatar:inflow?'🟢':'🔴', amtHtml:(inflow?'+':'−')+money(eurOf(amt,o.devise)), onclick:`openOp('${o.id}')`}); });
     h+=`</div>`; return h;
   }
-  if(!hasPf()){ h+=`<div class="card"><div class="hero"><div class="lbl">Portefeuille</div><div class="big">—</div><div class="sub">Aucune opération encore.</div></div></div><div class="row" style="gap:8px;padding:2px 0"><button class="editbtn" onclick="addOp()">＋ Ajouter une opération</button><button class="editbtn" onclick="openCoris()">🇧🇫 Relevé Coris</button></div>`; return h; }
+  if(!hasPf()){ h+=`<div class="card"><div class="hero"><div class="lbl">Portefeuille</div><div class="big">—</div><div class="sub">Aucune opération dans cette appli pour l'instant.</div></div><div class="note" style="text-align:center;margin-top:2px">Ajoute une opération, importe ton relevé Coris, ou colle l'export JSON complet (Coris + Fortuneo + Binance).</div></div><div class="row" style="gap:8px;padding:2px 0;flex-wrap:wrap"><button class="editbtn" onclick="addOp()">＋ Opération</button><button class="editbtn" onclick="openImport()">📥 Importer JSON</button><button class="editbtn" onclick="openCoris()">🇧🇫 Relevé Coris</button></div>`; return h; }
   const mkts=['all','Euronext','BRVM','Crypto']; const inMkt=sgi=>UIMKT==='all'||pfMarket(sgi)===UIMKT;
   h+=`<div class="seg sub" style="margin-top:4px">${mkts.map(k=>`<button class="${UIMKT===k?'on':''}" onclick="setUI('mkt','${k}')">${k==='all'?'Tout':k}</button>`).join('')}</div>`;
   h+=`<div class="row" style="gap:8px;padding:2px 0"><button class="editbtn" onclick="updatePrices()">🔄 Actualiser les cours</button><button class="editbtn" onclick="setUI('cur','${UICUR==='EUR'?'XOF':'EUR'}')">${UICUR==='EUR'?'Voir en FCFA':'Voir en €'}</button></div>`;
@@ -425,6 +425,7 @@ function renderDetail(){
   if(DETAIL.level==='tr'){ return renderTrDetail(); }
   if(DETAIL.level==='op'){ return renderOpDetail(); }
   if(DETAIL.level==='coris'){ return renderCorisDetail(); }
+  if(DETAIL.level==='import'){ return renderImportDetail(); }
   if(DETAIL.level==='group'){
     const {kind,group,person}=DETAIL; const lines = kind==='foyer'? Y().foyer.filter(l=>l.group===group) : ((Y().persons[person].cats)||[]).filter(l=>l.group===group);
     const tot=lines.reduce((s,l)=>s+sumM(m=> kind==='foyer'?(l.planned[m]||0):catVal(person,l,m,'planned')),0);
@@ -566,6 +567,31 @@ function importCoris(txt){ txt=(txt||'').trim(); if(!txt)return {ok:false,msg:'C
   pfEnsure(); const removed=state.pf.ops.filter(o=>pfMarket(o.sgi)==='BRVM').length; state.pf.ops=state.pf.ops.filter(o=>pfMarket(o.sgi)!=='BRVM'); ops.forEach(o=>state.pf.ops.push(Object.assign({id:newId()},o))); save();
   return {ok:true,msg:'✅ '+ops.length+' opération(s) importée(s), '+removed+' remplacée(s).'};
 }
+/* --- Import JSON général (tous courtiers, avec replace[]) --- */
+function openImport(){ DETAIL={level:'import'}; showDetail(); }
+function renderImportDetail(){ const head=document.getElementById('detailHead'),body=document.getElementById('detailBody');
+  head.innerHTML=`<div class="dhead"><button class="bk" onclick="closeDetail()">✕</button><h3>📥 Importer des opérations</h3></div>`;
+  body.innerHTML=`<div class="note" style="margin:0 2px 8px">Colle un JSON d'opérations (ex. l'export complet Coris + Fortuneo + Binance que je t'ai fourni). Un champ <b>"replace"</b> remplace proprement les courtiers listés.</div>
+    <textarea id="impTA" placeholder='{"replace":["Fortuneo","Binance","Crypto","BRVM"],"ops":[ … ]}' style="width:100%;height:150px;border-radius:12px;border:1.5px solid var(--line);background:var(--bg2);color:var(--ink);font-family:monospace;font-size:11px;padding:10px"></textarea>
+    <button class="editbtn" style="width:100%;margin-top:10px;padding:12px" onclick="doImportOps()">Importer</button>
+    <div class="note" id="impMsg" style="margin-top:8px;text-align:center"></div>`;
+}
+function doImportOps(){ const el=document.getElementById('impTA'); const res=importOps(el?el.value:''); const m=document.getElementById('impMsg'); if(m)m.textContent=res.msg; if(res.ok) setTimeout(closeDetail,1100); }
+function importOps(txt){ let data=null; try{ data=JSON.parse(txt); }catch(e){ const mm=txt&&txt.match(/[\[{][\s\S]*[\]}]/); if(mm){ try{ data=JSON.parse(mm[0]); }catch(_){}} }
+  let ops=null,prices=null,replace=null;
+  if(Array.isArray(data))ops=data; else if(data&&typeof data==='object'){ ops=data.ops; prices=data.prices; replace=data.replace; }
+  if(!Array.isArray(ops)) return {ok:false,msg:'⚠️ JSON invalide (attendu {ops:[…]} ou un tableau).'};
+  pfEnsure();
+  const norm=o=>({date:o.date||'',sgi:(o.sgi||'').trim(),type:OP_TYPES.includes(o.type)?o.type:'achat',titre:(o.titre||'').trim(),qty:+o.qty||0,price:+o.price||0,fees:+o.fees||0,amount:+o.amount||0,devise:(o.devise==='XOF'||o.devise==='FCFA')?'XOF':'EUR'});
+  let removed=0;
+  if(Array.isArray(replace)&&replace.length){ const rl=replace.map(s=>(''+s).toLowerCase().trim()).filter(Boolean); const before=state.pf.ops.length; state.pf.ops=state.pf.ops.filter(o=>{ const sgi=(o.sgi||'').toLowerCase(); const mkt=pfMarket(o.sgi).toLowerCase(); return !rl.some(r=>sgi===r||sgi.indexOf(r)>=0||mkt===r); }); removed=before-state.pf.ops.length; }
+  const sig=o=>[o.date,o.sgi,o.type,o.titre,Math.round(o.qty*1e4),Math.round(o.price*100),Math.round(o.amount*100),o.devise].join('|');
+  const seen=new Set(state.pf.ops.map(x=>sig(norm(x)))); let n=0,dup=0;
+  ops.forEach(o=>{ if(!o||typeof o!=='object')return; const v=norm(o),s=sig(v); if(seen.has(s)){dup++;return;} seen.add(s); state.pf.ops.push(Object.assign({id:newId()},v)); n++; });
+  if(prices&&typeof prices==='object') Object.keys(prices).forEach(k=>{ const val=+prices[k]; if(!isNaN(val))state.pf.prices[k]=val; });
+  save();
+  return {ok:true,msg:'✅ '+n+' opération(s) importée(s)'+(removed?' — '+removed+' remplacée(s)':'')+(dup?' — '+dup+' doublon(s) ignoré(s)':'')+'.'};
+}
 /* --- toast + mise à jour des cours --- */
 function toast(msg){ let t=document.getElementById('toastbox'); if(!t){ t=document.createElement('div'); t.id='toastbox'; t.style.cssText='position:fixed;left:50%;bottom:100px;transform:translateX(-50%);background:var(--accent);color:#fff;padding:11px 18px;border-radius:12px;font-weight:800;font-size:13px;z-index:200;box-shadow:var(--shadow);max-width:90%;text-align:center;transition:opacity .3s'; document.body.appendChild(t); } t.textContent=msg; t.style.opacity='1'; clearTimeout(window.__tt); window.__tt=setTimeout(()=>{t.style.opacity='0';},2800); }
 const CG_IDS={bitcoin:'bitcoin',btc:'bitcoin',ethereum:'ethereum',eth:'ethereum',bnb:'binancecoin',binancecoin:'binancecoin',solana:'solana',sol:'solana',cardano:'cardano',ada:'cardano',ripple:'ripple',xrp:'ripple',dogecoin:'dogecoin',doge:'dogecoin',polkadot:'polkadot',dot:'polkadot',litecoin:'litecoin',ltc:'litecoin',polygon:'matic-network',matic:'matic-network',avalanche:'avalanche-2',avax:'avalanche-2'};
@@ -610,7 +636,7 @@ function secSaisie(){
   return h;
 }
 
-const NAV=[{k:'accueil',i:'🏠',l:'Accueil',p:1},{k:'saisie',i:'✍️',l:'Saisie',p:1},{k:'budget',i:'🎯',l:'Budget',p:1},{k:'invest',i:'💼',l:'Patrimoine',p:1},{k:'analyse',i:'📊',l:'Analyse'},{k:'revenus',i:'💰',l:'Revenus'},{k:'objectifs',i:'🎖️',l:'Objectifs'},{k:'exceptionnel',i:'💎',l:'Exceptionnel'},{k:'transferts',i:'🌍',l:'Transferts'}];
+const NAV=[{k:'accueil',i:'🏠',l:'Accueil',p:1},{k:'saisie',i:'✍️',l:'Saisie',p:1},{k:'budget',i:'🎯',l:'Budget',p:1},{k:'invest',i:'📈',l:'Invest',p:1},{k:'analyse',i:'📊',l:'Analyse'},{k:'revenus',i:'💰',l:'Revenus'},{k:'objectifs',i:'🎖️',l:'Objectifs'},{k:'exceptionnel',i:'💎',l:'Exceptionnel'},{k:'transferts',i:'🌍',l:'Transferts'}];
 const SECT={accueil:secAccueil,saisie:secSaisie,analyse:secAnalyse,budget:secBudget,revenus:secRevenus,objectifs:secObjectifs,exceptionnel:secExceptionnel,transferts:secTransferts,invest:secInvest};
 function setTitle(t){ const a=document.getElementById('title'); if(a)a.textContent=t; }
 function kpi(k,v,cls){ return `<div class="kpi"><div class="k">${k}</div><div class="v ${cls||''}">${v}</div></div>`; }
@@ -628,7 +654,7 @@ function renderNav(){
 function render(){
   const s=document.getElementById('scroll'); let h='';
   if(!people.length){ h=`<div class="card"><div class="note">Aucune donnée sur cet appareil. Ouvre d'abord l'appli complète pour saisir ton budget, puis reviens ici.</div></div>`; }
-  else { const head=`<div class="deskhead"><h1>${(NAV.find(n=>n.k===TAB)||{}).l||''}</h1><div class="note">${esc(MONTHS[MONTH])} ${YEARK}</div></div>`; h=head+(SECT[TAB]||secAccueil)(); }
+  else { const head=`<div class="deskhead"><h1>${(NAV.find(n=>n.k===TAB)||{}).l||''}</h1><div class="note">${esc(MONTHS[MONTH])} ${YEARK}</div></div>`; let body=''; try{ body=(SECT[TAB]||secAccueil)(); }catch(err){ console.error('render '+TAB, err); body=`<div class="card"><h2 style="margin:0 0 6px">⚠️ Souci d'affichage</h2><div class="note">L'onglet « ${esc((NAV.find(n=>n.k===TAB)||{}).l||TAB)} » a rencontré une erreur : <b>${esc((err&&err.message)||err)}</b>.<br>Fais-moi une capture. Tes données sont intactes (voir l'<span style="text-decoration:underline;cursor:pointer" onclick="location.href='/budget-famille/classic/'">ancienne appli</span>).</div></div>`; } h=head+body; }
   if(people.length && TAB!=='accueil' && TAB!=='analyse'){ h+=`<div class="banner">${LIVE?(TAB==='invest'?'✅ <b>Journal éditable</b> — onglet Journal : ajoute/modifie une opération, ou importe ton relevé Coris.':'✅ <b>Modifiable ici</b> — touche une ligne / un champ pour éditer.'):'Aperçu démo — sur ton appareil, tout est enregistré.'}</div>`; }
   s.innerHTML=`<div class="fade">${h}</div>`; s.scrollTop=0; renderNav();
 }
