@@ -325,10 +325,10 @@ function secRevenus(){
   let h=`<div class="card"><div class="barlbl"><b>Revenus du couple ${YEARK}</b><span style="font-weight:800">${eur(monthly.reduce((s,v)=>s+v,0))}</span></div>${barChart(monthly,MSHORT)}<div class="note" style="text-align:center">Total mensuel (salaires + entrées + revenus perso)</div></div>`;
   people.forEach((p,i)=>{ const sal=sumM(m=>Y().persons[p].salary[m]||0); const ex=sumM(m=>((Y().persons[p].extras||[]).reduce((a,e)=>a+(e.amounts[m]||0),0))); const pex=sumM(m=>personPersoIncome(p,m)); const tot=sal+ex+pex;
     h+=`<div class="sec"><h2>${esc(p)}</h2><span class="note">${eur(tot)} / an</span></div><div class="card">`;
-    h+=catRow('Salaires',sal,'sur 12 mois',0,{avatar:'💰',style:{emoji:'💰',color:'#22c55e'}});
-    if(ex>0){ (Y().persons[p].extras||[]).forEach((e,j)=>{ const v=sumM(m=>e.amounts[m]||0); if(v>0)h+=catRow(e.name||'Autre entrée',v,'entrée exceptionnelle',j+1,{avatar:'✨',style:{emoji:'✨',color:'#f59e0b'}}); }); }
-    if(pex>0){ (Y().persons[p].persoExtras||[]).forEach((e,j)=>{ const v=sumM(m=>e.amounts[m]||0); if(v>0)h+=catRow(e.name||'Revenu perso',v,'hors prorata',j+5,{avatar:'👛',style:{emoji:'👛',color:'#14b8a6'}}); }); }
-    h+=`</div>`; });
+    h+=catRow('Salaire net',sal,'toucher pour éditer les 12 mois',0,{avatar:'💰',style:{emoji:'💰',color:'#22c55e'},onclick:`openSalary('${jsq(p)}')`});
+    (Y().persons[p].extras||[]).forEach((e,j)=>{ const v=sumM(m=>e.amounts[m]||0); h+=catRow(e.name||'Autre entrée',v,'entrée (prorata) · éditer',j+1,{avatar:'✨',style:{emoji:'✨',color:'#f59e0b'},onclick:`openIncome('${jsq(p)}','extras','${e.id}')`}); });
+    (Y().persons[p].persoExtras||[]).forEach((e,j)=>{ const v=sumM(m=>e.amounts[m]||0); h+=catRow(e.name||'Revenu perso',v,'hors prorata · éditer',j+9,{avatar:'👛',style:{emoji:'👛',color:'#14b8a6'},onclick:`openIncome('${jsq(p)}','persoExtras','${e.id}')`}); });
+    h+=`</div><div class="row" style="gap:8px;padding:6px 2px 2px"><button class="editbtn" onclick="addIncome('${jsq(p)}','extras')">＋ Entrée</button><button class="editbtn" onclick="addIncome('${jsq(p)}','persoExtras')">＋ Revenu perso</button></div>`; });
   h+=`<div class="sec"><h2>Prorata moyen ${YEARK}</h2></div><div class="card"><div class="pbar">`;
   const totInc=people.map(p=>sumM(m=>personIncome(p,m))); const gt=totInc.reduce((s,v)=>s+v,0)||1;
   h+=people.map((p,i)=>`<i style="width:${(totInc[i]/gt*100).toFixed(1)}%;background:${cols[i%4]}"></i>`).join('')+`</div><div class="plegend">${people.map((p,i)=>`<div class="li"><span class="dot" style="background:${cols[i%4]}"></span><b style="color:var(--ink)">${esc(p)}</b> ${pctI(totInc[i]/gt)}</div>`).join('')}</div></div>`;
@@ -340,10 +340,10 @@ function secObjectifs(){
   const savY=coupleSaving();
   let h=`<div class="card"><div class="hero"><div class="lbl">Épargne projetée ${YEARK}</div><div class="big ${savY>=0?'pos':'neg'}">${savY>=0?'+':''}${eur(savY)}</div><div class="sub">soit ${eur(savY/12)} / mois en moyenne</div></div></div>`;
   let bal=state.startCash||0; const cum=MSHORT.map((_,m)=>{ people.forEach(p=>bal+=epargneProj(p,m)); bal+=(realizedMonth(m)?commonSaving(m,'real'):commonSaving(m,'planned')); return Math.round(bal); });
-  h+=`<div class="card"><div class="barlbl"><b>Trésorerie cumulée</b><span style="font-weight:800">${eur(cum[11])}</span></div>${lineChart(cum,MSHORT)}<div class="note" style="text-align:center">Solde de départ ${eur(state.startCash||0)} + épargne cumulée mois par mois</div></div>`;
+  h+=`<div class="card"><div class="barlbl"><b>Trésorerie cumulée</b><span style="font-weight:800">${eur(cum[11])}</span></div>${lineChart(cum,MSHORT)}<div class="barlbl" style="margin-top:8px"><span class="note">🏦 Solde de départ</span><input class="medit" inputmode="decimal" placeholder="0" value="${state.startCash?num(state.startCash):''}" onchange="setStartCash(this.value)"></div></div>`;
   h+=`<div class="sec"><h2>Par personne</h2></div>`;
-  people.forEach((p,i)=>{ const sav=personSaving(p); const obj=(Y().persons[p].epargneObjectif||0)*12; const st=catStyle(p,i); const r=obj>0?sav/obj:0;
-    h+=`<div class="card tight"><div class="row"><div class="ic" style="background:${tint(st.color)};color:${st.color}">${esc(p[0])}</div><div class="nm"><b>${esc(p)}</b><span>${obj>0?'Objectif '+eur(obj)+' / an':'Aucun objectif fixé'}</span></div><div class="amt ${sav>=0?'pos':'neg'}">${sav>=0?'+':''}${eur(sav)}</div></div>${obj>0?progress(r,r>=1?'var(--green)':'var(--accent)')+`<div class="barlbl" style="margin-top:5px"><span class="note">${pctI(r)} de l'objectif</span><span class="pill ${r>=1?'g':'n'}">${r>=1?'atteint 🎉':'en cours'}</span></div>`:''}</div>`; });
+  people.forEach((p,i)=>{ const sav=personSaving(p); const objM=(Y().persons[p].epargneObjectif||0); const obj=objM*12; const st=catStyle(p,i); const r=obj>0?sav/obj:0;
+    h+=`<div class="card tight"><div class="row"><div class="ic" style="background:${tint(st.color)};color:${st.color}">${esc(p[0])}</div><div class="nm"><b>${esc(p)}</b><span>${obj>0?'Objectif '+eur(obj)+' / an ('+eur(objM)+'/mois)':'Fixe ton objectif mensuel'}</span></div><div class="amt ${sav>=0?'pos':'neg'}">${sav>=0?'+':''}${eur(sav)}</div></div><div class="barlbl" style="margin-top:8px"><span class="note">🎯 Objectif d'épargne / mois</span><input class="medit" inputmode="decimal" placeholder="0" value="${objM?num(objM):''}" onchange="setEpObj('${jsq(p)}',this.value)"></div>${obj>0?progress(r,r>=1?'var(--green)':'var(--accent)')+`<div class="barlbl" style="margin-top:5px"><span class="note">${pctI(r)} de l'objectif annuel</span><span class="pill ${r>=1?'g':'n'}">${r>=1?'atteint 🎉':'en cours'}</span></div>`:''}</div>`; });
   return h;
 }
 
@@ -408,6 +408,7 @@ function closeDetail(){ document.getElementById('detailSheet').classList.remove(
 function showDetail(){ document.getElementById('detailSheet').classList.add('on'); renderDetail(); }
 function renderDetail(){
   if(!DETAIL) return; const head=document.getElementById('detailHead'), body=document.getElementById('detailBody');
+  if(DETAIL.level==='salary'||DETAIL.level==='income'){ return renderIncomeDetail(); }
   if(DETAIL.level==='group'){
     const {kind,group,person}=DETAIL; const lines = kind==='foyer'? Y().foyer.filter(l=>l.group===group) : ((Y().persons[person].cats)||[]).filter(l=>l.group===group);
     const tot=lines.reduce((s,l)=>s+sumM(m=> kind==='foyer'?(l.planned[m]||0):catVal(person,l,m,'planned')),0);
@@ -433,6 +434,29 @@ function setCell(kind,id,person,m,field,val){ const l= kind==='foyer'? foyerLine
 function renameLine(kind,id,person,val){ const l= kind==='foyer'? foyerLine(id):persoLine(person,id); if(!l)return; l.name=(val||'').trim()||l.name; save(); renderDetail(); }
 function addLine(kind,group,person){ const id=newId(); const line={id,group,name:'Nouvelle ligne',planned:Array(12).fill(0),real:Array(12).fill(0),budget:0}; if(kind==='foyer')Y().foyer.push(line); else (Y().persons[person].cats||(Y().persons[person].cats=[])).push(line); save(); openLine(kind,id,person,group); }
 function delLine(kind,id,person){ if(!confirm('Supprimer cette ligne ?'))return; if(kind==='foyer')Y().foyer=Y().foyer.filter(l=>l.id!==id); else Y().persons[person].cats=(Y().persons[person].cats||[]).filter(l=>l.id!==id); save(); detailBack(); }
+/* --- édition des revenus (salaire, entrées, revenus perso) --- */
+function openSalary(p){ DETAIL={level:'salary',person:p}; showDetail(); }
+function openIncome(p,kind,id){ DETAIL={level:'income',person:p,kind,id}; showDetail(); }
+function setSalary(p,m,val){ Y().persons[p].salary[m]=roundRule(parseNum(val)); save(); if(DETAIL)renderDetail(); else render(); }
+function setIncome(p,kind,id,m,val){ const it=(Y().persons[p][kind]||[]).find(x=>x.id===id); if(it){ it.amounts[m]=roundRule(parseNum(val)); save(); if(DETAIL)renderDetail(); else render(); } }
+function renameIncome(p,kind,id,val){ const it=(Y().persons[p][kind]||[]).find(x=>x.id===id); if(it){ it.name=(val||'').trim()||it.name; save(); renderDetail(); } }
+function addIncome(p,kind){ const it={id:newId(),name:kind==='extras'?'Autre entrée':'Revenu perso',amounts:Array(12).fill(0)}; (Y().persons[p][kind]||(Y().persons[p][kind]=[])).push(it); save(); openIncome(p,kind,it.id); }
+function delIncome(p,kind,id){ if(!confirm('Supprimer cette entrée ?'))return; Y().persons[p][kind]=(Y().persons[p][kind]||[]).filter(x=>x.id!==id); save(); closeDetail(); }
+function setEpObj(p,val){ Y().persons[p].epargneObjectif=roundRule(parseNum(val)); save(); render(); }
+function setStartCash(val){ state.startCash=roundRule(parseNum(val)); save(); render(); }
+function m12rows(getV,onCh){ let h=''; for(let m=0;m<12;m++){ const v=getV(m); h+=`<div class="mrow ${m===MONTH?'today':''}"><div class="ml">${MONTHS[m]}</div><input class="medit" style="width:130px" inputmode="decimal" placeholder="0" value="${v?num(v):''}" onchange="${onCh}(${m},this.value)"></div>`; } return h; }
+function renderIncomeDetail(){
+  const head=document.getElementById('detailHead'), body=document.getElementById('detailBody');
+  if(DETAIL.level==='salary'){ const p=DETAIL.person; const tot=sumM(m=>Y().persons[p].salary[m]||0);
+    head.innerHTML=`<div class="dhead"><button class="bk" onclick="closeDetail()">✕</button><h3>Salaire · ${esc(p)}</h3><span class="tot">${eur(tot)}<small style="display:block;font-size:11px;color:var(--muted);font-weight:600;text-align:right">/ an</small></span></div>`;
+    let h=`<div class="note" style="margin:0 2px 8px">Salaire net de chaque mois. La virgule et une formule (ex. <b>=2600</b>) sont acceptées.</div><div class="card" style="margin:0">${m12rows(m=>Y().persons[p].salary[m]||0, "window.__sal")}</div>`;
+    window.__sal=(m,v)=>setSalary(p,m,v); body.innerHTML=h;
+  } else { const {person,kind,id}=DETAIL; const it=(Y().persons[person][kind]||[]).find(x=>x.id===id); if(!it){ closeDetail(); return; } const tot=sumM(m=>it.amounts[m]||0);
+    head.innerHTML=`<div class="dhead"><button class="bk" onclick="closeDetail()">✕</button><h3>${esc(it.name)}</h3><span class="tot">${eur(tot)}<small style="display:block;font-size:11px;color:var(--muted);font-weight:600;text-align:right">/ an</small></span></div>`;
+    let h=`<div class="mrow" style="border:none;padding-bottom:10px"><input class="nameedit" value="${esc(it.name)}" onchange="renameIncome('${jsq(person)}','${kind}','${id}',this.value)"><button class="delbtn" onclick="delIncome('${jsq(person)}','${kind}','${id}')">Supprimer</button></div><div class="note" style="margin:0 2px 8px">${kind==='extras'?'Entrée comptée dans le revenu (prorata).':'Revenu perso (hors prorata).'} Montant par mois :</div><div class="card" style="margin:0">${m12rows(m=>it.amounts[m]||0,"window.__inc")}</div>`;
+    window.__inc=(m,v)=>setIncome(person,kind,id,m,v); body.innerHTML=h;
+  }
+}
 
 function secSaisie(){
   setTitle('Saisie'); const m=MONTH; let h=monthSel();
@@ -466,7 +490,7 @@ function render(){
   const s=document.getElementById('scroll'); let h='';
   if(!people.length){ h=`<div class="card"><div class="note">Aucune donnée sur cet appareil. Ouvre d'abord l'appli complète pour saisir ton budget, puis reviens ici.</div></div>`; }
   else { const head=`<div class="deskhead"><h1>${(NAV.find(n=>n.k===TAB)||{}).l||''}</h1><div class="note">${esc(MONTHS[MONTH])} ${YEARK}</div></div>`; h=head+(SECT[TAB]||secAccueil)(); }
-  if(people.length){ if(TAB==='saisie'||TAB==='budget'){ h+=`<div class="banner">${LIVE?'✅ <b>Modifiable ici</b> — touche une ligne pour saisir/éditer, mois par mois.':'Aperçu démo — sur ton appareil, la saisie est enregistrée.'}</div>`; } else if(TAB==='invest'||TAB==='transferts'||TAB==='revenus'||TAB==='objectifs'||TAB==='exceptionnel'){ h+=`<div class="banner">✏️ L'édition de cet écran arrive très bientôt en natif. En attendant : <span style="text-decoration:underline;cursor:pointer;font-weight:800" onclick="location.href='/budget-famille/classic/'">appli classique&nbsp;›</span></div>`; } }
+  if(people.length){ if(TAB==='saisie'||TAB==='budget'||TAB==='revenus'||TAB==='objectifs'){ h+=`<div class="banner">${LIVE?'✅ <b>Modifiable ici</b> — touche une ligne / un champ pour éditer.':'Aperçu démo — sur ton appareil, tout est enregistré.'}</div>`; } else if(TAB==='invest'||TAB==='transferts'||TAB==='exceptionnel'){ h+=`<div class="banner">✏️ L'édition de cet écran arrive très bientôt en natif. En attendant : <span style="text-decoration:underline;cursor:pointer;font-weight:800" onclick="location.href='/budget-famille/classic/'">appli classique&nbsp;›</span></div>`; } }
   s.innerHTML=`<div class="fade">${h}</div>`; s.scrollTop=0; renderNav();
 }
 function toggleTheme(){ const cur=document.documentElement.getAttribute('data-theme'); const dark=matchMedia('(prefers-color-scheme: dark)').matches; const next=cur==='dark'?'light':cur==='light'?'dark':(dark?'light':'dark'); document.documentElement.setAttribute('data-theme',next); }
