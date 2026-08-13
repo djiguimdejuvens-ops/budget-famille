@@ -105,7 +105,25 @@ svg{display:block}
 .chartbars .cb small{font-size:9px;color:var(--faint)}
 .grid2{display:grid;grid-template-columns:1fr;gap:12px}
 .deskhead{display:none}
+.medit{width:100px;text-align:right;padding:9px 11px;border-radius:11px;border:1.5px solid var(--line);background:var(--bg2);color:var(--ink);font-size:15px;font-weight:800;font-variant-numeric:tabular-nums}
+.medit:focus{outline:none;border-color:var(--accent);background:var(--card)}
+.medit::placeholder{color:var(--faint);font-weight:600}
+.mrow{display:flex;align-items:center;gap:9px;padding:9px 2px}
+.mrow+.mrow{border-top:1px solid var(--line)}
+.mrow .ml{flex:1;color:var(--ink);font-size:14px;font-weight:600}
+.mrow.today{background:var(--accent-soft);border-radius:12px;padding:9px 8px;margin:2px 0}
+.mrow.today+.mrow{border-top:none}
+.dhead{display:flex;align-items:center;gap:10px;padding:2px 2px 12px}
+.dhead .bk{border:none;background:var(--bg2);color:var(--ink);border-radius:11px;width:38px;height:38px;font-size:17px;font-weight:800;cursor:pointer;flex:0 0 38px}
+.dhead h3{margin:0;font-size:18px;font-weight:850;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dhead .tot{font-weight:850;font-size:16px}
+.editbtn{border:none;background:var(--accent-soft);color:var(--accent);border-radius:11px;padding:8px 12px;font-weight:800;font-size:13px;cursor:pointer}
+.delbtn{border:none;background:rgba(244,63,106,.14);color:var(--red);border-radius:11px;padding:8px 12px;font-weight:800;font-size:13px;cursor:pointer}
+.nameedit{flex:1;text-align:left;width:auto;padding:9px 11px;border-radius:11px;border:1.5px solid var(--line);background:var(--bg2);color:var(--ink);font-size:15px;font-weight:700}
+.saverow{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
 @media (min-width:900px){
+  .sheetbox{max-width:560px;border-radius:22px;margin-bottom:6vh}
+  .sheet{align-items:center}
   .sidebar{display:flex}
   .tabbar{display:none}
   .app{background:var(--bg2)}
@@ -133,6 +151,7 @@ svg{display:block}
   </div>
 </div>
 <div class="sheet" id="plusSheet"><div class="sheetbox"><div class="grip"></div><div id="plusList"></div></div></div>
+<div class="sheet" id="detailSheet"><div class="sheetbox"><div class="grip"></div><div id="detailHead"></div><div id="detailBody"></div></div></div>
 
 <script>
 const SAMPLE = /*__SAMPLE__*/ {"version":1,"people":["Alex","Sam"],"currentYear":2026,"ui":{"month":7},"fx":{"FCFA":0.001524},"startCash":3200,"years":{"2026":{"foyer":[{"id":"L1","group":"Loyer et charges","name":"Loyer","planned":[950,950,950,950,950,950,950,950,950,950,950,950],"real":[950,950,950,950,950,950,950,950,0,0,0,0],"budget":0},{"id":"L2","group":"Loyer et charges","name":"Électricité","planned":[85,85,85,85,85,85,85,85,85,85,85,85],"real":[78,78,78,78,78,78,78,78,0,0,0,0],"budget":0},{"id":"L3","group":"Loyer et charges","name":"Assurance habitation","planned":[22,22,22,22,22,22,22,22,22,22,22,22],"real":[22,22,22,22,22,22,22,22,0,0,0,0],"budget":0},{"id":"L4","group":"Courses","name":"Alimentation","planned":[480,480,480,480,480,480,480,480,480,480,480,480],"real":[516,516,516,516,516,516,516,516,0,0,0,0],"budget":0},{"id":"L5","group":"Abonnements","name":"Box internet","planned":[30,30,30,30,30,30,30,30,30,30,30,30],"real":[30,30,30,30,30,30,30,30,0,0,0,0],"budget":0},{"id":"L6","group":"Abonnements","name":"Netflix","planned":[15,15,15,15,15,15,15,15,15,15,15,15],"real":[15,15,15,15,15,15,15,15,0,0,0,0],"budget":0},{"id":"L7","group":"Déplacements","name":"Voiture","planned":[140,140,140,140,140,140,140,140,140,140,140,140],"real":[162,162,162,162,162,162,162,162,0,0,0,0],"budget":0},{"id":"L8","group":"Déplacements","name":"Transports","planned":[75,75,75,75,75,75,75,75,75,75,75,75],"real":[75,75,75,75,75,75,75,75,0,0,0,0],"budget":0},{"id":"L9","group":"Loisirs","name":"Sorties & restos","planned":[160,160,160,160,160,160,160,160,160,160,160,160],"real":[205,205,205,205,205,205,205,205,0,0,0,0],"budget":0},{"id":"L10","group":"Loisirs","name":"Vacances","planned":[120,120,120,120,120,120,120,120,120,120,120,120],"real":[0,0,0,0,0,0,0,0,0,0,0,0],"budget":0},{"id":"L11","group":"Provision frais de santé","name":"Santé","planned":[40,40,40,40,40,40,40,40,40,40,40,40],"real":[28,28,28,28,28,28,28,28,0,0,0,0],"budget":0},{"id":"L12","group":"Épargne commune","name":"Projets","planned":[300,300,300,300,300,300,300,300,300,300,300,300],"real":[300,300,300,300,300,300,300,300,0,0,0,0],"budget":0}],"persons":{"Alex":{"salary":[2600,2600,2600,2600,2600,2600,2600,2600,2600,2600,2600,2600],"extras":[{"id":"E1","name":"Prime","amounts":[0,0,0,600,0,0,0,0,0,0,0,0]}],"persoExtras":[],"cats":[{"id":"C1","group":"Obligatoire","name":"Dîme","planned":[0,0,0,0,0,0,0,0,0,0,0,0],"real":[0,0,0,0,0,0,0,0,0,0,0,0],"budget":0,"auto":true,"rate":10},{"id":"C2","group":"Perso","name":"Sport & loisirs","planned":[70,70,70,70,70,70,70,70,70,70,70,70],"real":[70,70,70,70,70,70,70,70,0,0,0,0],"budget":0},{"id":"C3","group":"Perso","name":"Vêtements","planned":[60,60,60,60,60,60,60,60,60,60,60,60],"real":[45,45,45,45,45,45,45,45,0,0,0,0],"budget":0}],"epargneObjectif":800},"Sam":{"salary":[2150,2150,2150,2150,2150,2150,2150,2150,2150,2150,2150,2150],"extras":[],"persoExtras":[{"id":"P1","name":"Argent de poche","amounts":[0,0,0,0,0,0,0,0,0,0,0,0]}],"cats":[{"id":"C4","group":"Perso","name":"Coiffure & soins","planned":[55,55,55,55,55,55,55,55,55,55,55,55],"real":[55,55,55,55,55,55,55,55,0,0,0,0],"budget":0},{"id":"C5","group":"Perso","name":"Loisirs","planned":[80,80,80,80,80,80,80,80,80,80,80,80],"real":[95,95,95,95,95,95,95,95,0,0,0,0],"budget":0}],"epargneObjectif":600}},"exceptional":[{"id":"X1","nature":"revenu","month":3,"libelle":"Prime annuelle","montant":600},{"id":"X2","nature":"conso","month":5,"libelle":"Lave-linge","montant":420},{"id":"X3","nature":"don","month":6,"libelle":"Cadeau mariage","montant":150}],"transfers":[{"id":"T1","date":"2026-07-12","provider":"TapTapSend","beneficiary":"Maman","motif":"Soutien","eur":100,"fees":0,"feeMode":"eur","fcfa":65000},{"id":"T2","date":"2026-06-03","provider":"Orange Money","beneficiary":"Frère","motif":"Études","eur":150,"fees":2,"feeMode":"eur","fcfa":97000}]}},"pf":{"ops":[{"id":"o1","date":"2026-05-15","sgi":"Binance","type":"achat","titre":"Bitcoin","qty":0.014,"price":69000,"fees":20,"amount":0,"devise":"EUR"},{"id":"o2","date":"2026-03-20","sgi":"Fortuneo","type":"depot","titre":"","qty":0,"price":0,"fees":0,"amount":2000,"devise":"EUR"},{"id":"o3","date":"2026-04-10","sgi":"Fortuneo","type":"achat","titre":"AIR LIQUIDE","qty":8,"price":160,"fees":3,"amount":0,"devise":"EUR"},{"id":"o4","date":"2026-05-02","sgi":"Fortuneo","type":"achat","titre":"TOTALENERGIES","qty":15,"price":58,"fees":3,"amount":0,"devise":"EUR"},{"id":"o5","date":"2026-06-01","sgi":"Fortuneo","type":"vente","titre":"TOTALENERGIES","qty":5,"price":62,"fees":2,"amount":0,"devise":"EUR"},{"id":"o6","date":"2026-07-01","sgi":"Coris Bourse","type":"depot","titre":"","qty":0,"price":0,"fees":0,"amount":1500000,"devise":"XOF"},{"id":"o7","date":"2026-07-06","sgi":"Coris Bourse","type":"achat","titre":"BOAS","qty":100,"price":7300,"fees":8000,"amount":0,"devise":"XOF"},{"id":"o8","date":"2026-07-20","sgi":"Coris Bourse","type":"achat","titre":"SDSC","qty":150,"price":2800,"fees":4600,"amount":0,"devise":"XOF"}],"prices":{"Binance|Bitcoin":72000,"Fortuneo|AIR LIQUIDE":168,"Fortuneo|TOTALENERGIES":61,"Coris Bourse|BOAS":7600,"Coris Bourse|SDSC":2750},"meta":{},"realCash":{},"priceMeta":{}}};
@@ -269,14 +288,14 @@ function secBudget(){
     const plan=P(m=>foyerTotal(m,'planned')),real=P(m=>foyerTotal(m,'real'));
     h+=budgetHeader('Dépenses du foyer',per?foyerTotal(MONTH,fOf(MONTH)):plan,plan,real,per);
     const gs=foyerGroups().map((g,i)=>({g,i,plan:P(m=>foyerGroupTotal(g,m,'planned')),real:P(m=>foyerGroupTotal(g,m,'real'))})).filter(x=>x.plan||x.real).sort((a,b)=>b.plan-a.plan);
-    h+=`<div class="card">`; gs.forEach(x=>{ const shown=per?foyerGroupTotal(x.g,MONTH,fOf(MONTH)):x.plan; const st=catStyle(x.g,x.i); h+=catRow(x.g,shown, x.real>0?`réel ${eur(x.real)} · prévu ${eur(x.plan)}`:'prévu',x.i,{style:st}); const r=x.plan>0?x.real/x.plan:0; h+=`<div style="padding:0 2px 10px 57px;margin-top:-4px">${progress(x.real>0?r:0,r>1.02?'var(--red)':st.color)}</div>`; }); h+=`</div>`;
+    h+=`<div class="card">`; gs.forEach(x=>{ const shown=per?foyerGroupTotal(x.g,MONTH,fOf(MONTH)):x.plan; const st=catStyle(x.g,x.i); h+=catRow(x.g,shown, x.real>0?`réel ${eur(x.real)} · prévu ${eur(x.plan)}`:'toucher pour éditer',x.i,{style:st,onclick:`openGroup('foyer','${jsq(x.g)}')`}); const r=x.plan>0?x.real/x.plan:0; h+=`<div style="padding:0 2px 10px 57px;margin-top:-4px">${progress(x.real>0?r:0,r>1.02?'var(--red)':st.color)}</div>`; }); h+=`</div>`;
     h+=`<div class="sec"><h2>Qui paie quoi (prorata)</h2></div><div class="card">`;
     people.forEach((p,i)=>{ const sh=per?communeShare(p,MONTH,fOf(MONTH)):sumM(m=>prorata(p,m)*foyerTotal(m,'planned')); const st=catStyle(p,i+2); h+=`<div class="subline"><div class="ic sm" style="background:${tint(st.color)};color:${st.color}">${esc(p[0])}</div><span class="sn">${esc(p)}${per?' · '+pctI(prorata(p,MONTH)):''}</span><span class="sv">${eur(sh)}</span></div>`; }); h+=`</div>`;
   } else {
     const p=BSCOPE; const inc=P(m=>personFullIncome(p,m)); const perso=P(m=>persoTotal(p,m,per?fOf(MONTH):'planned')); const foy=per?communeShare(p,MONTH,fOf(MONTH)):sumM(m=>prorata(p,m)*foyerTotal(m,'planned')); const ep=inc-perso-foy;
     h+=`<div class="card"><div class="hero" style="padding:16px 8px 10px"><div class="lbl">Épargne ${esc(p)} · ${per?esc(MONTHS[MONTH]):'année'}</div><div class="big ${ep>=0?'pos':'neg'}" style="font-size:34px">${ep>=0?'+':''}${eur(ep)}</div><div class="sub">Revenu ${eur(inc)}</div></div><div class="grid2">${kpi('🏠 Part foyer',eur(foy))}${kpi('👛 Dépenses perso',eur(perso))}</div></div>`;
     const gs=persoGroups(p).map((g,i)=>({g,i,v:P(m=>persoGroupTotal(p,g,m,per?fOf(MONTH):'planned'))})).filter(x=>x.v>0).sort((a,b)=>b.v-a.v);
-    if(gs.length){ h+=`<div class="sec"><h2>Dépenses perso de ${esc(p)}</h2></div><div class="card">`; gs.forEach(x=>h+=catRow(x.g,x.v,pctI(perso>0?x.v/perso:0)+' du perso',x.i)); h+=`</div>`; } else h+=`<div class="card"><div class="note" style="text-align:center;padding:12px">Aucune dépense perso.</div></div>`;
+    if(gs.length){ h+=`<div class="sec"><h2>Dépenses perso de ${esc(p)}</h2></div><div class="card">`; gs.forEach(x=>h+=catRow(x.g,x.v,pctI(perso>0?x.v/perso:0)+' du perso',x.i,{onclick:`openGroup('perso','${jsq(x.g)}','${jsq(p)}')`})); h+=`</div>`; } else h+=`<div class="card"><div class="note" style="text-align:center;padding:12px">Aucune dépense perso.</div></div>`;
   }
   return h;
 }
@@ -355,8 +374,64 @@ function secInvest(){
   return h;
 }
 
-const NAV=[{k:'accueil',i:'🏠',l:'Accueil',p:1},{k:'analyse',i:'📊',l:'Analyse',p:1},{k:'budget',i:'🎯',l:'Budget',p:1},{k:'invest',i:'💼',l:'Patrimoine',p:1},{k:'revenus',i:'💰',l:'Revenus'},{k:'objectifs',i:'🎖️',l:'Objectifs'},{k:'exceptionnel',i:'💎',l:'Exceptionnel'},{k:'transferts',i:'🌍',l:'Transferts'}];
-const SECT={accueil:secAccueil,analyse:secAnalyse,budget:secBudget,revenus:secRevenus,objectifs:secObjectifs,exceptionnel:secExceptionnel,transferts:secTransferts,invest:secInvest};
+/* ===== édition native : écrit dans budgetFamille_v1 (tes vraies données) ===== */
+const LIVE=(()=>{try{const r=localStorage.getItem('budgetFamille_v1');return !!(r&&JSON.parse(r).years);}catch(e){return false;}})();
+function save(){ if(!LIVE) return false; try{ state.lastEdit=Date.now(); localStorage.setItem('budgetFamille_v1',JSON.stringify(state)); return true; }catch(e){ return false; } }
+function roundRule(n){ n=Number(n)||0; return Math.abs(n)<50?Math.round(n*10)/10:Math.round(n); }
+function parseNum(v){ if(v==null||v==='')return 0; let s=(''+v).trim().replace(/€/g,'').replace(/\s/g,'').replace(/,/g,'.').replace(/^=/,''); if(!s)return 0; if(/[+\-*/()]/.test(s)&&/^[0-9.+\-*/()]+$/.test(s)){ try{ const r=Function('"use strict";return ('+s+')')(); if(typeof r==='number'&&isFinite(r))return r; }catch(e){} } const f=parseFloat(s); return isNaN(f)?0:f; }
+function jsq(s){ return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+function foyerLine(id){ return Y().foyer.find(l=>l.id===id); }
+function persoLine(p,id){ return ((Y().persons[p]&&Y().persons[p].cats)||[]).find(l=>l.id===id); }
+function newId(){ return 'n'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+let DETAIL=null;
+function openGroup(kind,group,person){ DETAIL={level:'group',kind,group,person:person||null}; showDetail(); }
+function openLine(kind,id,person,group){ DETAIL={level:'line',kind,id,person:person||null,group}; showDetail(); }
+function detailBack(){ if(DETAIL&&DETAIL.level==='line'){ openGroup(DETAIL.kind,DETAIL.group,DETAIL.person); } else closeDetail(); }
+function closeDetail(){ document.getElementById('detailSheet').classList.remove('on'); DETAIL=null; render(); }
+function showDetail(){ document.getElementById('detailSheet').classList.add('on'); renderDetail(); }
+function renderDetail(){
+  if(!DETAIL) return; const head=document.getElementById('detailHead'), body=document.getElementById('detailBody');
+  if(DETAIL.level==='group'){
+    const {kind,group,person}=DETAIL; const lines = kind==='foyer'? Y().foyer.filter(l=>l.group===group) : ((Y().persons[person].cats)||[]).filter(l=>l.group===group);
+    const tot=lines.reduce((s,l)=>s+sumM(m=> kind==='foyer'?(l.planned[m]||0):catVal(person,l,m,'planned')),0);
+    head.innerHTML=`<div class="dhead"><button class="bk" onclick="closeDetail()">✕</button><h3>${esc(group)}${person?' · '+esc(person):''}</h3><span class="tot">${eur(tot)}<small style="display:block;font-size:11px;color:var(--muted);font-weight:600;text-align:right">/ an</small></span></div>`;
+    let h='<div class="card" style="margin:0 0 10px">'; if(!lines.length)h+='<div class="note" style="text-align:center;padding:10px">Aucune ligne.</div>';
+    lines.forEach((l,i)=>{ const t=sumM(m=> kind==='foyer'?(l.planned[m]||0):catVal(person,l,m,'planned')); h+=catRow(l.name,t,l.auto?'auto (10% du revenu)':'toucher pour le détail mensuel',i,{onclick:`openLine('${kind}','${l.id}',${person?`'${jsq(person)}'`:'null'},'${jsq(group)}')`}); });
+    h+='</div>'; h+=`<button class="editbtn" style="width:100%;padding:12px" onclick="addLine('${kind}','${jsq(group)}',${person?`'${jsq(person)}'`:'null'})">＋ Ajouter une ligne</button>`;
+    body.innerHTML=h;
+  } else {
+    const {kind,id,person,group}=DETAIL; const l = kind==='foyer'? foyerLine(id):persoLine(person,id); if(!l){ detailBack(); return; }
+    const totP=sumM(m=> kind==='foyer'?(l.planned[m]||0):catVal(person,l,m,'planned'));
+    head.innerHTML=`<div class="dhead"><button class="bk" onclick="detailBack()">‹</button><h3>${esc(l.name)}</h3><span class="tot">${eur(totP)}<small style="display:block;font-size:11px;color:var(--muted);font-weight:600;text-align:right">prévu / an</small></span></div>`;
+    let h=''; if(!l.auto) h+=`<div class="mrow" style="border:none;padding-bottom:10px"><input class="nameedit" value="${esc(l.name)}" onchange="renameLine('${kind}','${id}',${person?`'${jsq(person)}'`:'null'},this.value)"><button class="delbtn" onclick="delLine('${kind}','${id}',${person?`'${jsq(person)}'`:'null'})">Supprimer</button></div>`;
+    h+=`<div class="note" style="margin:0 2px 8px">${l.auto?'Dîme automatique = 10% du revenu (calculée, non éditable).':'Saisis le <b>prévu</b> et le <b>réel</b> de chaque mois. La virgule et une formule comme <b>=1040</b> sont acceptées.'}</div>`;
+    h+=`<div class="card" style="margin:0"><div class="mrow" style="border:none;padding-bottom:4px"><div class="ml" style="color:var(--muted);font-size:11px;font-weight:700">MOIS</div><div style="width:100px;text-align:center;font-size:11px;color:var(--muted);font-weight:700">PRÉVU</div><div style="width:100px;text-align:center;font-size:11px;color:var(--muted);font-weight:700">RÉEL</div></div>`;
+    for(let m=0;m<12;m++){ const pv= kind==='foyer'?(l.planned[m]||0):catVal(person,l,m,'planned'); const rv=l.real[m]||0; const now=m===MONTH;
+      h+=`<div class="mrow ${now?'today':''}"><div class="ml">${MONTHS[m]}</div>`+(l.auto?`<div style="width:100px;text-align:right;font-weight:800">${pv?num(pv):'—'}</div>`:`<input class="medit" inputmode="decimal" placeholder="0" value="${pv?num(pv):''}" onchange="setCell('${kind}','${id}',${person?`'${jsq(person)}'`:'null'},${m},'planned',this.value)">`)+`<input class="medit" inputmode="decimal" placeholder="0" value="${rv?num(rv):''}" onchange="setCell('${kind}','${id}',${person?`'${jsq(person)}'`:'null'},${m},'real',this.value)"></div>`; }
+    h+=`</div>`; if(!LIVE)h+=`<div class="note" style="text-align:center;margin-top:8px">Démo : non enregistré ici. Sur ton appareil, tout est sauvegardé.</div>`;
+    body.innerHTML=h;
+  }
+}
+function setCell(kind,id,person,m,field,val){ const l= kind==='foyer'? foyerLine(id):persoLine(person,id); if(!l||l.auto)return; l[field][m]=roundRule(parseNum(val)); save(); if(DETAIL) renderDetail(); else render(); }
+function renameLine(kind,id,person,val){ const l= kind==='foyer'? foyerLine(id):persoLine(person,id); if(!l)return; l.name=(val||'').trim()||l.name; save(); renderDetail(); }
+function addLine(kind,group,person){ const id=newId(); const line={id,group,name:'Nouvelle ligne',planned:Array(12).fill(0),real:Array(12).fill(0),budget:0}; if(kind==='foyer')Y().foyer.push(line); else (Y().persons[person].cats||(Y().persons[person].cats=[])).push(line); save(); openLine(kind,id,person,group); }
+function delLine(kind,id,person){ if(!confirm('Supprimer cette ligne ?'))return; if(kind==='foyer')Y().foyer=Y().foyer.filter(l=>l.id!==id); else Y().persons[person].cats=(Y().persons[person].cats||[]).filter(l=>l.id!==id); save(); detailBack(); }
+
+function secSaisie(){
+  setTitle('Saisie'); const m=MONTH; let h=monthSel();
+  h+=`<div class="note" style="margin:2px 4px 10px">Pointe le <b>réel</b> de ${esc(MONTHS[m])} ligne par ligne. Touche le nom d'une ligne pour éditer les 12 mois en détail.</div>`;
+  const block=(title,lines,kind,person)=>{ if(!lines.length)return''; let b=`<div class="sec"><h2>${esc(title)}</h2></div><div class="card">`;
+    lines.forEach((l,i)=>{ const pv= kind==='foyer'?(l.planned[m]||0):catVal(person,l,m,'planned'); const rv=l.real[m]||0; const st=catStyle(l.group,i); const op=`openLine('${kind}','${l.id}',${person?`'${jsq(person)}'`:'null'},'${jsq(l.group)}')`;
+      b+=`<div class="row"><div class="ic sm" style="background:${tint(st.color)};color:${st.color};cursor:pointer" onclick="${op}">${st.emoji}</div><div class="nm" style="cursor:pointer" onclick="${op}"><b>${esc(l.name)}</b><span>prévu ${eur(pv)}</span></div>`
+        +(l.auto?`<div style="width:100px;text-align:right;font-weight:800;color:var(--muted)">${num(catVal(person,l,m,'real'))}</div>`:`<input class="medit" inputmode="decimal" placeholder="${pv?num(pv):'0'}" value="${rv?num(rv):''}" onchange="setCell('${kind}','${l.id}',${person?`'${jsq(person)}'`:'null'},${m},'real',this.value)">`)+`</div>`; });
+    b+=`</div>`; return b; };
+  h+=block('🏠 Foyer', Y().foyer, 'foyer', null);
+  people.forEach(p=>h+=block('👤 '+p, (Y().persons[p].cats||[]), 'perso', p));
+  return h;
+}
+
+const NAV=[{k:'accueil',i:'🏠',l:'Accueil',p:1},{k:'saisie',i:'✍️',l:'Saisie',p:1},{k:'budget',i:'🎯',l:'Budget',p:1},{k:'invest',i:'💼',l:'Patrimoine',p:1},{k:'analyse',i:'📊',l:'Analyse'},{k:'revenus',i:'💰',l:'Revenus'},{k:'objectifs',i:'🎖️',l:'Objectifs'},{k:'exceptionnel',i:'💎',l:'Exceptionnel'},{k:'transferts',i:'🌍',l:'Transferts'}];
+const SECT={accueil:secAccueil,saisie:secSaisie,analyse:secAnalyse,budget:secBudget,revenus:secRevenus,objectifs:secObjectifs,exceptionnel:secExceptionnel,transferts:secTransferts,invest:secInvest};
 function setTitle(t){ const a=document.getElementById('title'); if(a)a.textContent=t; }
 function kpi(k,v,cls){ return `<div class="kpi"><div class="k">${k}</div><div class="v ${cls||''}">${v}</div></div>`; }
 function chgMonth(d){ MONTH=(MONTH+d+12)%12; render(); }
@@ -374,7 +449,7 @@ function render(){
   const s=document.getElementById('scroll'); let h='';
   if(!people.length){ h=`<div class="card"><div class="note">Aucune donnée sur cet appareil. Ouvre d'abord l'appli complète pour saisir ton budget, puis reviens ici.</div></div>`; }
   else { const head=`<div class="deskhead"><h1>${(NAV.find(n=>n.k===TAB)||{}).l||''}</h1><div class="note">${esc(MONTHS[MONTH])} ${YEARK}</div></div>`; h=head+(SECT[TAB]||secAccueil)(); }
-  h+=`<div class="banner">✏️ Pour <b>saisir ou modifier</b> tes montants (salaires, dépenses…), ouvre l'appli classique — mêmes données. <span style="text-decoration:underline;cursor:pointer;font-weight:800" onclick="location.href='/budget-famille/classic/'">Ouvrir&nbsp;›</span></div>`;
+  if(people.length){ if(TAB==='saisie'||TAB==='budget'){ h+=`<div class="banner">${LIVE?'✅ <b>Modifiable ici</b> — touche une ligne pour saisir/éditer, mois par mois.':'Aperçu démo — sur ton appareil, la saisie est enregistrée.'}</div>`; } else if(TAB==='invest'||TAB==='transferts'||TAB==='revenus'||TAB==='objectifs'||TAB==='exceptionnel'){ h+=`<div class="banner">✏️ L'édition de cet écran arrive très bientôt en natif. En attendant : <span style="text-decoration:underline;cursor:pointer;font-weight:800" onclick="location.href='/budget-famille/classic/'">appli classique&nbsp;›</span></div>`; } }
   s.innerHTML=`<div class="fade">${h}</div>`; s.scrollTop=0; renderNav();
 }
 function toggleTheme(){ const cur=document.documentElement.getAttribute('data-theme'); const dark=matchMedia('(prefers-color-scheme: dark)').matches; const next=cur==='dark'?'light':cur==='light'?'dark':(dark?'light':'dark'); document.documentElement.setAttribute('data-theme',next); }
@@ -382,6 +457,7 @@ function nextYear(){ const ks=Object.keys(state.years||{}); if(ks.length<2){aler
 ['themeBtn','themeBtn2'].forEach(id=>{const e=document.getElementById(id);if(e)e.onclick=toggleTheme;});
 ['yearBtn','yearBtn2'].forEach(id=>{const e=document.getElementById(id);if(e)e.onclick=nextYear;});
 document.getElementById('plusSheet').addEventListener('click',e=>{ if(e.target.id==='plusSheet')closePlus(); });
+document.getElementById('detailSheet').addEventListener('click',e=>{ if(e.target.id==='detailSheet')closeDetail(); });
 render();
 if('serviceWorker' in navigator && location.protocol.startsWith('http')){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
 </script>
