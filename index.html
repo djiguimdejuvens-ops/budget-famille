@@ -243,6 +243,9 @@ function eurOf(v,dev){ return dev==='XOF'? v*FX() : v; }
 function dispEur(v){ return UICUR==='XOF'? v/FX() : v; }
 function money(vEur,signed){ const x=dispEur(vEur); const s=UICUR==='XOF'? Math.round(x).toLocaleString('fr-FR')+' FCFA' : num(x)+' €'; return (signed&&vEur>0?'+':'')+s; }
 function hasPf(){ return state.pf&&state.pf.ops&&state.pf.ops.length; }
+function pfValueEur(){ if(!hasPf())return 0; return pfPositions().reduce((s,p)=>s+eurOf(p.val,p.dev),0); }
+function pfCashEur(){ if(!hasPf())return 0; const c=pfCash(); return Object.keys(c).reduce((s,sgi)=>s+eurOf(c[sgi].amt,c[sgi].dev),0); }
+function toEUR(v,dev){ v=+v||0; if(!dev||dev==='EUR')return v; if(dev==='XOF'||dev==='FCFA')return v*FX(); return v*((state.fx&&state.fx[dev])||1); }
 function pfPositions(){ const pos={}; (state.pf.ops||[]).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date))).forEach(o=>{ if(o.type!=='achat'&&o.type!=='vente')return; const k=(o.sgi||'?')+'|'+(o.titre||'?'); if(!pos[k])pos[k]={sgi:o.sgi,titre:o.titre,dev:o.devise||'EUR',qty:0,cost:0}; const P=pos[k],q=+o.qty||0,pr=+o.price||0,fr=+o.fees||0; if(o.type==='achat'){P.qty+=q;P.cost+=q*pr+fr;}else{const cmp=P.qty?P.cost/P.qty:0;P.cost-=cmp*Math.min(q,P.qty);P.qty-=q;if(P.qty<1e-6){P.qty=0;P.cost=0;}} });
   return Object.values(pos).filter(p=>p.qty>1e-6).map(p=>{ const cmp=p.qty?p.cost/p.qty:0,key=p.sgi+'|'+p.titre; const price=(state.pf.prices&&state.pf.prices[key]!=null&&state.pf.prices[key]!=='')?+state.pf.prices[key]:cmp; const val=p.qty*price; return {sgi:p.sgi,titre:p.titre,dev:p.dev,qty:p.qty,cmp,price,val,pv:val-p.qty*cmp,vp:cmp?(price-cmp)/cmp:0,key}; }).sort((a,b)=>eurOf(b.val,b.dev)-eurOf(a.val,a.dev)); }
 function pfCash(){ const c={}; (state.pf.ops||[]).forEach(o=>{ const dev=o.devise||'EUR',sgi=o.sgi||'?'; if(!c[sgi])c[sgi]={dev,amt:0}; const x=c[sgi]; if(o.type==='depot'||o.type==='dividende')x.amt+=(+o.amount||0); else if(o.type==='retrait'||o.type==='frais')x.amt-=(+o.amount||0); else if(o.type==='achat')x.amt-=((+o.qty||0)*(+o.price||0)+(+o.fees||0)); else if(o.type==='vente')x.amt+=((+o.qty||0)*(+o.price||0)-(+o.fees||0)); }); return c; }
@@ -427,6 +430,7 @@ function renderDetail(){
   if(DETAIL.level==='op'){ return renderOpDetail(); }
   if(DETAIL.level==='coris'){ return renderCorisDetail(); }
   if(DETAIL.level==='import'){ return renderImportDetail(); }
+  if(DETAIL.level==='ad'){ return renderADDetail(); }
   if(DETAIL.level==='group'){
     const {kind,group,person}=DETAIL; const lines = kind==='foyer'? Y().foyer.filter(l=>l.group===group) : ((Y().persons[person].cats)||[]).filter(l=>l.group===group);
     const tot=lines.reduce((s,l)=>s+sumM(m=> kind==='foyer'?(l.planned[m]||0):catVal(person,l,m,'planned')),0);
@@ -593,6 +597,43 @@ function importOps(txt){ let data=null; try{ data=JSON.parse(txt); }catch(e){ co
   save();
   return {ok:true,msg:'✅ '+n+' opération(s) importée(s)'+(removed?' — '+removed+' remplacée(s)':'')+(dup?' — '+dup+' doublon(s) ignoré(s)':'')+'.'};
 }
+/* --- Patrimoine : avoirs & dettes éditables --- */
+function ensureAD(){ if(!state.assets)state.assets=[]; if(!state.debts)state.debts=[]; }
+function adList(kind){ ensureAD(); return kind==='asset'?state.assets:state.debts; }
+function adItem(kind,id){ return adList(kind).find(x=>x.id===id); }
+function openAD(kind,id){ DETAIL={level:'ad',kind,id}; showDetail(); }
+function setAD(kind,id,field,val){ const a=adItem(kind,id); if(!a)return; a[field]=(field==='value')?parseNum(val):val; save(); if(DETAIL)renderDetail(); else render(); }
+function addAD(kind){ ensureAD(); const a={id:newId(),name:kind==='asset'?'Nouvel avoir':'Nouvelle dette',value:0,devise:'EUR'}; adList(kind).push(a); save(); openAD(kind,a.id); }
+function delAD(kind,id){ if(!confirm('Supprimer ?'))return; if(kind==='asset')state.assets=adList('asset').filter(x=>x.id!==id); else state.debts=adList('debt').filter(x=>x.id!==id); save(); closeDetail(); }
+function renderADDetail(){ const head=document.getElementById('detailHead'),body=document.getElementById('detailBody'); const {kind,id}=DETAIL; const a=adItem(kind,id); if(!a){closeDetail();return;} const isA=kind==='asset';
+  head.innerHTML=`<div class="dhead"><button class="bk" onclick="closeDetail()">✕</button><h3>${isA?'🏦 Avoir':'💳 Dette'}</h3><span class="tot ${isA?'':'neg'}">${isA?'':'−'}${eur(toEUR(a.value,a.devise))}</span></div>`;
+  body.innerHTML=`<div class="card" style="margin:0">
+    <div class="frow"><label>Nom</label><input class="fin" value="${esc(a.name||'')}" onchange="setAD('${kind}','${id}','name',this.value)"></div>
+    <div class="frow"><label>Montant</label><input class="fin" inputmode="decimal" placeholder="0" value="${a.value?num(a.value):''}" onchange="setAD('${kind}','${id}','value',this.value)"></div>
+    <div class="frow"><label>Devise</label><select class="msel" onchange="setAD('${kind}','${id}','devise',this.value)"><option value="EUR" ${(a.devise||'EUR')==='EUR'?'selected':''}>€ (EUR)</option><option value="XOF" ${(a.devise==='XOF'||a.devise==='FCFA')?'selected':''}>FCFA (XOF)</option></select></div>
+  </div><button class="delbtn" style="width:100%;margin-top:12px;padding:12px" onclick="delAD('${kind}','${id}')">Supprimer</button>`;
+}
+function secPatrimoine(){
+  setTitle('Patrimoine'); ensureAD();
+  const bourse=pfValueEur()+pfCashEur();
+  const avo=(state.assets||[]).reduce((s,a)=>s+toEUR(a.value,a.devise),0);
+  const det=(state.debts||[]).reduce((s,a)=>s+toEUR(a.value,a.devise),0);
+  const net=avo+bourse-det;
+  let h=`<div class="card"><div class="hero"><div class="lbl">Patrimoine net</div><div class="big ${net>=0?'pos':'neg'}">${eur(net)}</div><div class="sub">avoirs + bourse − dettes</div></div>
+    <div class="kgrid">${kpi('🏦 Avoirs',eur(avo))}${kpi('📈 Bourse',eur(bourse))}${kpi('💳 Dettes',eur(det),det>0?'neg':'')}${kpi('💎 Net',eur(net),net>=0?'pos':'neg')}</div></div>`;
+  h+=`<div class="sec"><h2>Placements en bourse</h2><span class="lnk" onclick="setTab('invest')">Détail ›</span></div><div class="card">`+catRow('Portefeuille (titres + espèces)',bourse,'BRVM · Euronext · Crypto',0,{avatar:'📈',onclick:`setTab('invest')`})+`</div>`;
+  h+=`<div class="sec"><h2>Avoirs / actifs</h2><span class="lnk" onclick="addAD('asset')">＋ Ajouter</span></div><div class="card">`;
+  if(!(state.assets||[]).length)h+=`<div class="note" style="text-align:center;padding:12px">Ajoute tes avoirs hors bourse : livret, épargne, terrain, immobilier, autres placements…</div>`;
+  (state.assets||[]).forEach((a,i)=>h+=catRow(a.name||'Avoir', toEUR(a.value,a.devise), (a.devise==='XOF'||a.devise==='FCFA')?'FCFA':'€', i, {avatar:'🏦',onclick:`openAD('asset','${a.id}')`}));
+  h+=`</div>`;
+  h+=`<div class="sec"><h2>Dettes</h2><span class="lnk" onclick="addAD('debt')">＋ Ajouter</span></div><div class="card">`;
+  if(!(state.debts||[]).length)h+=`<div class="note" style="text-align:center;padding:12px">Aucune dette enregistrée. 🎉</div>`;
+  (state.debts||[]).forEach((a,i)=>h+=catRow(a.name||'Dette', toEUR(a.value,a.devise), (a.devise==='XOF'||a.devise==='FCFA')?'FCFA':'€', i, {avatar:'💳',amtHtml:'−'+eur(toEUR(a.value,a.devise)),onclick:`openAD('debt','${a.id}')`}));
+  h+=`</div>`;
+  const annual=coupleSaving(); const rate=0.03; let bal=net; const proj=[net]; for(let y=1;y<=5;y++){ bal=bal*(1+rate)+annual; proj.push(Math.round(bal)); }
+  h+=`<div class="card"><div class="barlbl"><b>Projection 5 ans</b><span style="font-weight:800">${eur(proj[5])}</span></div>${lineChart(proj,['Auj','+1','+2','+3','+4','+5'])}<div class="note" style="text-align:center">Hypothèse : tu épargnes ${eur(annual)}/an, placé à 3 %/an (intérêts composés). Modifiable plus tard.</div></div>`;
+  return h;
+}
 /* --- toast + mise à jour des cours --- */
 function toast(msg){ let t=document.getElementById('toastbox'); if(!t){ t=document.createElement('div'); t.id='toastbox'; t.style.cssText='position:fixed;left:50%;bottom:100px;transform:translateX(-50%);background:var(--accent);color:#fff;padding:11px 18px;border-radius:12px;font-weight:800;font-size:13px;z-index:200;box-shadow:var(--shadow);max-width:90%;text-align:center;transition:opacity .3s'; document.body.appendChild(t); } t.textContent=msg; t.style.opacity='1'; clearTimeout(window.__tt); window.__tt=setTimeout(()=>{t.style.opacity='0';},2800); }
 const CG_IDS={bitcoin:'bitcoin',btc:'bitcoin',ethereum:'ethereum',eth:'ethereum',bnb:'binancecoin',binancecoin:'binancecoin',solana:'solana',sol:'solana',cardano:'cardano',ada:'cardano',ripple:'ripple',xrp:'ripple',dogecoin:'dogecoin',doge:'dogecoin',polkadot:'polkadot',dot:'polkadot',litecoin:'litecoin',ltc:'litecoin',polygon:'matic-network',matic:'matic-network',avalanche:'avalanche-2',avax:'avalanche-2'};
@@ -637,8 +678,8 @@ function secSaisie(){
   return h;
 }
 
-const NAV=[{k:'accueil',i:'🏠',l:'Accueil',p:1},{k:'saisie',i:'✍️',l:'Saisie',p:1},{k:'budget',i:'🎯',l:'Budget',p:1},{k:'invest',i:'📈',l:'Invest',p:1},{k:'analyse',i:'📊',l:'Analyse'},{k:'revenus',i:'💰',l:'Revenus'},{k:'objectifs',i:'🎖️',l:'Objectifs'},{k:'exceptionnel',i:'💎',l:'Exceptionnel'},{k:'transferts',i:'🌍',l:'Transferts'}];
-const SECT={accueil:secAccueil,saisie:secSaisie,analyse:secAnalyse,budget:secBudget,revenus:secRevenus,objectifs:secObjectifs,exceptionnel:secExceptionnel,transferts:secTransferts,invest:secInvest};
+const NAV=[{k:'accueil',i:'🏠',l:'Accueil',p:1},{k:'saisie',i:'✍️',l:'Saisie',p:1},{k:'budget',i:'🎯',l:'Budget',p:1},{k:'patrimoine',i:'🏦',l:'Patrimoine',p:1},{k:'invest',i:'📈',l:'Invest'},{k:'analyse',i:'📊',l:'Analyse'},{k:'revenus',i:'💰',l:'Revenus'},{k:'objectifs',i:'🎖️',l:'Objectifs'},{k:'exceptionnel',i:'💎',l:'Exceptionnel'},{k:'transferts',i:'🌍',l:'Transferts'}];
+const SECT={accueil:secAccueil,saisie:secSaisie,analyse:secAnalyse,budget:secBudget,revenus:secRevenus,objectifs:secObjectifs,exceptionnel:secExceptionnel,transferts:secTransferts,invest:secInvest,patrimoine:secPatrimoine};
 function setTitle(t){ const a=document.getElementById('title'); if(a)a.textContent=t; }
 function kpi(k,v,cls){ return `<div class="kpi"><div class="k">${k}</div><div class="v ${cls||''}">${v}</div></div>`; }
 function chgMonth(d){ MONTH=(MONTH+d+12)%12; render(); }
