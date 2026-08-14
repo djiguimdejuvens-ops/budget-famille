@@ -27,7 +27,7 @@ body{background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSys
 .shell{display:flex;min-height:100vh;max-width:1180px;margin:0 auto}
 .app{flex:1;min-width:0;display:flex;flex-direction:column;position:relative;background:var(--bg)}
 .scroll{flex:1;padding:6px 16px 100px;overflow-y:auto}
-.top{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 4px}
+.top{display:flex;align-items:center;justify-content:space-between;padding:calc(env(safe-area-inset-top) + 18px) 16px 4px}
 .top h1{font-size:20px;font-weight:850;margin:0;letter-spacing:-.3px}
 .iconbtn{width:42px;height:42px;border-radius:50%;background:var(--card);box-shadow:var(--shadow-sm);display:flex;align-items:center;justify-content:center;border:none;color:var(--ink);font-size:17px;cursor:pointer}
 .top .right{display:flex;gap:8px}
@@ -103,6 +103,7 @@ svg{display:block}
 .chartbars .cb{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:5px;min-width:0}
 .chartbars .cb i{width:70%;max-width:22px;border-radius:6px 6px 3px 3px;display:block}
 .chartbars .cb small{font-size:9px;color:var(--faint)}
+.chartbars .cb .cbv{font-size:8.5px;font-weight:800;color:var(--muted);line-height:1;white-space:nowrap}
 .grid2{display:grid;grid-template-columns:1fr;gap:12px}
 .deskhead{display:none}
 .medit{width:100px;text-align:right;padding:9px 11px;border-radius:11px;border:1.5px solid var(--line);background:var(--bg2);color:var(--ink);font-size:15px;font-weight:800;font-variant-numeric:tabular-nums}
@@ -219,19 +220,24 @@ function donut(slices,big,sub){
   return `<div class="donutwrap"><svg width="172" height="172" viewBox="0 0 140 140">${rings}<text x="70" y="66" text-anchor="middle" fill="var(--ink)" style="font:850 19px -apple-system">${esc(big)}</text><text x="70" y="86" text-anchor="middle" fill="var(--muted)" style="font:600 11px -apple-system">${esc(sub)}</text></svg></div>`;
 }
 function progress(pct,color){ const w=Math.max(0,Math.min(100,pct*100)); return `<div class="bar"><i style="width:${w}%;background:${color||'var(--accent)'}"></i></div>`; }
+function donutLegend(items,fmt){ fmt=fmt||eur; if(!items.length)return''; const total=items.reduce((s,x)=>s+(x.value||0),0)||1; return `<div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">${items.map(it=>`<div style="display:flex;align-items:center;gap:9px;font-size:13.5px"><span style="width:12px;height:12px;border-radius:4px;background:${it.color};flex:0 0 12px"></span><span style="flex:1;color:var(--ink);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(it.name)}</span><span style="color:var(--muted);font-weight:800;white-space:nowrap">${fmt(it.value)} · ${Math.round(it.value/total*100)}%</span></div>`).join('')}</div>`; }
 // barre avec repère « cumulé théorique » (trait vertical = où tu devrais en être à date)
 function progressMark(fillPct,markPct,color){ const w=Math.max(0,Math.min(100,fillPct*100)); const mk=Math.max(0,Math.min(100,markPct*100)); return `<div class="bar" style="position:relative;overflow:visible;margin-top:9px"><i style="width:${w}%;background:${color||'var(--accent)'}"></i><span title="Cumulé théorique — où tu devrais en être à date" style="position:absolute;top:-4px;bottom:-4px;left:calc(${mk}% - 1px);width:2.5px;background:var(--ink);opacity:.7;border-radius:3px"></span></div>`; }
 function closedMonths(){ const a=[]; for(let m=0;m<12;m++) if(realizedMonth(m)) a.push(m); return a; }
-function barChart(vals,labels,color){ const max=Math.max(1,...vals.map(v=>Math.abs(v))); return `<div class="chartbars">${vals.map((v,i)=>`<div class="cb" title="${esc(labels[i])} : ${eur(v)}"><i style="height:${Math.max(2,Math.abs(v)/max*104)}px;background:${v<0?'var(--red)':(color||'var(--accent)')}"></i><small>${esc((labels[i]||'')[0]||'')}</small></div>`).join('')}</div>`; }
+function barChart(vals,labels,color){ const max=Math.max(1,...vals.map(v=>Math.abs(v))); return `<div class="chartbars">${vals.map((v,i)=>`<div class="cb" title="${esc(labels[i])} : ${eur(v)}"><b class="cbv">${v?kfmt(v):''}</b><i style="height:${Math.max(2,Math.abs(v)/max*82)}px;background:${v<0?'var(--red)':(color||'var(--accent)')}"></i><small>${esc((labels[i]||'')[0]||'')}</small></div>`).join('')}</div>`; }
+function dualBar(a,b,labels){ const max=Math.max(1,...a.map(v=>Math.abs(v)),...b.map(v=>Math.abs(v))); return `<div style="display:flex;align-items:flex-end;gap:3px;height:104px;padding:4px 0">${labels.map((lb,i)=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0" title="${esc(lb)} — revenus ${eur(a[i])} · dépenses ${eur(b[i])}"><div style="display:flex;align-items:flex-end;gap:2px;height:82px"><i style="width:8px;height:${Math.max(2,Math.abs(a[i])/max*80)}px;background:var(--green);border-radius:3px 3px 0 0"></i><i style="width:8px;height:${Math.max(2,Math.abs(b[i])/max*80)}px;background:var(--accent);border-radius:3px 3px 0 0"></i></div><small style="font-size:9px;color:var(--faint)">${esc((lb||'')[0])}</small></div>`).join('')}</div><div class="plegend" style="justify-content:center;margin-top:6px"><div class="li"><span class="dot" style="background:var(--green)"></span>Revenus</div><div class="li"><span class="dot" style="background:var(--accent)"></span>Dépenses</div></div>`; }
 function lineChart(vals,labels){
-  const W=320,H=110,pad=6; const min=Math.min(0,...vals),max=Math.max(1,...vals),rng=(max-min)||1;
-  const pts=vals.map((v,i)=>[pad+i*(W-2*pad)/Math.max(1,vals.length-1), H-pad-(v-min)/rng*(H-2*pad)]);
+  const W=600,H=180,pl=10,pr=10,pt=24,pb=20; const min=Math.min(0,...vals),max=Math.max(1,...vals),rng=(max-min)||1;
+  const px=i=>pl+i*(W-pl-pr)/Math.max(1,vals.length-1), py=v=>H-pb-(v-min)/rng*(H-pt-pb);
+  const pts=vals.map((v,i)=>[px(i),py(v)]);
   const d=pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
-  const area=d+` L ${pts[pts.length-1][0].toFixed(1)} ${H-pad} L ${pts[0][0].toFixed(1)} ${H-pad} Z`;
-  const zero=H-pad-(0-min)/rng*(H-2*pad); const sp=(W-2*pad)/Math.max(1,vals.length-1);
-  const dots=pts.map(p=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.2" fill="var(--accent)"/>`).join('');
-  const bands=pts.map((p,i)=>`<rect x="${(p[0]-sp/2).toFixed(1)}" y="0" width="${sp.toFixed(1)}" height="${H}" fill="transparent" style="cursor:pointer"><title>${esc((labels&&labels[i])||('#'+(i+1)))} : ${eur(vals[i])}</title></rect>`).join('');
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="none"><defs><linearGradient id="lg" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="var(--accent)" stop-opacity=".28"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs><line x1="0" x2="${W}" y1="${zero}" y2="${zero}" stroke="var(--line)" stroke-width="1"/><path d="${area}" fill="url(#lg)"/><path d="${d}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>${dots}${bands}</svg>`;
+  const area=d+` L ${px(vals.length-1).toFixed(1)} ${(H-pb).toFixed(1)} L ${px(0).toFixed(1)} ${(H-pb).toFixed(1)} Z`;
+  const zero=py(0), step=Math.max(1,Math.ceil(vals.length/8)), sp=(W-pl-pr)/Math.max(1,vals.length-1);
+  const dots=pts.map(p=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="var(--accent)"/>`).join('');
+  const vlab=pts.map((p,i)=> (i%step===0||i===vals.length-1)?`<text x="${p[0].toFixed(1)}" y="${(p[1]-8).toFixed(1)}" text-anchor="middle" font-size="12" font-weight="800" fill="var(--ink)">${esc(kfmt(vals[i]))}</text>`:'').join('');
+  const xlab=labels?pts.map((p,i)=> (i%step===0||i===vals.length-1)?`<text x="${p[0].toFixed(1)}" y="${H-5}" text-anchor="middle" font-size="10.5" fill="var(--faint)">${esc(labels[i]||'')}</text>`:'').join(''):'';
+  const bands=pts.map((p,i)=>`<rect x="${(px(i)-sp/2).toFixed(1)}" y="0" width="${sp.toFixed(1)}" height="${H}" fill="transparent" style="cursor:pointer"><title>${esc((labels&&labels[i])||('#'+(i+1)))} : ${eur(vals[i])}</title></rect>`).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block"><defs><linearGradient id="lg" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="var(--accent)" stop-opacity=".26"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs><line x1="0" x2="${W}" y1="${zero.toFixed(1)}" y2="${zero.toFixed(1)}" stroke="var(--line)" stroke-width="1"/><path d="${area}" fill="url(#lg)"/><path d="${d}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>${dots}${vlab}${xlab}${bands}</svg>`;
 }
 function catRow(name,amount,subtitle,i,opts){ opts=opts||{}; const st=opts.style||catStyle(name,i);
   return `<div class="row ${opts.onclick?'clk':''}" ${opts.frow?`data-invrow="${esc(opts.frow)}"`:''} ${opts.onclick?`onclick="${opts.onclick}"`:''}>
@@ -243,7 +249,8 @@ function catRow(name,amount,subtitle,i,opts){ opts=opts||{}; const st=opts.style
 function pfMarket(sgi){ const s=(sgi||'').toLowerCase(); if(/coris|brvm/.test(s))return'BRVM'; if(/binance|okx|crypto|bitcoin|ether|coin|btc|eth/.test(s))return'Crypto'; if(/fortuneo|euronext|bourso|pea/.test(s))return'Euronext'; return'Autre'; }
 function eurOf(v,dev){ return dev==='XOF'? v*FX() : v; }
 function dispEur(v){ return UICUR==='XOF'? v/FX() : v; }
-function money(vEur,signed){ const x=dispEur(vEur); const s=UICUR==='XOF'? Math.round(x).toLocaleString('fr-FR')+' FCFA' : num(x)+' €'; return (signed&&vEur>0?'+':'')+s; }
+function money(vEur,signed){ const x=dispEur(vEur); const s=UICUR==='XOF'? Math.round(x).toLocaleString('fr-FR') : num(x)+' €'; return (signed&&vEur>0?'+':'')+s; }
+function kfmt(n){ n=Math.round(+n||0); const a=Math.abs(n); if(a>=1e6)return (n/1e6).toFixed(a>=1e7?0:1).replace('.',',')+'M'; if(a>=1000)return (n/1000).toFixed(a>=1e4?0:1).replace('.',',')+'k'; return String(n); }
 function hasPf(){ return state.pf&&state.pf.ops&&state.pf.ops.length; }
 function pfValueEur(){ if(!hasPf())return 0; return pfPositions().reduce((s,p)=>s+eurOf(p.val,p.dev),0); }
 function pfCashEur(){ if(!hasPf())return 0; const c=pfCash(); return Object.keys(c).reduce((s,sgi)=>s+eurOf(c[sgi].amt,c[sgi].dev),0); }
@@ -300,10 +307,10 @@ function secAnalyse(){
   const GREENS=['#22c55e','#16a34a','#4ade80','#86efac','#34d399','#10b981','#0ea5e9','#14b8a6'];
   items.forEach((it,i)=>{ it.color=AMODE==='entrees'?GREENS[i%GREENS.length]:catStyle(it.name,i).color; it.emoji=catStyle(it.name,i).emoji; });
   const slices=items.map(it=>({value:it.amount,color:it.color,label:it.name+' : '+eur(it.amount)+' ('+pctI(total>0?it.amount/total:0)+')'}));
-  h+=`<div class="card">${donut(slices.length?slices:[{value:1,color:'var(--line)'}],eur(total),center)}<div class="note" style="text-align:center;margin-top:2px">${per?((realizedMonth(MONTH)?'Réel':'Prévu')+' · '+esc(MONTHS[MONTH])+' '+YEARK):'Année '+YEARK+' (prévu)'} · ${esc(scope)}</div></div>`;
+  h+=`<div class="card">${donut(slices.length?slices:[{value:1,color:'var(--line)'}],eur(total),center)}<div class="note" style="text-align:center;margin-top:2px">${per?((realizedMonth(MONTH)?'Réel':'Prévu')+' · '+esc(MONTHS[MONTH])+' '+YEARK):'Année '+YEARK+' (prévu)'} · ${esc(scope)}</div>${items.length?donutLegend(items.map(it=>({name:it.name,value:it.amount,color:it.color}))):'<div class="note" style="text-align:center;padding:8px">Aucune '+(AMODE==='entrees'?'entrée':'sortie')+' sur cette période.</div>'}</div>`;
   if(AMODE==='sorties'){ const rev= scope==='Foyer'? M(m=>people.reduce((s,p)=>s+personFullIncome(p,m),0)) : M(m=>personFullIncome(scope,m)); const ratio=rev>0?total/rev:0; h+=`<div class="card tight"><div class="barlbl"><b>💸 Dépenses / Revenus</b><span style="font-weight:800;color:${ratio>1?'var(--red)':'var(--green-ink)'}">${pctI(ratio)}</span></div><div class="note">${eur(total)} sur ${eur(rev)}</div>${progress(ratio,ratio>1?'var(--red)':'var(--accent)')}</div>`; }
-  h+=`<div class="card">`; if(!items.length)h+=`<div class="note" style="text-align:center;padding:14px">Aucune ${AMODE==='entrees'?'entrée':'sortie'} sur cette période.</div>`;
-  items.forEach((it,i)=>h+=catRow(it.name,it.amount,pctI(total>0?it.amount/total:0)+' du total',i,{style:{emoji:it.emoji,color:it.color}})); h+=`</div>`;
+  { const revs=MSHORT.map((_,mm)=> scope==='Foyer'? people.reduce((s,p)=>s+personFullIncome(p,mm),0) : personFullIncome(scope,mm)); const deps=MSHORT.map((_,mm)=>{ const fm=fOf(mm); return scope==='Foyer'? foyerTotal(mm,fm)+people.reduce((s,p)=>s+persoTotal(p,mm,fm),0) : (persoTotal(scope,mm,fm)+prorata(scope,mm)*foyerTotal(mm,fm)); });
+    h+=`<div class="card"><div class="barlbl"><b>📊 Revenus vs dépenses par mois</b><span class="note">${esc(scope)} · ${YEARK}</span></div>${dualBar(revs,deps,MSHORT)}</div>`; }
   return h;
 }
 
@@ -388,10 +395,12 @@ function secExceptionnel(){
 
 function secTransferts(){
   setTitle('Transferts');
+  let h=`<div class="monthsel"><button class="chip" onclick="yearNav(-1)">‹</button><div class="m">Transferts ${YEARK}</div><button class="chip" onclick="yearNav(1)">›</button></div>`;
   const list=transList(); let fx=false; list.forEach(t=>{ if(!t.id){ t.id=newId(); fx=true; } }); if(fx) save();
   let tEur=0,tFees=0,tFcfa=0; list.forEach(t=>{tEur+=t.eur||0;tFees+=trFee(t);tFcfa+=t.fcfa||0;});
-  let h=`<div class="grid2"><div class="kpi"><div class="k">💶 Total envoyé</div><div class="v">${eur(tEur+tFees)}</div></div><div class="kpi"><div class="k">🌍 Reçu (FCFA)</div><div class="v">${Math.round(tFcfa).toLocaleString('fr-FR')}</div></div></div>`;
+  h+=`<div class="grid2"><div class="kpi"><div class="k">💶 Total envoyé</div><div class="v">${eur(tEur+tFees)}</div></div><div class="kpi"><div class="k">🌍 Reçu (FCFA)</div><div class="v">${Math.round(tFcfa).toLocaleString('fr-FR')}</div></div></div>`;
   if(list.length) h+=`<div class="card tight"><div class="note">Frais totaux : <b>${eur(tFees)}</b> · Taux moyen : <b>1 € = ${tEur?Math.round(tFcfa/tEur).toLocaleString('fr-FR'):'—'} FCFA</b></div></div>`;
+  if(list.length){ const byBen={}; list.forEach(t=>{ const b=(t.beneficiary||t.provider||'Autre'); byBen[b]=(byBen[b]||0)+((t.eur||0)+trFee(t)); }); const bitems=Object.keys(byBen).map((b,i)=>({name:b,value:byBen[b],color:PAL[i%PAL.length]})).sort((a,b)=>b.value-a.value); const slices=bitems.map(x=>({value:x.value,color:x.color,label:x.name+' : '+eur(x.value)})); h+=`<div class="sec"><h2>Envois par personne ${YEARK}</h2></div><div class="card">${donut(slices,eur(bitems.reduce((s,x)=>s+x.value,0)),'Envoyé')}${donutLegend(bitems)}</div>`; }
   h+=`<div class="sec"><h2>${list.length} envoi(s)</h2><span class="lnk" onclick="addTr()">＋ Ajouter</span></div><div class="card">`;
   if(!list.length) h+=`<div class="note" style="text-align:center;padding:14px">Aucun transfert. Touche « ＋ Ajouter ».</div>`;
   list.slice().reverse().forEach((t,i)=>{ const cost=(t.eur||0)+trFee(t); const prov=t.provider||'Transfert'; h+=catRow(t.beneficiary||prov, cost, prov+(t.motif?' · '+t.motif:'')+(t.date?' · '+t.date:''), i, {avatar:'💸',amtHtml:eur(cost), amtSub:Math.round(t.fcfa||0).toLocaleString('fr-FR')+' FCFA', onclick:`openTr('${t.id}')`}); }); h+=`</div>`;
@@ -433,7 +442,7 @@ function secInvest(){
   let valE=0,invE=0; pos.forEach(p=>{valE+=eurOf(p.val,p.dev);invE+=eurOf(p.qty*p.cmp,p.dev);}); const pvE=valE-invE;
   let cashE=0; Object.keys(cash).forEach(sgi=>{ if(inMkt(sgi))cashE+=eurOf(cash[sgi].amt,cash[sgi].dev); }); const realE=pfRealized(UIMKT);
   h+=`<div class="card"><div class="hero" style="padding:18px 8px 10px"><div class="lbl">Total ${UIMKT==='all'?'portefeuille':UIMKT}</div><div class="big">${money(valE+cashE)}</div><div class="sub ${pvE>=0?'pos':'neg'}">${money(pvE,true)} de +/- value latente${invE?` · ${pctI(pvE/invE)}`:''}</div></div>${pu?`<div class="note" style="text-align:center">Cours : ${fmtDT(pu.at)} · ${pu.ok} à jour${pu.fail?' · '+pu.fail+' échec':''}</div>`:''}<div class="kgrid">${kpi('📈 Titres',money(valE))}${kpi('💵 Espèces',money(cashE))}${kpi('💰 +/- value réalisée',money(realE,true),realE>=0?'pos':'neg')}${kpi('🧮 Investi',money(invE))}</div></div>`;
-  if(pos.length){ const slices=pos.map((p,i)=>({value:eurOf(p.val,p.dev),color:catStyle(p.titre,i).color})); h+=`<div class="card">${donut(slices,money(valE),'Titres')}<div class="note" style="text-align:center">Répartition par titre</div></div>`; }
+  if(pos.length){ const litems=pos.map((p,i)=>({name:p.titre,value:eurOf(p.val,p.dev),color:catStyle(p.titre,i).color})); const slices=litems.map(x=>({value:x.value,color:x.color,label:x.name+' : '+money(x.value)})); h+=`<div class="card"><div class="note" style="text-align:center;margin-bottom:-4px">Répartition par titre</div>${donut(slices,money(valE),'Titres')}${donutLegend(litems,money)}</div>`; }
   h+=`<div class="sec"><h2>Mes positions</h2><span class="lnk" onclick="setUI('isub','journal')">Journal ›</span></div>`;
   if(pos.length>4) h+=`<input id="pfsearch" type="text" placeholder="🔎 filtrer par titre / marché" value="${esc(PFQ)}" style="width:100%;padding:9px 12px;border-radius:12px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);font-size:14px;margin-bottom:8px">`;
   h+=`<div class="card">`;
@@ -790,12 +799,13 @@ function secParams(){ setTitle('Paramètres'); const th=currentTheme();
   return h;
 }
 /* --- Défiscalisation (dons / dîme -> réduction d'impôt) --- */
-function dedList(){ if(!state.deductions)state.deductions=[]; return state.deductions; }
+function dedList(){ if(!Y().deductions)Y().deductions=[]; return Y().deductions; }
 function dedItem(id){ return dedList().find(d=>d.id===id); }
 function openDeduc(id){ DETAIL={level:'deduc',id}; showDetail(); }
 function setDeduc(id,field,val){ const d=dedItem(id); if(!d)return; d[field]=(field==='montant'||field==='rate')?parseNum(val):(field==='month'?(+val||0):val); save(); if(DETAIL)renderDetail(); else render(); }
 function addDeduc(){ const d={id:newId(),month:MONTH,label:'Don / dîme',montant:0,rate:66}; dedList().push(d); save(); openDeduc(d.id); }
-function delDeduc(id){ if(!confirm('Supprimer ?'))return; state.deductions=dedList().filter(d=>d.id!==id); save(); closeDetail(); }
+function delDeduc(id){ if(!confirm('Supprimer ?'))return; Y().deductions=dedList().filter(d=>d.id!==id); save(); closeDetail(); }
+function sumDimes(){ let s=(excList()||[]).filter(e=>e.nature==='don').reduce((a,e)=>a+(e.montant||0),0); people.forEach(p=>{ (Y().persons[p].cats||[]).forEach(l=>{ if(/d[îi]me|don/i.test(l.name||'')){ for(let m=0;m<12;m++) s+=catVal(p,l,m,realizedMonth(m)?'real':'planned'); } }); }); if(s<=0){ toast('Aucun don/dîme trouvé dans le budget'); return; } dedList().push({id:newId(),month:MONTH,label:'Dîmes & dons '+YEARK,montant:Math.round(s),rate:66}); save(); render(); toast('Importé ✓'); }
 function renderDeducDetail(){ const head=document.getElementById('detailHead'),body=document.getElementById('detailBody'); const d=dedItem(DETAIL.id); if(!d){closeDetail();return;} const red=(d.montant||0)*(d.rate||0)/100;
   head.innerHTML=`<div class="dhead"><button class="bk" onclick="closeDetail()">✕</button><h3>${esc(d.label||'Don')}</h3><span class="tot pos">−${eur(red)}</span></div>`;
   body.innerHTML=`<div class="card" style="margin:0">
@@ -808,8 +818,9 @@ function renderDeducDetail(){ const head=document.getElementById('detailHead'),b
 }
 function secDefisc(){ setTitle('Défiscalisation'); const list=dedList(); const tot=list.reduce((s,d)=>s+(d.montant||0),0); const red=list.reduce((s,d)=>s+(d.montant||0)*(d.rate||0)/100,0);
   let h=`<div class="card"><div class="hero"><div class="lbl">Réduction d'impôt estimée</div><div class="big pos">−${eur(red)}</div><div class="sub">sur ${eur(tot)} de dons / dîme déductibles</div></div></div>`;
-  h+=`<div class="sec"><h2>Dons & dîme ${YEARK}</h2><span class="lnk" onclick="addDeduc()">＋ Ajouter</span></div><div class="card">`;
-  if(!list.length)h+=`<div class="note" style="text-align:center;padding:14px">Ajoute tes dons/dîme déductibles (réduction ~66 %).</div>`;
+  h+=`<div class="row" style="gap:8px;padding:2px 0;flex-wrap:wrap"><button class="editbtn" onclick="addDeduc()">＋ Ajouter</button><button class="editbtn" onclick="sumDimes()">↻ Importer dîmes & dons du budget</button></div>`;
+  h+=`<div class="sec"><h2>Dons & dîme ${YEARK}</h2></div><div class="card">`;
+  if(!list.length)h+=`<div class="note" style="text-align:center;padding:14px">Ajoute tes dons/dîme déductibles, ou importe-les depuis ton budget (réduction ~66 %).</div>`;
   list.slice().sort((a,b)=>(a.month||0)-(b.month||0)).forEach((d,i)=>h+=catRow(d.label||'Don', d.montant||0, MONTHS[d.month||0]+' · réduction '+eur((d.montant||0)*(d.rate||0)/100), i, {avatar:'⛪',amtHtml:eur(d.montant||0),onclick:`openDeduc('${d.id}')`}));
   h+=`</div><div class="note" style="text-align:center;margin-top:6px">Indicatif — vérifie les règles fiscales applicables.</div>`;
   return h;
@@ -840,6 +851,7 @@ function toggleTheme(){ const cur=document.documentElement.getAttribute('data-th
 function openYearSheet(){ DETAIL={level:'year'}; showDetail(); }
 function switchYear(y){ if(state.years[y]!=null){ YEARK=+y; MONTH=(+y===new Date().getFullYear())?new Date().getMonth():0; } closeDetail(); }
 function createYear(y){ y=+y; if(!state.years[y]){ const src=JSON.parse(JSON.stringify(Y())); (src.foyer||[]).forEach(l=>{ l.real=Array(12).fill(0); }); Object.keys(src.persons||{}).forEach(p=>{ (src.persons[p].cats||[]).forEach(l=>{ l.real=Array(12).fill(0); }); }); src.exceptional=[]; src.transfers=[]; state.years[y]=src; save(); } YEARK=y; MONTH=(y===new Date().getFullYear())?new Date().getMonth():0; closeDetail(); }
+function yearNav(d){ const ys=Object.keys(state.years).map(Number).sort((a,b)=>a-b); const i=ys.indexOf(+YEARK); const ni=i+d; if(ni>=0&&ni<ys.length){ YEARK=ys[ni]; MONTH=(YEARK===new Date().getFullYear())?new Date().getMonth():0; render(); } else { toast('Crée l\'année avec 📅 (Budget)'); } }
 function renderYearDetail(){ const head=document.getElementById('detailHead'),body=document.getElementById('detailBody'); const ys=Object.keys(state.years).map(Number).sort((a,b)=>a-b); const minY=Math.min(...ys),maxY=Math.max(...ys);
   head.innerHTML=`<div class="dhead"><button class="bk" onclick="closeDetail()">✕</button><h3>📅 Années</h3></div>`;
   let h='<div class="card" style="margin:0">'; ys.forEach(y=>{ const on=y===+YEARK; h+=`<div class="row clk" onclick="switchYear(${y})"><div class="ic" style="background:${on?'var(--accent)':'var(--accent-soft)'};color:${on?'#fff':'var(--accent)'}">📅</div><div class="nm"><b>${y}</b><span>${on?'année en cours':'toucher pour ouvrir'}</span></div><div class="chev">›</div></div>`; }); h+='</div>';
