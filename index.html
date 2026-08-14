@@ -252,6 +252,8 @@ function pfPositions(){ const pos={}; (state.pf.ops||[]).slice().sort((a,b)=>Str
   return Object.values(pos).filter(p=>p.qty>1e-6).map(p=>{ const cmp=p.qty?p.cost/p.qty:0,key=p.sgi+'|'+p.titre; const price=(state.pf.prices&&state.pf.prices[key]!=null&&state.pf.prices[key]!=='')?+state.pf.prices[key]:cmp; const val=p.qty*price; return {sgi:p.sgi,titre:p.titre,dev:p.dev,qty:p.qty,cmp,price,val,pv:val-p.qty*cmp,vp:cmp?(price-cmp)/cmp:0,key}; }).sort((a,b)=>eurOf(b.val,b.dev)-eurOf(a.val,a.dev)); }
 function pfCash(){ const c={}; (state.pf.ops||[]).forEach(o=>{ const dev=o.devise||'EUR',sgi=o.sgi||'?'; if(!c[sgi])c[sgi]={dev,amt:0}; const x=c[sgi]; if(o.type==='depot'||o.type==='dividende')x.amt+=(+o.amount||0); else if(o.type==='retrait'||o.type==='frais')x.amt-=(+o.amount||0); else if(o.type==='achat')x.amt-=((+o.qty||0)*(+o.price||0)+(+o.fees||0)); else if(o.type==='vente')x.amt+=((+o.qty||0)*(+o.price||0)-(+o.fees||0)); }); return c; }
 function pfRealized(mkt){ const run={}; let realized=0; (state.pf.ops||[]).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date))).forEach(o=>{ if(mkt&&mkt!=='all'&&pfMarket(o.sgi)!==mkt)return; const dev=o.devise||'EUR'; const k=(o.sgi||'?')+'|'+(o.titre||'?'); if(o.type==='achat'){ const p=run[k]||(run[k]={qty:0,cost:0}); p.qty+=(+o.qty||0); p.cost+=(+o.qty||0)*(+o.price||0)+(+o.fees||0);} else if(o.type==='vente'){ const p=run[k]||(run[k]={qty:0,cost:0}); const cmp=p.qty?p.cost/p.qty:0; const q=+o.qty||0; realized+=eurOf(q*(+o.price||0)-(+o.fees||0)-cmp*q,dev); p.cost-=cmp*Math.min(q,p.qty); p.qty-=q; if(p.qty<1e-6){p.qty=0;p.cost=0;} } }); return realized; }
+function pfPerYear(mkt){ const run={},py={}; const ey=y=>py[y]||(py[y]={realized:0,div:0,fee:0}); (state.pf.ops||[]).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date))).forEach(o=>{ if(mkt&&mkt!=='all'&&pfMarket(o.sgi)!==mkt)return; const dev=o.devise||'EUR'; const y=(o.date||'????').slice(0,4); if(o.type==='dividende'){ ey(y).div+=eurOf(+o.amount||0,dev); return; } if(o.type==='frais'){ ey(y).fee+=eurOf(+o.amount||0,dev); return; } const k=(o.sgi||'?')+'|'+(o.titre||'?'); if(o.type==='achat'){ const p=run[k]||(run[k]={qty:0,cost:0}); p.qty+=(+o.qty||0); p.cost+=(+o.qty||0)*(+o.price||0)+(+o.fees||0); } else if(o.type==='vente'){ const p=run[k]||(run[k]={qty:0,cost:0}); const cmp=p.qty?p.cost/p.qty:0; const q=+o.qty||0; ey(y).realized+=eurOf(q*(+o.price||0)-(+o.fees||0)-cmp*q,dev); p.cost-=cmp*Math.min(q,p.qty); p.qty-=q; if(p.qty<1e-6){p.qty=0;p.cost=0;} } }); return py; }
+function pfCapitalSeries(mkt){ const ops=(state.pf.ops||[]).filter(o=>(!mkt||mkt==='all'||pfMarket(o.sgi)===mkt) && /^\d{4}-\d{2}/.test(o.date||'')).slice().sort((a,b)=>a.date.localeCompare(b.date)); if(!ops.length)return {labels:[],vals:[]}; const byM={}; ops.forEach(o=>{ const k=o.date.slice(0,7); let flow=0; if(o.type==='depot')flow=eurOf(+o.amount||0,o.devise||'EUR'); else if(o.type==='retrait')flow=-eurOf(+o.amount||0,o.devise||'EUR'); byM[k]=(byM[k]||0)+flow; }); let yy=+ops[0].date.slice(0,4), mm=+ops[0].date.slice(5,7)-1; const now=new Date(); const labels=[],vals=[]; let cum=0,g=0; while(g++<60){ const key=yy+'-'+String(mm+1).padStart(2,'0'); cum+=(byM[key]||0); labels.push(MSHORT[mm]+' '+String(yy).slice(2)); vals.push(Math.round(cum)); if(yy===now.getFullYear()&&mm===now.getMonth())break; mm++; if(mm>11){mm=0;yy++;} } return {labels,vals}; }
 
 function monthSel(){ return `<div class="monthsel"><button class="chip" onclick="chgMonth(-1)">‹</button><div class="m">${esc(MONTHS[MONTH])} ${YEARK}</div><button class="chip" onclick="chgMonth(1)">›</button></div>`; }
 
@@ -271,6 +273,8 @@ function secAccueil(){
   const alerts=[]; if(realizedMonth(m)){ foyerGroups().forEach(g=>{ const pl=foyerGroupTotal(g,m,'planned'),re=foyerGroupTotal(g,m,'real'); if(pl>0&&re>pl*1.05) alerts.push({n:g,pl,re}); }); }
   if(alerts.length){ h+=`<div class="sec"><h2>⚠️ À surveiller ce mois</h2></div><div class="card">`; alerts.slice(0,5).forEach((a,i)=>h+=catRow(a.n,a.re,'prévu '+eur(a.pl),i,{amtSub:'+'+eur(a.re-a.pl)})); h+=`</div>`; }
   const cols=['#6c5ce7','#14b8a6','#f59e0b','#ec4899'];
+  { let cbal=0; const trend=MSHORT.map((_,mm)=>{ people.forEach(p=>cbal+=epargneProj(p,mm)); cbal+=(realizedMonth(mm)?commonSaving(mm,'real'):commonSaving(mm,'planned')); return Math.round(cbal); });
+    h+=`<div class="sec"><h2>📈 Tendance d'épargne ${YEARK}</h2></div><div class="card"><div class="barlbl"><b>Épargne cumulée</b><span style="font-weight:800">${eur(trend[11])}</span></div>${lineChart(trend,MSHORT)}<div class="note" style="text-align:center;font-size:11px">Réel si saisi, sinon prévu · survole un point</div></div>`; }
   h+=`<div class="sec"><h2>Répartition du couple</h2></div><div class="card"><div class="pbar">${people.map((p,i)=>`<i style="width:${(prorata(p,m)*100).toFixed(1)}%;background:${cols[i%4]}"></i>`).join('')}</div><div class="plegend">${people.map((p,i)=>`<div class="li"><span class="dot" style="background:${cols[i%4]}"></span><b style="color:var(--ink)">${esc(p)}</b> ${pctI(prorata(p,m))}</div>`).join('')}</div></div>`;
   return h;
 }
@@ -396,8 +400,8 @@ function secTransferts(){
 
 function secInvest(){
   setTitle('Investissements'); pfEnsure();
-  const sub=ISUB==='journal'?'journal':'actifs';
-  let h=`<div class="seg"><button class="${sub==='actifs'?'on':''}" onclick="setUI('isub','actifs')">📊 Actifs</button><button class="${sub==='journal'?'on':''}" onclick="setUI('isub','journal')">🧾 Journal</button></div>`;
+  const sub=(ISUB==='journal'||ISUB==='perf')?ISUB:'actifs';
+  let h=`<div class="seg"><button class="${sub==='actifs'?'on':''}" onclick="setUI('isub','actifs')">📊 Actifs</button><button class="${sub==='journal'?'on':''}" onclick="setUI('isub','journal')">🧾 Journal</button><button class="${sub==='perf'?'on':''}" onclick="setUI('isub','perf')">🏆 Perf</button></div>`;
   if(sub==='journal'){
     const ops=(state.pf.ops||[]).slice().sort((a,b)=>String(b.date).localeCompare(String(a.date)));
     h+=`<div class="row" style="gap:8px;padding:2px 0;flex-wrap:wrap"><button class="editbtn" onclick="addOp()">＋ Opération</button><button class="editbtn" onclick="openCoris()">🇧🇫 Relevé Coris</button><button class="editbtn" onclick="openImport()">📥 Importer JSON</button></div>`;
@@ -405,6 +409,20 @@ function secInvest(){
     ops.forEach((o,i)=>{ const isT=o.type==='achat'||o.type==='vente'; const amt=isT?((+o.qty||0)*(+o.price||0)+(o.type==='achat'?1:-1)*(+o.fees||0)):(+o.amount||0); const inflow=(o.type==='vente'||o.type==='depot'||o.type==='dividende');
       h+=catRow((OP_LBL[o.type]||o.type)+(isT&&o.titre?' '+o.titre:''), eurOf(amt,o.devise), (o.sgi||'')+' · '+(o.date||'')+(isT?' · '+qtyFmt(o.qty)+'×'+num(o.price):''), i, {avatar:inflow?'🟢':'🔴', amtHtml:(inflow?'+':'−')+money(eurOf(amt,o.devise)), onclick:`openOp('${o.id}')`}); });
     h+=`</div>`; return h;
+  }
+  if(sub==='perf'){
+    if(!hasPf()){ h+=`<div class="card"><div class="note" style="text-align:center;padding:14px">Aucune opération — ajoute d'abord ton portefeuille dans le Journal.</div></div>`; return h; }
+    const mkts=['all','Euronext','BRVM','Crypto']; h+=`<div class="seg sub" style="margin-top:4px">${mkts.map(k=>`<button class="${UIMKT===k?'on':''}" onclick="setUI('mkt','${k}')">${k==='all'?'Tout':k}</button>`).join('')}</div><div class="row" style="gap:8px;padding:2px 0"><button class="editbtn" onclick="setUI('cur','${UICUR==='EUR'?'XOF':'EUR'}')">${UICUR==='EUR'?'Voir en FCFA':'Voir en €'}</button></div>`;
+    const realE=pfRealized(UIMKT);
+    h+=`<div class="card"><div class="hero" style="padding:16px 8px 8px"><div class="lbl">+/- value réalisée (toutes années)</div><div class="big ${realE>=0?'pos':'neg'}" style="font-size:32px">${money(realE,true)}</div><div class="sub">gains encaissés sur tes ventes + dividendes − frais</div></div></div>`;
+    const cs=pfCapitalSeries(UIMKT);
+    if(cs.vals.length>1){ h+=`<div class="card"><div class="barlbl"><b>Capital investi net</b><span style="font-weight:800">${money(cs.vals[cs.vals.length-1])}</span></div>${lineChart(cs.vals.map(v=>Math.round(dispEur(v))),cs.labels)}<div class="note" style="text-align:center">Ce que tu as réellement placé (dépôts − retraits), cumulé. Survole un point.</div></div>`; }
+    const py=pfPerYear(UIMKT); const years=Object.keys(py).filter(y=>/^\d{4}$/.test(y)).sort();
+    h+=`<div class="sec"><h2>Gains concrets par année</h2></div><div class="card">`;
+    if(!years.length)h+=`<div class="note" style="text-align:center;padding:12px">Aucune vente ni dividende encore.</div>`;
+    years.forEach((y,i)=>{ const d=py[y]; const net=d.realized+d.div-d.fee; h+=catRow(y, Math.abs(net), 'plus-values '+money(d.realized,true)+' · div '+money(d.div)+' · frais '+money(d.fee), i, {avatar:net>=0?'📈':'📉', amtHtml:`<span class="${net>=0?'pos':'neg'}">${net>=0?'+':''}${money(net)}</span>`}); });
+    h+=`</div><div class="note" style="text-align:center;margin-top:4px">« Combien j'ai concrètement gagné » chaque année (hors plus-values encore latentes).</div>`;
+    return h;
   }
   if(!hasPf()){ h+=`<div class="card"><div class="hero"><div class="lbl">Portefeuille</div><div class="big">—</div><div class="sub">Aucune opération dans cette appli pour l'instant.</div></div><div class="note" style="text-align:center;margin-top:2px">Ajoute une opération, importe ton relevé Coris, ou colle l'export JSON complet (Coris + Fortuneo + Binance).</div></div><div class="row" style="gap:8px;padding:2px 0;flex-wrap:wrap"><button class="editbtn" onclick="addOp()">＋ Opération</button><button class="editbtn" onclick="openImport()">📥 Importer JSON</button><button class="editbtn" onclick="openCoris()">🇧🇫 Relevé Coris</button></div>`; return h; }
   const mkts=['all','Euronext','BRVM','Crypto']; const inMkt=sgi=>UIMKT==='all'||pfMarket(sgi)===UIMKT;
@@ -428,6 +446,8 @@ function secInvest(){
       h+=`<div class="row" style="flex-wrap:wrap;gap:8px"><div class="nm"><b>${esc(sgi)}</b><span>calculé ${num(c.amt)} ${sym}${ecart!=null?' · écart '+num(ecart)+' '+sym:''}</span></div><input class="medit" style="width:120px" inputmode="decimal" placeholder="solde réel" value="${real!=null?num(real):''}" onchange="setRealCash('${jsq(sgi)}',this.value)">${(ecart!=null&&Math.abs(ecart)>=0.5)?`<button class="editbtn" title="Créer une opération d'ajustement" onclick="balCash('${jsq(sgi)}')">⚖️</button>`:''}</div>`;
     }); h+=`</div><div class="note" style="text-align:center;margin-top:4px">Saisis ton solde réel (relevé courtier) : l'écart révèle une opération manquante. ⚖️ crée un ajustement daté du 1ᵉʳ mouvement.</div>`;
   }
+  const pubs=pos.map(p=>({p,pub:((state.pf.meta&&state.pf.meta[p.key])||{}).pub})).filter(x=>x.pub);
+  if(pubs.length){ h+=`<div class="sec"><h2>📅 Prochaines publications</h2></div><div class="card">`; pubs.sort((a,b)=>String(a.pub).localeCompare(String(b.pub))).forEach((x,i)=>{ const days=Math.round((new Date(x.pub)-new Date())/86400000); h+=catRow(x.p.titre, 0, x.p.sgi+' · '+x.pub, i, {avatar:'📅', amtHtml:`<span class="${(days>=0&&days<=21)?'neg':'note'}" style="font-weight:800">${days<0?'passé':days+' j'}</span>`, onclick:`openPos('${jsq(x.p.key)}')`}); }); h+=`</div>`; }
   return h;
 }
 
@@ -539,6 +559,7 @@ function openPos(key){ DETAIL={level:'pos',key}; showDetail(); }
 function setPosPrice(key,val){ pfEnsure(); const v=parseNum(val); if(v)state.pf.prices[key]=v; else delete state.pf.prices[key]; save(); if(DETAIL)renderDetail(); else render(); }
 function setPosTarget(key,val){ const m=pfMeta2(key); const v=parseNum(val); if(v)m.target=v; else delete m.target; save(); if(DETAIL)renderDetail(); else render(); }
 function setPosHorizon(key,val){ pfMeta2(key).horizon=val; save(); if(DETAIL)renderDetail(); else render(); }
+function setPosPub(key,val){ pfMeta2(key).pub=val; save(); if(DETAIL)renderDetail(); else render(); }
 function renderPosDetail(){ const head=document.getElementById('detailHead'),body=document.getElementById('detailBody'); const p=pfPos(DETAIL.key); if(!p){closeDetail();return;} const meta=pfMeta2(p.key); const dev=p.dev,sym=dev==='XOF'?'FCFA':'€'; const tgt=meta.target; const toTgt=(tgt&&p.price)?(tgt-p.price)/p.price:null; const cl=p.pv>=0?'pos':'neg';
   head.innerHTML=`<div class="dhead"><button class="bk" onclick="closeDetail()">✕</button><h3>${esc(p.titre)}</h3><span class="tot">${money(eurOf(p.val,dev))}</span></div>`;
   body.innerHTML=`<div class="card" style="margin:0 0 10px"><div class="grid2">${kpi('Quantité',qtyFmt(p.qty))}${kpi('CMP',num(p.cmp)+' '+sym)}${kpi('+/- value',(p.pv>=0?'+':'')+money(eurOf(p.pv,dev)),cl)}${kpi('Variation',(p.vp>=0?'+':'')+pctI(p.vp),cl)}</div></div>
@@ -547,6 +568,7 @@ function renderPosDetail(){ const head=document.getElementById('detailHead'),bod
     <div class="frow"><label>Objectif</label><input class="fin" inputmode="decimal" placeholder="prix cible" value="${tgt?num(tgt):''}" onchange="setPosTarget('${jsq(p.key)}',this.value)"><span class="note">${sym}</span></div>
     <div class="frow"><label>% objectif</label><span style="flex:1;font-weight:800;padding:10px 2px" class="${toTgt==null?'note':(toTgt>=0?'pos':'neg')}">${toTgt==null?'— (fixe un objectif)':((toTgt>=0?'+':'')+pctI(toTgt)+' à parcourir')}</span></div>
     <div class="frow"><label>Horizon</label><select class="msel" onchange="setPosHorizon('${jsq(p.key)}',this.value)">${HORIZONS.map(o=>`<option value="${o[0]}" ${(meta.horizon||'')===o[0]?'selected':''}>${o[1]}</option>`).join('')}</select></div>
+    <div class="frow"><label>Publication</label><input class="fin" type="date" value="${esc(meta.pub||'')}" onchange="setPosPub('${jsq(p.key)}',this.value)"></div>
   </div><div class="note" style="margin-top:8px">${esc(p.sgi)} · valeur ${money(eurOf(p.val,dev))} · investi ${money(eurOf(p.qty*p.cmp,dev))}</div>`;
 }
 function setRealCash(sgi,val){ pfEnsure(); if(!state.pf.realCash)state.pf.realCash={}; state.pf.realCash[sgi]=parseNum(val); save(); render(); }
@@ -666,6 +688,7 @@ function tresorerieBudget(){ let sav=0; for(let m=0;m<12;m++){ if(realizedMonth(
   const exc=(excList()||[]).reduce((s,e)=>s+excNat(e.nature).cash*(e.montant||0),0); const broker=brokerDeposits();
   return {start:state.startCash||0, sav, exc, broker, total:(state.startCash||0)+sav+exc-broker}; }
 function recalerTreso(){ const t=tresorerieBudget(); const v=prompt("Ton solde LIQUIDE réel aujourd'hui (€) — total de tes comptes courant + épargne (hors bourse) :", Math.round(t.total)); if(v==null)return; const real=parseNum(v); state.startCash=Math.round(real - t.sav - t.exc + t.broker); save(); render(); }
+function setPatri(k,val){ if(k==='rate')state.patriRate=parseNum(val); else state.patriAnnual=parseNum(val); save(); render(); }
 function secPatrimoine(){
   setTitle('Patrimoine'); ensureAD();
   const tr=tresorerieBudget();
@@ -691,8 +714,11 @@ function secPatrimoine(){
   if(!(state.debts||[]).length)h+=`<div class="note" style="text-align:center;padding:12px">Aucune dette enregistrée. 🎉</div>`;
   (state.debts||[]).forEach((a,i)=>h+=catRow(a.name||'Dette', toEUR(a.value,a.devise), (a.devise==='XOF'||a.devise==='FCFA')?'FCFA':'€', i, {avatar:'💳',amtHtml:'−'+eur(toEUR(a.value,a.devise)),onclick:`openAD('debt','${a.id}')`}));
   h+=`</div>`;
-  const annual=coupleSaving(); const rate=0.03; let bal=net; const proj=[net]; for(let y=1;y<=5;y++){ bal=bal*(1+rate)+annual; proj.push(Math.round(bal)); }
-  h+=`<div class="card"><div class="barlbl"><b>Projection 5 ans</b><span style="font-weight:800">${eur(proj[5])}</span></div>${lineChart(proj,['Auj','+1','+2','+3','+4','+5'])}<div class="note" style="text-align:center">Si tu épargnes ${eur(annual)}/an, placé à 3 %/an (intérêts composés).</div></div>`;
+  const annual=(state.patriAnnual!=null&&state.patriAnnual!=='')?+state.patriAnnual:Math.round(coupleSaving()); const ratePct=(state.patriRate!=null)?+state.patriRate:3; const rate=ratePct/100; let bal=net; const proj=[net]; for(let y=1;y<=5;y++){ bal=bal*(1+rate)+annual; proj.push(Math.round(bal)); }
+  h+=`<div class="card"><div class="barlbl"><b>Projection 5 ans</b><span style="font-weight:800">${eur(proj[5])}</span></div>${lineChart(proj,['Auj','+1','+2','+3','+4','+5'])}
+    <div class="frow" style="margin-top:8px"><label>Épargne / an</label><input class="fin" inputmode="decimal" value="${annual?num(annual):''}" onchange="setPatri('annual',this.value)"><span class="note">€</span></div>
+    <div class="frow"><label>Rendement</label><input class="fin" inputmode="decimal" value="${ratePct}" onchange="setPatri('rate',this.value)"><span class="note">% / an</span></div>
+    <div class="note" style="text-align:center">Intérêts composés. Par défaut = ton atterrissage ${YEARK} (${eur(Math.round(coupleSaving()))}).</div></div>`;
   return h;
 }
 /* --- toast + mise à jour des cours --- */
