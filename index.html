@@ -104,6 +104,7 @@ svg{display:block}
 .chartbars .cb i{width:70%;max-width:22px;border-radius:6px 6px 3px 3px;display:block}
 .chartbars .cb small{font-size:9px;color:var(--faint)}
 .chartbars .cb .cbv{font-size:8.5px;font-weight:800;color:var(--muted);line-height:1;white-space:nowrap}
+.cur{font-size:.62em;font-weight:700;color:var(--muted);margin-left:.24em;letter-spacing:.2px;vertical-align:baseline}
 .grid2{display:grid;grid-template-columns:1fr;gap:12px}
 .deskhead{display:none}
 .medit{width:100px;text-align:right;padding:9px 11px;border-radius:11px;border:1.5px solid var(--line);background:var(--bg2);color:var(--ink);font-size:15px;font-weight:800;font-variant-numeric:tabular-nums}
@@ -249,7 +250,9 @@ function catRow(name,amount,subtitle,i,opts){ opts=opts||{}; const st=opts.style
 function pfMarket(sgi){ const s=(sgi||'').toLowerCase(); if(/coris|brvm/.test(s))return'BRVM'; if(/binance|okx|crypto|bitcoin|ether|coin|btc|eth/.test(s))return'Crypto'; if(/fortuneo|euronext|bourso|pea/.test(s))return'Euronext'; return'Autre'; }
 function eurOf(v,dev){ return dev==='XOF'? v*FX() : v; }
 function dispEur(v){ return UICUR==='XOF'? v/FX() : v; }
-function money(vEur,signed){ const x=dispEur(vEur); const s=UICUR==='XOF'? Math.round(x).toLocaleString('fr-FR') : num(x)+' €'; return (signed&&vEur>0?'+':'')+s; }
+function moneyNum(vEur,signed){ const x=dispEur(vEur); const n=UICUR==='XOF'? Math.round(x).toLocaleString('fr-FR') : num(x); return (signed&&vEur>0?'+':'')+n; }
+function moneyTxt(vEur,signed){ return moneyNum(vEur,signed)+(UICUR==='XOF'?' FCFA':' €'); }
+function money(vEur,signed){ return moneyNum(vEur,signed)+'<span class="cur">'+(UICUR==='XOF'?'FCFA':'€')+'</span>'; }
 function kfmt(n){ n=Math.round(+n||0); const a=Math.abs(n); if(a>=1e6)return (n/1e6).toFixed(a>=1e7?0:1).replace('.',',')+'M'; if(a>=1000)return (n/1000).toFixed(a>=1e4?0:1).replace('.',',')+'k'; return String(n); }
 function hasPf(){ return state.pf&&state.pf.ops&&state.pf.ops.length; }
 function pfValueEur(){ if(!hasPf())return 0; return pfPositions().reduce((s,p)=>s+eurOf(p.val,p.dev),0); }
@@ -442,12 +445,12 @@ function secInvest(){
   let valE=0,invE=0; pos.forEach(p=>{valE+=eurOf(p.val,p.dev);invE+=eurOf(p.qty*p.cmp,p.dev);}); const pvE=valE-invE;
   let cashE=0; Object.keys(cash).forEach(sgi=>{ if(inMkt(sgi))cashE+=eurOf(cash[sgi].amt,cash[sgi].dev); }); const realE=pfRealized(UIMKT);
   h+=`<div class="card"><div class="hero" style="padding:18px 8px 10px"><div class="lbl">Total ${UIMKT==='all'?'portefeuille':UIMKT}</div><div class="big">${money(valE+cashE)}</div><div class="sub ${pvE>=0?'pos':'neg'}">${money(pvE,true)} de +/- value latente${invE?` · ${pctI(pvE/invE)}`:''}</div></div>${pu?`<div class="note" style="text-align:center">Cours : ${fmtDT(pu.at)} · ${pu.ok} à jour${pu.fail?' · '+pu.fail+' échec':''}</div>`:''}<div class="kgrid">${kpi('📈 Titres',money(valE))}${kpi('💵 Espèces',money(cashE))}${kpi('💰 +/- value réalisée',money(realE,true),realE>=0?'pos':'neg')}${kpi('🧮 Investi',money(invE))}</div></div>`;
-  if(pos.length){ const litems=pos.map((p,i)=>({name:p.titre,value:eurOf(p.val,p.dev),color:catStyle(p.titre,i).color})); const slices=litems.map(x=>({value:x.value,color:x.color,label:x.name+' : '+money(x.value)})); h+=`<div class="card"><div class="note" style="text-align:center;margin-bottom:-4px">Répartition par titre</div>${donut(slices,money(valE),'Titres')}${donutLegend(litems,money)}</div>`; }
+  if(pos.length){ const litems=pos.map((p,i)=>({name:p.titre,value:eurOf(p.val,p.dev),color:catStyle(p.titre,i).color})); const slices=litems.map(x=>({value:x.value,color:x.color,label:x.name+' : '+moneyTxt(x.value)})); h+=`<div class="card"><div class="note" style="text-align:center;margin-bottom:-4px">Répartition par titre</div>${donut(slices,moneyNum(valE),UICUR==='XOF'?'FCFA':'Titres')}${donutLegend(litems,money)}</div>`; }
   h+=`<div class="sec"><h2>Mes positions</h2><span class="lnk" onclick="setUI('isub','journal')">Journal ›</span></div>`;
   if(pos.length>4) h+=`<input id="pfsearch" type="text" placeholder="🔎 filtrer par titre / marché" value="${esc(PFQ)}" style="width:100%;padding:9px 12px;border-radius:12px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);font-size:14px;margin-bottom:8px">`;
   h+=`<div class="card">`;
   if(!pos.length)h+=`<div class="note" style="text-align:center;padding:12px">Aucune position sur ce marché.</div>`;
-  pos.forEach((p,i)=>{ const meta=(state.pf.meta&&state.pf.meta[p.key])||{}; const tgt=meta.target; const toTgt=(tgt&&p.price)?(tgt-p.price)/p.price:null; h+=catRow(p.titre, eurOf(p.val,p.dev), p.sgi+' · '+qtyFmt(p.qty)+' × '+num(dispEur(eurOf(p.price,p.dev)))+(tgt?' · 🎯 '+num(dispEur(eurOf(tgt,p.dev)))+(toTgt!=null?' ('+(toTgt>=0?'+':'')+pctI(toTgt)+')':''):''), i, {frow:p.titre+' '+p.sgi, onclick:`openPos('${jsq(p.key)}')`, amtHtml:money(eurOf(p.val,p.dev)), amtSub:(p.pv>=0?'+':'')+money(eurOf(p.pv,p.dev))+' ('+(p.vp>=0?'+':'')+pctI(p.vp)+')'}); }); h+=`</div>`;
+  pos.forEach((p,i)=>{ const meta=(state.pf.meta&&state.pf.meta[p.key])||{}; const tgt=meta.target; const toTgt=(tgt&&p.price)?(tgt-p.price)/p.price:null; h+=catRow(p.titre, eurOf(p.val,p.dev), p.sgi+' · '+qtyFmt(p.qty)+' × '+num(dispEur(eurOf(p.price,p.dev)))+(tgt?' · 🎯 '+num(dispEur(eurOf(tgt,p.dev)))+(toTgt!=null?' ('+(toTgt>=0?'+':'')+pctI(toTgt)+')':''):''), i, {frow:p.titre+' '+p.sgi, onclick:`openPos('${jsq(p.key)}')`, amtHtml:money(eurOf(p.val,p.dev)), amtSub:(p.pv>=0?'+':'')+moneyTxt(eurOf(p.pv,p.dev))+' ('+(p.vp>=0?'+':'')+pctI(p.vp)+')'}); }); h+=`</div>`;
   // Réconciliation des espèces par compte
   const cashSgis=Object.keys(cash).filter(sgi=>inMkt(sgi));
   if(cashSgis.length){ h+=`<div class="sec"><h2>💵 Espèces par compte</h2></div><div class="card">`;
