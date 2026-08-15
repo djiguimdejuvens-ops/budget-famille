@@ -105,6 +105,22 @@ svg{display:block}
 .chartbars .cb small{font-size:9px;color:var(--faint)}
 .chartbars .cb .cbv{font-size:8.5px;font-weight:800;color:var(--muted);line-height:1;white-space:nowrap}
 .cur{font-size:.62em;font-weight:700;color:var(--muted);margin-left:.24em;letter-spacing:.2px;vertical-align:baseline}
+.ptab{border-collapse:collapse;font-size:12px;width:100%}
+.ptab th,.ptab td{padding:7px 7px;text-align:right;white-space:nowrap}
+.ptab thead th{position:sticky;top:0;background:var(--card);color:var(--muted);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.3px}
+.ptab th.pnm,.ptab td.pnm{text-align:left;position:sticky;left:0;background:var(--card);font-weight:700;z-index:1;box-shadow:1px 0 0 var(--line)}
+.ptab thead th.pnm{z-index:3}
+.ptab tbody tr{border-top:1px solid var(--line)}
+.ptab tbody tr.clk{cursor:pointer}
+.ptab tbody tr.clk:hover td{background:var(--accent-soft)}
+.ptab td.prev{color:var(--faint)}
+.ptab th.now{color:var(--accent)}
+.ptab tr.rev td{color:var(--green-ink)}
+.ptab tr.sum td{font-weight:800;border-top:2px solid var(--line)}
+.ptab .ptot{font-weight:800}
+.ptab .pmoy{color:var(--muted)}
+.ptab td.pos{color:var(--green-ink)}
+.ptab td.neg{color:var(--red)}
 .grid2{display:grid;grid-template-columns:1fr;gap:12px}
 .deskhead{display:none}
 .medit{width:100px;text-align:right;padding:9px 11px;border-radius:11px;border:1.5px solid var(--line);background:var(--bg2);color:var(--ink);font-size:15px;font-weight:800;font-variant-numeric:tabular-nums}
@@ -289,6 +305,43 @@ function secAccueil(){
   return h;
 }
 
+function capItems(items,n){ if(items.length<=n)return items.slice(); const top=items.slice(0,n-1),rest=items.slice(n-1); top.push({name:'Autres ('+rest.length+')',amount:rest.reduce((s,x)=>s+x.amount,0),color:'#94a3b8'}); return top; }
+function pgRow(name,vals,o){ o=o||{}; const tot=vals.reduce((a,b)=>a+b,0),moy=tot/12; const sc=v=>o.signed?(v>=0?'pos':'neg'):'';
+  const cells=vals.map((v,m)=>`<td class="${realizedMonth(m)?'':'prev'} ${sc(v)}">${v?num(v):'·'}</td>`).join('');
+  return `<tr class="${o.cls||''} ${o.click?'clk':''}" ${o.click?`onclick="${o.click}"`:''}><td class="pnm">${o.icon||''} ${esc(name)}</td>${cells}<td class="ptot ${sc(tot)}">${num(tot)}</td><td class="pmoy">${num(moy)}</td></tr>`;
+}
+function secPilotage(){
+  setTitle('Pilotage');
+  const revM=m=>people.reduce((s,p)=>s+personFullIncome(p,m),0);
+  const depM=m=>foyerTotal(m,fOf(m))+people.reduce((s,p)=>s+persoTotal(p,m,fOf(m)),0);
+  const revY=sumM(revM),depY=sumM(depM),epY=revY-depY,cm=closedMonths().length;
+  const nowM=(YEARK===new Date().getFullYear())?new Date().getMonth():-1;
+  let h=`<div class="monthsel"><button class="chip" onclick="yearNav(-1)">‹</button><div class="m">🧭 Pilotage ${YEARK}</div><button class="chip" onclick="yearNav(1)">›</button></div>`;
+  h+=`<div class="kgrid">${kpi('💰 Revenus '+YEARK,eur(revY))}${kpi('💸 Dépenses',eur(depY))}${kpi('🐷 Épargne',eur(epY),epY>=0?'pos':'neg')}${kpi('📊 Taux d\'épargne',revY>0?pctI(epY/revY):'—',epY>=0?'pos':'neg')}</div>`;
+  h+=`<div class="note" style="text-align:center;margin:-2px 4px 2px">Année entière · réel sur ${cm} mois saisi${cm>1?'s':''}, prévu ensuite · montants en €</div>`;
+  h+=`<div class="sec"><h2>📅 Toute l'année, poste par poste</h2><span class="lnk" onclick="setTab('budget')">Budget ›</span></div>`;
+  h+=`<div class="card" style="padding:0;overflow:hidden"><div style="overflow-x:auto"><table class="ptab"><thead><tr><th class="pnm">Poste</th>${MSHORT.map((l,m)=>`<th title="${esc(MONTHS[m])}" class="${m===nowM?'now':''}">${l[0]}</th>`).join('')}<th>Tot</th><th>Moy</th></tr></thead><tbody>`;
+  h+=pgRow('Revenus',MSHORT.map((_,m)=>revM(m)),{cls:'rev',icon:'💰',click:"setTab('revenus')"});
+  foyerGroups().forEach((g,i)=>{ const vals=MSHORT.map((_,m)=>foyerGroupTotal(g,m,fOf(m))); if(vals.some(v=>v)) h+=pgRow(g,vals,{icon:catStyle(g,i).emoji,click:`openGroup('foyer','${jsq(g)}')`}); });
+  people.forEach(p=>{ const vals=MSHORT.map((_,m)=>persoTotal(p,m,fOf(m))); if(vals.some(v=>v)) h+=pgRow('Perso · '+p,vals,{icon:'👛',click:`setUI('bscope','${jsq(p)}');setTab('budget')`}); });
+  h+=pgRow('Dépenses',MSHORT.map((_,m)=>depM(m)),{cls:'sum',icon:'💸',click:"setTab('budget')"});
+  h+=pgRow('Épargne',MSHORT.map((_,m)=>revM(m)-depM(m)),{cls:'sum',icon:'🐷',signed:true,click:"setTab('objectifs')"});
+  h+=`</tbody></table></div></div>`;
+  h+=`<div class="note" style="text-align:center;margin-top:-2px">Clair = réel saisi · grisé = prévu · touche une ligne pour l'éditer · glisse pour voir tous les mois</div>`;
+  h+=`<div class="sec"><h2>Revenus vs dépenses</h2><span class="lnk" onclick="setTab('analyse')">Analyse ›</span></div>`;
+  h+=`<div class="card">${dualBar(MSHORT.map((_,m)=>revM(m)),MSHORT.map((_,m)=>depM(m)),MSHORT)}</div>`;
+  { let c=0; const cum=MSHORT.map((_,m)=>{c+=revM(m)-depM(m);return Math.round(c);}); h+=`<div class="card"><div class="barlbl"><b>🐷 Épargne cumulée</b><span style="font-weight:800;color:${cum[11]>=0?'var(--green-ink)':'var(--red)'}">${eur(cum[11])}</span></div>${lineChart(cum,MSHORT)}<div class="note" style="text-align:center;font-size:11px">Survole un point</div></div>`; }
+  let items=[]; foyerGroups().forEach(g=>{ const v=sumM(m=>foyerGroupTotal(g,m,fOf(m))); if(v>0)items.push({name:g,amount:v}); });
+  people.forEach(p=>{ persoGroups(p).forEach(g=>{ const v=sumM(m=>persoGroupTotal(p,g,m,fOf(m))); if(v>0)items.push({name:g+' · '+p,amount:v}); }); });
+  items.sort((a,b)=>b.amount-a.amount); items=capItems(items,8); items.forEach((it,i)=>{ if(!it.color)it.color=catStyle(it.name,i).color; });
+  const totD=items.reduce((s,x)=>s+x.amount,0);
+  const slices=items.map(it=>({value:it.amount,color:it.color,label:it.name+' : '+eur(it.amount)+' ('+pctI(totD>0?it.amount/totD:0)+')'}));
+  h+=`<div class="sec"><h2>Où part l'argent</h2><span class="lnk" onclick="setTab('analyse')">Analyse ›</span></div>`;
+  h+=`<div class="card">${donut(slices.length?slices:[{value:1,color:'var(--line)'}],eur(totD),'Dépenses')}${items.length?donutLegend(items.map(it=>({name:it.name,value:it.amount,color:it.color}))):''}</div>`;
+  const cols=['#6c5ce7','#14b8a6','#f59e0b','#ec4899']; const contrib=people.map((p,i)=>({p,v:sumM(m=>persoTotal(p,m,fOf(m))+prorata(p,m)*foyerTotal(m,fOf(m)))})); const ct=contrib.reduce((s,x)=>s+x.v,0)||1;
+  h+=`<div class="sec"><h2>Qui paie quoi ${YEARK}</h2></div><div class="card"><div class="pbar">${contrib.map((c,i)=>`<i style="width:${(c.v/ct*100).toFixed(1)}%;background:${cols[i%4]}"></i>`).join('')}</div><div class="plegend">${contrib.map((c,i)=>`<div class="li"><span class="dot" style="background:${cols[i%4]}"></span><b style="color:var(--ink)">${esc(c.p)}</b> ${eur(c.v)} · ${pctI(c.v/ct)}</div>`).join('')}</div></div>`;
+  return h;
+}
 function secAnalyse(){
   setTitle('Analyse');
   const scopes=['Foyer',...people];
@@ -828,8 +881,8 @@ function secDefisc(){ setTitle('Défiscalisation'); const list=dedList(); const 
   h+=`</div><div class="note" style="text-align:center;margin-top:6px">Indicatif — vérifie les règles fiscales applicables.</div>`;
   return h;
 }
-const NAV=[{k:'accueil',i:'🏠',l:'Accueil',p:1},{k:'saisie',i:'✍️',l:'Saisie',p:1},{k:'budget',i:'🎯',l:'Budget',p:1},{k:'patrimoine',i:'🏦',l:'Patrimoine',p:1},{k:'invest',i:'📈',l:'Invest'},{k:'analyse',i:'📊',l:'Analyse'},{k:'revenus',i:'💰',l:'Revenus'},{k:'objectifs',i:'🎖️',l:'Objectifs'},{k:'exceptionnel',i:'💎',l:'Exceptionnel'},{k:'transferts',i:'🌍',l:'Transferts'},{k:'defisc',i:'⛪',l:'Défiscalisation'},{k:'params',i:'⚙️',l:'Paramètres'}];
-const SECT={accueil:secAccueil,saisie:secSaisie,analyse:secAnalyse,budget:secBudget,revenus:secRevenus,objectifs:secObjectifs,exceptionnel:secExceptionnel,transferts:secTransferts,invest:secInvest,patrimoine:secPatrimoine,defisc:secDefisc,params:secParams};
+const NAV=[{k:'accueil',i:'🏠',l:'Accueil',p:1},{k:'pilotage',i:'🧭',l:'Pilotage',p:1},{k:'budget',i:'🎯',l:'Budget',p:1},{k:'saisie',i:'✍️',l:'Saisie',p:1},{k:'patrimoine',i:'🏦',l:'Patrimoine',sl:'Patri.',p:1},{k:'invest',i:'📈',l:'Invest'},{k:'analyse',i:'📊',l:'Analyse'},{k:'revenus',i:'💰',l:'Revenus'},{k:'objectifs',i:'🎖️',l:'Objectifs'},{k:'exceptionnel',i:'💎',l:'Exceptionnel'},{k:'transferts',i:'🌍',l:'Transferts'},{k:'defisc',i:'⛪',l:'Défiscalisation'},{k:'params',i:'⚙️',l:'Paramètres'}];
+const SECT={accueil:secAccueil,pilotage:secPilotage,saisie:secSaisie,analyse:secAnalyse,budget:secBudget,revenus:secRevenus,objectifs:secObjectifs,exceptionnel:secExceptionnel,transferts:secTransferts,invest:secInvest,patrimoine:secPatrimoine,defisc:secDefisc,params:secParams};
 function setTitle(t){ const a=document.getElementById('title'); if(a)a.textContent=t; }
 function kpi(k,v,cls){ return `<div class="kpi"><div class="k">${k}</div><div class="v ${cls||''}">${v}</div></div>`; }
 function chgMonth(d){ MONTH=(MONTH+d+12)%12; render(); }
@@ -840,7 +893,7 @@ function closePlus(){ document.getElementById('plusSheet').classList.remove('on'
 function renderNav(){
   document.getElementById('sidenav').innerHTML=NAV.map(n=>`<button class="navi ${TAB===n.k?'on':''}" onclick="setTab('${n.k}')"><span class="ni">${n.i}</span>${n.l}</button>`).join('');
   const prim=NAV.filter(n=>n.p);
-  document.getElementById('tabbar').innerHTML=prim.map(n=>`<button class="tab ${TAB===n.k?'on':''}" onclick="setTab('${n.k}')"><span class="ti">${n.i}</span>${n.l}</button>`).join('')+`<button class="tab ${NAV.some(n=>!n.p&&n.k===TAB)?'on':''}" onclick="openPlus()"><span class="ti">⋯</span>Plus</button>`;
+  document.getElementById('tabbar').innerHTML=prim.map(n=>`<button class="tab ${TAB===n.k?'on':''}" onclick="setTab('${n.k}')"><span class="ti">${n.i}</span>${n.sl||n.l}</button>`).join('')+`<button class="tab ${NAV.some(n=>!n.p&&n.k===TAB)?'on':''}" onclick="openPlus()"><span class="ti">⋯</span>Plus</button>`;
   document.getElementById('plusList').innerHTML=NAV.filter(n=>!n.p).map(n=>`<div class="row clk" onclick="setTab('${n.k}')"><div class="ic" style="background:var(--accent-soft);color:var(--accent)">${n.i}</div><div class="nm"><b>${n.l}</b></div><div class="chev">›</div></div>`).join('');
 }
 function render(){
