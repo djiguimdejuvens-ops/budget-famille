@@ -1088,6 +1088,12 @@ function secBankin(){ setTitle('Import Bankin'); bkEnsure();
   if(catList.length){ h+=`<div class="sec"><h2>Reconnaissance par catégorie</h2><span class="note">corrige → ça apprend</span></div><div class="card">`;
     catList.forEach(k=>{ const c=cats[k]; const cur=state.bankinMap[k]||bkGuess(c.cat,c.sub,''); h+=`<div class="row" style="align-items:center;gap:8px"><div class="nm" style="flex:1;min-width:0"><b style="font-size:12px">${esc(c.cat||'(vide)')}</b><span>${esc(c.sub||'')} · ${c.n} op · ${eur(c.s)}</span></div><select onchange="setBankinMap('${jsq(k)}',this.value)" style="max-width:148px;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--bg2);color:var(--ink);font-size:12px">${BK_ALL.map(p=>`<option value="${esc(p)}" ${p===cur?'selected':''}>${esc(p)}</option>`).join('')}</select></div>`; }); h+=`</div>`; }
   if(totAcl>0)h+=`<div class="card tight"><div class="note" style="margin-bottom:8px">❓ <b>${eur(totAcl)}</b> encore en « À classer »${getClaudeKey()?'':' — ajoute ta clé Claude dans Paramètres pour activer l\'IA'}.</div><button class="editbtn" style="width:100%" onclick="bankinAI()">🤖 Classer les inconnues avec Claude</button></div>`;
+  if(dep.length){ const ap={}; dep.forEach(t=>{ const af=bkAffect(t.cat,t.sub),key=af+'|'+t.poste; (ap[key]||(ap[key]={af,poste:t.poste,s:0})); ap[key].s+=Math.abs(t.montant); });
+    if(!state.bankinBudgetMap)state.bankinBudgetMap={};
+    h+=`<div class="sec"><h2>Vers le budget ${yr}</h2><span class="note">relie chaque poste à une ligne</span></div><div class="card">`;
+    Object.keys(ap).sort((a,b)=>ap[b].s-ap[a].s).forEach(key=>{ const o=ap[key]; const lines=o.af==='Commun'?(Y().foyer||[]):(((Y().persons||{})[o.af]||{}).cats||[]); const cur=state.bankinBudgetMap[key]||''; h+=`<div class="row" style="align-items:center;gap:8px"><div class="nm" style="flex:1;min-width:0"><b style="font-size:12px">${esc(o.af)} · ${esc(o.poste)}</b><span>${eur(o.s)}</span></div><select onchange="setBkBudget('${jsq(key)}',this.value)" style="max-width:150px;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--bg2);color:var(--ink);font-size:12px"><option value="">— ne pas pousser —</option>${lines.map(l=>`<option value="${l.id}" ${l.id===cur?'selected':''}>${esc(l.group)} › ${esc(l.name)}</option>`).join('')}</select></div>`; });
+    h+=`</div><button class="editbtn" style="width:100%;margin-top:8px" onclick="bankinToBudget()">📥 Pousser les montants réels dans le budget ${yr}</button><div class="note" style="text-align:center;margin-top:4px">Écrit le réel des mois présents dans le relevé (remplace, annulable).</div>`;
+  }
   h+=`<div class="row" style="gap:8px;padding:6px 2px"><button class="editbtn" onclick="openBankinPaste()">↻ Recharger un relevé</button></div>`;
   return h;
 }
@@ -1110,6 +1116,18 @@ async function bankinAI(){
     let n=0; bkEnsure(); arr.forEach(o=>{ const it=items[o&&o.i]; if(it&&BK_POSTES.includes(o.poste)){ state.bankinMap[bkKey(it.categorie,it.sous)]=o.poste; n++; } });
     save(); render(); toast('✅ '+n+' catégorie(s) classée(s) par Claude.');
   }catch(e){ toast('IA indisponible : '+((e&&e.message)||e)); }
+}
+function setBkBudget(key,lineId){ if(!state.bankinBudgetMap)state.bankinBudgetMap={}; if(lineId)state.bankinBudgetMap[key]=lineId; else delete state.bankinBudgetMap[key]; save(); render(); }
+function bkFindLine(id){ if(!id)return null; let l=(Y().foyer||[]).find(x=>x.id===id); if(l)return l; for(const p of people){ l=((Y().persons[p]||{}).cats||[]).find(x=>x.id===id); if(l)return l; } return null; }
+function bankinToBudget(){ if(!BANKIN||!BANKIN.tx){ toast('Charge d\'abord un relevé.'); return; } if(!state.bankinBudgetMap)state.bankinBudgetMap={}; const yr=String(YEARK);
+  const dep=BANKIN.tx.filter(t=>String(t.date).slice(0,4)===yr&&t.montant<0); dep.forEach(t=>t.poste=bkPoste(t)); const dd=dep.filter(t=>t.poste!=='Virement interne'&&t.poste!=='Revenu');
+  const months=new Set(); dd.forEach(t=>{ const m=+String(t.date).slice(5,7)-1; if(m>=0&&m<12)months.add(m); });
+  const agg={}; let unmapped=0;
+  dd.forEach(t=>{ const key=bkAffect(t.cat,t.sub)+'|'+t.poste; const id=state.bankinBudgetMap[key]; if(!id){ unmapped+=Math.abs(t.montant); return; } const m=+String(t.date).slice(5,7)-1; if(m<0||m>11)return; (agg[id]||(agg[id]={}))[m]=(agg[id][m]||0)+Math.abs(t.montant); });
+  const ids=Object.keys(agg); if(!ids.length){ toast('Choisis d\'abord les lignes cibles ci-dessus.'); return; }
+  if(!confirm('Écrire le réel '+yr+' ('+months.size+' mois présents) dans '+ids.length+' ligne(s) du budget ? Le réel existant de ces mois sera remplacé. (annulable)'))return;
+  ids.forEach(id=>{ const l=bkFindLine(id); if(!l)return; if(!Array.isArray(l.real))l.real=Array(12).fill(0); months.forEach(m=>{ l.real[m]=roundRule(agg[id][m]||0); }); });
+  save(); render(); toast('✅ Budget '+yr+' mis à jour : '+ids.length+' ligne(s)'+(unmapped?' · '+eur(unmapped)+' non poussé (non mappé)':''));
 }
 const NAV=[{k:'accueil',i:'🏠',l:'Accueil',p:1},{k:'pilotage',i:'🧭',l:'Pilotage',p:1},{k:'budget',i:'🎯',l:'Budget',p:1},{k:'saisie',i:'✍️',l:'Saisie',p:1},{k:'patrimoine',i:'🏦',l:'Patrimoine',sl:'Patri.',p:1},{k:'invest',i:'📈',l:'Invest'},{k:'analyse',i:'📊',l:'Analyse'},{k:'revenus',i:'💰',l:'Revenus'},{k:'objectifs',i:'🎖️',l:'Objectifs'},{k:'exceptionnel',i:'💎',l:'Exceptionnel'},{k:'transferts',i:'🌍',l:'Transferts'},{k:'defisc',i:'⛪',l:'Défiscalisation'},{k:'bankin',i:'🟢',l:'Import Bankin'},{k:'params',i:'⚙️',l:'Paramètres'}];
 const SECT={accueil:secAccueil,pilotage:secPilotage,saisie:secSaisie,analyse:secAnalyse,budget:secBudget,revenus:secRevenus,objectifs:secObjectifs,exceptionnel:secExceptionnel,transferts:secTransferts,invest:secInvest,patrimoine:secPatrimoine,defisc:secDefisc,bankin:secBankin,params:secParams};
