@@ -557,6 +557,7 @@ function renderDetail(){
   if(DETAIL.level==='fortuneo'){ return renderFortuneoDetail(); }
   if(DETAIL.level==='okx'){ return renderOKXDetail(); }
   if(DETAIL.level==='import'){ return renderImportDetail(); }
+  if(DETAIL.level==='bankin'){ return renderBankinDetail(); }
   if(DETAIL.level==='ad'){ return renderADDetail(); }
   if(DETAIL.level==='year'){ return renderYearDetail(); }
   if(DETAIL.level==='fullimport'){ return renderFullImportDetail(); }
@@ -1012,8 +1013,86 @@ function secDefisc(){ setTitle('Défiscalisation'); const list=dedList(); const 
   h+=`</div><div class="note" style="text-align:center;margin-top:6px">Indicatif — vérifie les règles fiscales applicables.</div>`;
   return h;
 }
-const NAV=[{k:'accueil',i:'🏠',l:'Accueil',p:1},{k:'pilotage',i:'🧭',l:'Pilotage',p:1},{k:'budget',i:'🎯',l:'Budget',p:1},{k:'saisie',i:'✍️',l:'Saisie',p:1},{k:'patrimoine',i:'🏦',l:'Patrimoine',sl:'Patri.',p:1},{k:'invest',i:'📈',l:'Invest'},{k:'analyse',i:'📊',l:'Analyse'},{k:'revenus',i:'💰',l:'Revenus'},{k:'objectifs',i:'🎖️',l:'Objectifs'},{k:'exceptionnel',i:'💎',l:'Exceptionnel'},{k:'transferts',i:'🌍',l:'Transferts'},{k:'defisc',i:'⛪',l:'Défiscalisation'},{k:'params',i:'⚙️',l:'Paramètres'}];
-const SECT={accueil:secAccueil,pilotage:secPilotage,saisie:secSaisie,analyse:secAnalyse,budget:secBudget,revenus:secRevenus,objectifs:secObjectifs,exceptionnel:secExceptionnel,transferts:secTransferts,invest:secInvest,patrimoine:secPatrimoine,defisc:secDefisc,params:secParams};
+/* ===== IMPORT BANKIN : reconnaissance locale des dépenses (IA Claude en secours, phase 2) ===== */
+let BANKIN=null; // en mémoire (non persisté) : {tx:[...]}
+const BK_POSTES=['Loyer & charges','Courses','Abonnements','Transport','Santé','Loisirs & sorties','Dîme & dons','Soutien famille','Dépenses perso','Frais & banque','Investissement/Épargne'];
+const BK_ALL=BK_POSTES.concat(['Revenu','Virement interne','À classer']);
+const BK_RULES=[
+  [/virement|retrait|\bchq|transfert interne/,'Virement interne'],
+  [/loyer|charge|logement|habitation|electri|\beau\b|decor|demenag|meuble|mobilier|rideau/,'Loyer & charges'],
+  [/aliment|course|restau|supermarch|epicerie|snack|nourriture|resto/,'Courses'],
+  [/abonnement|internet|telephone|\bsfr\b|netflix|spotify|\bbox\b|cloud|numerique|audible|youtube|prime/,'Abonnements'],
+  [/transport|\bauto\b|carburant|essence|voiture|peage|parking|sncf|uber|\btrain|taxi|\bbus\b/,'Transport'],
+  [/sante|pharmac|medic|mutuelle|docteur|hopital|dentiste|optique/,'Santé'],
+  [/dime|offrande|\bdons?\b|eglise/,'Dîme & dons'],
+  [/soutien|famille|famillial|\bpapa\b|\bmaman\b|belle-famille/,'Soutien famille'],
+  [/brvm|bourse|\baction|crypto|terrain|epargne|livret|invest/,'Investissement/Épargne'],
+  [/banque|\bfrais\b|impot|taxe|agios|commission|interet/,'Frais & banque'],
+  [/loisir|sortie|voyage|lune de miel|divertiss|shopping|achat|vacance|cinema|\bsport|esthetique|coiffure|parfum/,'Loisirs & sorties'],
+  [/perso|\bsoins?\b|vetement|maquillage|argent de poche|imprevu/,'Dépenses perso'],
+];
+function bkEnsure(){ if(!state.bankinMap)state.bankinMap={}; return state.bankinMap; }
+function bkKey(cat,sub){ return (cat||'?')+' › '+(sub||''); }
+function bkAffect(cat,sub){ const t=((cat||'')+' '+(sub||'')).toLowerCase(); if(t.indexOf('madina')>=0)return 'Madina'; if(t.indexOf('juvens')>=0)return 'Juvens'; return 'Commun'; }
+function bkGuess(cat,sub,desc){ const t=((cat||'')+' '+(sub||'')+' '+(desc||'')).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); for(const r of BK_RULES){ if(r[0].test(t))return r[1]; } return 'À classer'; }
+function bkPoste(t){ bkEnsure(); const k=bkKey(t.cat,t.sub); if(state.bankinMap[k])return state.bankinMap[k]; if(t.montant>0)return 'Revenu'; return bkGuess(t.cat,t.sub,t.desc); }
+function bkNum(s){ if(s==null)return 0; s=(''+s).replace(/[^\d.,\-]/g,''); if(s.indexOf('.')>=0&&s.indexOf(',')>=0)s=s.replace(/\./g,'').replace(',','.'); else s=s.replace(',','.'); const v=parseFloat(s); return isNaN(v)?0:v; }
+function parseBankin(txt){
+  const frdate=s=>{ s=(''+s).trim(); let m=s.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/); if(m){ let y=m[3]; if(y.length===2)y='20'+y; return y+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0'); } m=s.match(/(\d{4})-(\d{2})-(\d{2})/); if(m)return m[0]; return s; };
+  const nrm=s=>(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  const lines=(txt||'').replace(/\r/g,'').split('\n').filter(l=>l.trim()!=='');
+  if(!lines.length)return [];
+  let hi=lines.findIndex(l=>{ const c=nrm(l); return c.indexOf('montant')>=0&&(c.indexOf('categ')>=0||c.indexOf('description')>=0); }); if(hi<0)hi=0;
+  const delim=lines[hi].indexOf('\t')>=0?'\t':(lines[hi].indexOf(';')>=0?';':',');
+  const split=l=>l.split(delim).map(s=>s.trim().replace(/^"|"$/g,''));
+  const H=split(lines[hi]).map(nrm);
+  const find=(...ps)=>H.findIndex(x=>ps.some(p=>x.indexOf(p)>=0));
+  const iD=find('date'),iDesc=find('description','libell'),iC=find('compte'),iM=find('montant'),iCat=find('categ'),iSub=find('sous');
+  if(iM<0)return [];
+  const g=(f,i)=>(i>=0&&i<f.length)?f[i]:'';
+  const tx=[];
+  for(let i=hi+1;i<lines.length;i++){ const f=split(lines[i]); if(f.length<2)continue; const mt=bkNum(g(f,iM)); if(!mt&&!g(f,iDesc))continue; tx.push({date:frdate(g(f,iD)),desc:g(f,iDesc),compte:g(f,iC),montant:mt,cat:g(f,iCat),sub:g(f,iSub)}); }
+  return tx;
+}
+function importBankin(txt){ const tx=parseBankin(txt); if(!tx.length)return {ok:false,msg:'⚠️ Rien reconnu. Copie le tableau AVEC l\'en-tête (Date, Description, Montant, Catégorie…).'}; BANKIN={tx}; return {ok:true,msg:'✅ '+tx.length+' transactions chargées.'}; }
+function openBankinPaste(){ DETAIL={level:'bankin'}; showDetail(); }
+function renderBankinDetail(){ const head=document.getElementById('detailHead'),body=document.getElementById('detailBody');
+  head.innerHTML=`<div class="dhead"><button class="bk" onclick="closeDetail()">✕</button><h3>🟢 Relevé Bankin</h3></div>`;
+  body.innerHTML=`<div class="note" style="margin:0 2px 8px">Ouvre ton export Bankin (.xls) dans Numbers/Excel, copie les lignes <b>avec l'en-tête</b> (Date · Description · Compte · Montant · Catégorie · Sous‑Catégorie) et colle ici. Rien ne sort de ton appareil.</div>
+    <textarea id="bkTA" placeholder="Date   Description   Compte   Montant   Catégorie   Sous-Catégorie …" style="width:100%;height:160px;border-radius:12px;border:1.5px solid var(--line);background:var(--bg2);color:var(--ink);font-family:monospace;font-size:11px;padding:10px"></textarea>
+    <button class="editbtn" style="width:100%;margin-top:10px;padding:12px" onclick="doImportBankin()">Analyser</button>
+    <div class="note" id="bkMsg" style="margin-top:8px;text-align:center"></div>`;
+}
+function doImportBankin(){ const el=document.getElementById('bkTA'); const r=importBankin(el?el.value:''); const m=document.getElementById('bkMsg'); if(m)m.textContent=r.msg; if(r.ok){ TAB='bankin'; saveUI(); render(); setTimeout(closeDetail,900); } }
+function setBankinMap(key,poste){ bkEnsure(); if(poste)state.bankinMap[key]=poste; save(); render(); }
+function secBankin(){ setTitle('Import Bankin'); bkEnsure();
+  let h=`<div class="monthsel"><button class="chip" onclick="yearNav(-1)">‹</button><div class="m">🟢 Bankin ${YEARK}</div><button class="chip" onclick="yearNav(1)">›</button></div>`;
+  if(!BANKIN||!BANKIN.tx||!BANKIN.tx.length){ h+=`<div class="card"><div class="note" style="padding:6px">Reconnaît tes dépenses depuis ton export Bankin : catégorie Bankin + mots‑clés + apprentissage de tes corrections. 100% sur ton appareil. L'IA Claude viendra en secours pour les cas « À classer ».</div><button class="editbtn" style="width:100%;padding:12px;margin-top:8px" onclick="openBankinPaste()">＋ Coller mon relevé Bankin</button></div>`; return h; }
+  const yr=String(YEARK); const txY=BANKIN.tx.filter(t=>String(t.date).slice(0,4)===yr); txY.forEach(t=>t.poste=bkPoste(t));
+  const dep=txY.filter(t=>t.montant<0&&t.poste!=='Virement interne'&&t.poste!=='Revenu');
+  const totDep=dep.reduce((s,t)=>s+Math.abs(t.montant),0);
+  const totAcl=dep.filter(t=>t.poste==='À classer').reduce((s,t)=>s+Math.abs(t.montant),0);
+  const totRev=txY.filter(t=>t.montant>0&&t.poste!=='Virement interne').reduce((s,t)=>s+t.montant,0);
+  const totExc=txY.filter(t=>t.poste==='Virement interne').reduce((s,t)=>s+Math.abs(t.montant),0);
+  h+=`<div class="note" style="text-align:center;margin:-2px 0 2px">${BANKIN.tx.length} transactions chargées · ${txY.length} en ${yr}</div>`;
+  h+=`<div class="kgrid">${kpi('💸 Dépenses '+yr,eur(totDep))}${kpi('💰 Revenus',eur(totRev))}${kpi('❓ À classer',eur(totAcl),totAcl>0?'neg':'')}${kpi('🔁 Virements exclus',eur(totExc))}</div>`;
+  const agg={}; dep.forEach(t=>{ agg[t.poste]=(agg[t.poste]||0)+Math.abs(t.montant); });
+  const items=Object.keys(agg).map((p,i)=>({name:p,value:agg[p],color:p==='À classer'?'#94a3b8':famColor(p,i)})).sort((a,b)=>b.value-a.value);
+  if(items.length){ const slices=items.map(x=>({value:x.value,color:x.color,label:x.name+' : '+eur(x.value)})); h+=`<div class="sec"><h2>Où part l'argent · ${yr}</h2></div><div class="card">${donut(slices,eur(totDep),'Dépenses')}${donutLegend(items)}</div>`; }
+  const posShown=BK_POSTES.filter(p=>agg[p]); if(agg['À classer'])posShown.push('À classer');
+  if(posShown.length){ h+=`<div class="sec"><h2>Par mois × poste</h2></div><div class="card" style="padding:0;overflow:hidden"><div style="overflow-x:auto"><table class="ptab"><thead><tr><th class="pnm">Poste</th>${MSHORT.map(l=>`<th>${l[0]}</th>`).join('')}<th>Tot</th></tr></thead><tbody>`;
+    posShown.forEach(p=>{ const vals=MSHORT.map((_,m)=>dep.filter(t=>t.poste===p&&(+String(t.date).slice(5,7)-1)===m).reduce((s,t)=>s+Math.abs(t.montant),0)); const tot=vals.reduce((a,b)=>a+b,0); h+=`<tr><td class="pnm">${esc(p)}</td>${vals.map(v=>`<td>${v?num(v):'·'}</td>`).join('')}<td class="ptot">${num(tot)}</td></tr>`; }); h+=`</tbody></table></div></div>`; }
+  const cats={}; txY.filter(t=>t.montant<0).forEach(t=>{ const k=bkKey(t.cat,t.sub); (cats[k]||(cats[k]={n:0,s:0,cat:t.cat,sub:t.sub})); cats[k].n++; cats[k].s+=Math.abs(t.montant); });
+  const catList=Object.keys(cats).sort((a,b)=>cats[b].s-cats[a].s);
+  if(catList.length){ h+=`<div class="sec"><h2>Reconnaissance par catégorie</h2><span class="note">corrige → ça apprend</span></div><div class="card">`;
+    catList.forEach(k=>{ const c=cats[k]; const cur=state.bankinMap[k]||bkGuess(c.cat,c.sub,''); h+=`<div class="row" style="align-items:center;gap:8px"><div class="nm" style="flex:1;min-width:0"><b style="font-size:12px">${esc(c.cat||'(vide)')}</b><span>${esc(c.sub||'')} · ${c.n} op · ${eur(c.s)}</span></div><select onchange="setBankinMap('${jsq(k)}',this.value)" style="max-width:148px;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--bg2);color:var(--ink);font-size:12px">${BK_ALL.map(p=>`<option value="${esc(p)}" ${p===cur?'selected':''}>${esc(p)}</option>`).join('')}</select></div>`; }); h+=`</div>`; }
+  if(totAcl>0)h+=`<div class="card tight"><div class="note">❓ <b>${eur(totAcl)}</b> encore en « À classer ». Prochaine étape : bouton « Classer avec Claude » (config de ta clé). En attendant, corrige-les ci‑dessus.</div></div>`;
+  h+=`<div class="row" style="gap:8px;padding:6px 2px"><button class="editbtn" onclick="openBankinPaste()">↻ Recharger un relevé</button></div>`;
+  return h;
+}
+function famColor(p,i){ const idx=BK_POSTES.indexOf(p); return PAL[(idx>=0?idx:i)%PAL.length]; }
+const NAV=[{k:'accueil',i:'🏠',l:'Accueil',p:1},{k:'pilotage',i:'🧭',l:'Pilotage',p:1},{k:'budget',i:'🎯',l:'Budget',p:1},{k:'saisie',i:'✍️',l:'Saisie',p:1},{k:'patrimoine',i:'🏦',l:'Patrimoine',sl:'Patri.',p:1},{k:'invest',i:'📈',l:'Invest'},{k:'analyse',i:'📊',l:'Analyse'},{k:'revenus',i:'💰',l:'Revenus'},{k:'objectifs',i:'🎖️',l:'Objectifs'},{k:'exceptionnel',i:'💎',l:'Exceptionnel'},{k:'transferts',i:'🌍',l:'Transferts'},{k:'defisc',i:'⛪',l:'Défiscalisation'},{k:'bankin',i:'🟢',l:'Import Bankin'},{k:'params',i:'⚙️',l:'Paramètres'}];
+const SECT={accueil:secAccueil,pilotage:secPilotage,saisie:secSaisie,analyse:secAnalyse,budget:secBudget,revenus:secRevenus,objectifs:secObjectifs,exceptionnel:secExceptionnel,transferts:secTransferts,invest:secInvest,patrimoine:secPatrimoine,defisc:secDefisc,bankin:secBankin,params:secParams};
 function setTitle(t){ const a=document.getElementById('title'); if(a)a.textContent=t; }
 function kpi(k,v,cls){ return `<div class="kpi"><div class="k">${k}</div><div class="v ${cls||''}">${v}</div></div>`; }
 function chgMonth(d){ MONTH=(MONTH+d+12)%12; render(); }
