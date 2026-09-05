@@ -1059,10 +1059,19 @@ function importBankin(txt){ const tx=parseBankin(txt); if(!tx.length)return {ok:
 function openBankinPaste(){ DETAIL={level:'bankin'}; showDetail(); }
 function renderBankinDetail(){ const head=document.getElementById('detailHead'),body=document.getElementById('detailBody');
   head.innerHTML=`<div class="dhead"><button class="bk" onclick="closeDetail()">✕</button><h3>🟢 Relevé Bankin</h3></div>`;
-  body.innerHTML=`<div class="note" style="margin:0 2px 8px">Ouvre ton export Bankin (.xls) dans Numbers/Excel, copie les lignes <b>avec l'en-tête</b> (Date · Description · Compte · Montant · Catégorie · Sous‑Catégorie) et colle ici. Rien ne sort de ton appareil.</div>
-    <textarea id="bkTA" placeholder="Date   Description   Compte   Montant   Catégorie   Sous-Catégorie …" style="width:100%;height:160px;border-radius:12px;border:1.5px solid var(--line);background:var(--bg2);color:var(--ink);font-family:monospace;font-size:11px;padding:10px"></textarea>
-    <button class="editbtn" style="width:100%;margin-top:10px;padding:12px" onclick="doImportBankin()">Analyser</button>
+  body.innerHTML=`<div class="note" style="margin:0 2px 8px">Importe ton fichier Bankin <b>(.xls, .xlsx ou .csv)</b> directement — ou colle le tableau plus bas. Rien ne sort de ton appareil (le lecteur Excel est chargé à la demande, la 1re fois avec réseau).</div>
+    <label class="editbtn" style="display:block;text-align:center;padding:16px;cursor:pointer;border:1.5px dashed var(--accent);background:var(--accent-soft);color:var(--accent);font-weight:800">📂 Choisir mon fichier Bankin<input type="file" accept=".xls,.xlsx,.csv,.tsv,.txt" style="display:none" onchange="readBankinFile(this.files&&this.files[0])"></label>
+    <div class="note" style="text-align:center;margin:10px 0 6px">— ou colle le tableau (avec l'en-tête) —</div>
+    <textarea id="bkTA" placeholder="Date   Description   Compte   Montant   Catégorie   Sous-Catégorie …" style="width:100%;height:110px;border-radius:12px;border:1.5px solid var(--line);background:var(--bg2);color:var(--ink);font-family:monospace;font-size:11px;padding:10px"></textarea>
+    <button class="editbtn" style="width:100%;margin-top:8px;padding:10px" onclick="doImportBankin()">Analyser le texte collé</button>
     <div class="note" id="bkMsg" style="margin-top:8px;text-align:center"></div>`;
+}
+function loadXLSX(){ return window.XLSX?Promise.resolve(window.XLSX):new Promise((res,rej)=>{ const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; s.onload=()=>res(window.XLSX); s.onerror=()=>rej(new Error('réseau')); document.head.appendChild(s); }); }
+function readBankinFile(file){ if(!file)return; const m=document.getElementById('bkMsg'); const name=(file.name||'').toLowerCase();
+  const done=txt=>{ const r=importBankin(txt); if(m)m.textContent=r.msg; if(r.ok){ TAB='bankin'; saveUI(); render(); setTimeout(closeDetail,1000); } };
+  if(/\.(csv|tsv|txt)$/.test(name)){ const fr=new FileReader(); fr.onload=()=>done(String(fr.result||'')); fr.onerror=()=>{ if(m)m.textContent='Lecture impossible.'; }; fr.readAsText(file); return; }
+  if(m)m.textContent='📖 Lecture du fichier Excel…';
+  loadXLSX().then(XLSX=>{ const fr=new FileReader(); fr.onload=()=>{ try{ const wb=XLSX.read(new Uint8Array(fr.result),{type:'array'}); const sh=wb.Sheets[wb.SheetNames[0]]; const tsv=XLSX.utils.sheet_to_csv(sh,{FS:'\t'}); done(tsv); }catch(e){ if(m)m.textContent='Excel illisible : '+((e&&e.message)||e); } }; fr.onerror=()=>{ if(m)m.textContent='Lecture impossible.'; }; fr.readAsArrayBuffer(file); }).catch(()=>{ if(m)m.textContent='⚠️ Lecteur Excel indisponible (réseau). Enregistre en CSV, ou colle le tableau.'; });
 }
 function doImportBankin(){ const el=document.getElementById('bkTA'); const r=importBankin(el?el.value:''); const m=document.getElementById('bkMsg'); if(m)m.textContent=r.msg; if(r.ok){ TAB='bankin'; saveUI(); render(); setTimeout(closeDetail,900); } }
 function setBankinMap(key,poste){ bkEnsure(); if(poste)state.bankinMap[key]=poste; save(); render(); }
