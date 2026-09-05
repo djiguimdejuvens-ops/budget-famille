@@ -185,9 +185,9 @@ let MONTH = (state.ui&&state.ui.month!=null)? +state.ui.month : new Date().getMo
 const PORDER=['Juvens','Madina'];
 function orderPeople(a){ return a.slice().sort((x,y)=>{ const ix=PORDER.indexOf(x),iy=PORDER.indexOf(y); return (ix<0?99:ix)-(iy<0?99:iy) || a.indexOf(x)-a.indexOf(y); }); }
 const people = orderPeople((state.people&&state.people.length)? state.people : Object.keys((state.years[YEARK]||{}).persons||{}));
-let TAB='accueil', AMODE='sorties', BSCOPE='Foyer', BPER='mois', UICUR='EUR', UIMKT='all', ISUB='actifs', ASCOPE='Foyer', APER='mois', PFQ='', SHIDE=false, SCOL={};
-try{ const u=JSON.parse(localStorage.getItem('budgetV3_ui')||'{}'); TAB=u.tab||TAB;AMODE=u.amode||AMODE;BSCOPE=u.bscope||BSCOPE;BPER=u.bper||BPER;UICUR=u.cur||UICUR;UIMKT=u.mkt||UIMKT;ISUB=u.isub||ISUB;ASCOPE=u.ascope||ASCOPE;APER=u.aper||APER; SHIDE=!!u.shide; if(u.scol&&typeof u.scol==='object')SCOL=u.scol; }catch(e){}
-function saveUI(){ try{ localStorage.setItem('budgetV3_ui',JSON.stringify({tab:TAB,amode:AMODE,bscope:BSCOPE,bper:BPER,cur:UICUR,mkt:UIMKT,isub:ISUB,ascope:ASCOPE,aper:APER,shide:SHIDE,scol:SCOL})); }catch(e){} }
+let TAB='accueil', AMODE='sorties', BSCOPE='Foyer', BPER='mois', UICUR='EUR', UIMKT='all', ISUB='actifs', ASCOPE='Foyer', APER='mois', PFQ='', SHIDE=false, SCOL={}, HSUB={};
+try{ const u=JSON.parse(localStorage.getItem('budgetV3_ui')||'{}'); TAB=u.tab||TAB;AMODE=u.amode||AMODE;BSCOPE=u.bscope||BSCOPE;BPER=u.bper||BPER;UICUR=u.cur||UICUR;UIMKT=u.mkt||UIMKT;ISUB=u.isub||ISUB;ASCOPE=u.ascope||ASCOPE;APER=u.aper||APER; SHIDE=!!u.shide; if(u.scol&&typeof u.scol==='object')SCOL=u.scol; if(u.hsub&&typeof u.hsub==='object')HSUB=u.hsub; }catch(e){}
+function saveUI(){ try{ localStorage.setItem('budgetV3_ui',JSON.stringify({tab:TAB,amode:AMODE,bscope:BSCOPE,bper:BPER,cur:UICUR,mkt:UIMKT,isub:ISUB,ascope:ASCOPE,aper:APER,shide:SHIDE,scol:SCOL,hsub:HSUB})); }catch(e){} }
 const MONTHS=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 const MSHORT=['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
 function Y(){ return state.years[YEARK]; }
@@ -1017,28 +1017,45 @@ function secDefisc(){ setTitle('Défiscalisation'); const list=dedList(); const 
   h+=`</div><div class="note" style="text-align:center;margin-top:6px">Indicatif — vérifie les règles fiscales applicables.</div>`;
   return h;
 }
-const NAV=[{k:'accueil',i:'🏠',l:'Accueil',p:1},{k:'pilotage',i:'🧭',l:'Pilotage',p:1},{k:'budget',i:'🎯',l:'Budget',p:1},{k:'saisie',i:'✍️',l:'Saisie',p:1},{k:'patrimoine',i:'🏦',l:'Patrimoine',sl:'Patri.',p:1},{k:'invest',i:'📈',l:'Invest'},{k:'analyse',i:'📊',l:'Analyse'},{k:'revenus',i:'💰',l:'Revenus'},{k:'objectifs',i:'🎖️',l:'Objectifs'},{k:'exceptionnel',i:'💎',l:'Exceptionnel'},{k:'transferts',i:'🌍',l:'Transferts'},{k:'defisc',i:'⛪',l:'Défiscalisation'},{k:'params',i:'⚙️',l:'Paramètres'}];
-const SECT={accueil:secAccueil,pilotage:secPilotage,saisie:secSaisie,analyse:secAnalyse,budget:secBudget,revenus:secRevenus,objectifs:secObjectifs,exceptionnel:secExceptionnel,transferts:secTransferts,invest:secInvest,patrimoine:secPatrimoine,defisc:secDefisc,params:secParams};
+// ── Navigation simplifiée : 5 hubs, chacun regroupant ses vues en sous-onglets (aucune analyse perdue) ──
+const HUBS=[
+  {k:'accueil',i:'🏠',l:'Accueil',subs:[['accueil','Mois'],['pilotage','Année']]},
+  {k:'budget',i:'🎯',l:'Budget',subs:[['budget','Suivi'],['saisie','Saisie'],['revenus','Revenus'],['exceptionnel','Except.'],['transferts','Envois']]},
+  {k:'analyse',i:'📊',l:'Analyse',subs:[['analyse','Dépenses'],['objectifs','Objectifs'],['defisc','Défisc']]},
+  {k:'patrimoine',i:'🏦',l:'Patrimoine',sl:'Patri.',subs:[['patrimoine','Patrimoine'],['invest','Investir']]},
+  {k:'params',i:'⚙️',l:'Paramètres',subs:[['params','']]}
+];
+const NAV=HUBS.map(h=>({k:h.k,i:h.i,l:h.l,sl:h.sl,p:1}));
+const SECFN={accueil:secAccueil,pilotage:secPilotage,budget:secBudget,saisie:secSaisie,revenus:secRevenus,exceptionnel:secExceptionnel,transferts:secTransferts,analyse:secAnalyse,objectifs:secObjectifs,defisc:secDefisc,patrimoine:secPatrimoine,invest:secInvest,params:secParams};
+const SUBOF={}; HUBS.forEach(h=>h.subs.forEach(([sk])=>SUBOF[sk]=h.k)); // clé de vue → hub qui la contient
+function hubOf(k){ return SUBOF[k]||'accueil'; }
+function hubSub(hk){ const h=HUBS.find(x=>x.k===hk)||HUBS[0]; const cur=HSUB[hk]; return h.subs.some(s=>s[0]===cur)?cur:h.subs[0][0]; }
 function setTitle(t){ const a=document.getElementById('title'); if(a)a.textContent=t; }
 function kpi(k,v,cls){ return `<div class="kpi"><div class="k">${k}</div><div class="v ${cls||''}">${v}</div></div>`; }
 function chgMonth(d){ MONTH=(MONTH+d+12)%12; render(); }
 function setUI(k,v){ if(k==='amode')AMODE=v; else if(k==='bscope')BSCOPE=v; else if(k==='bper')BPER=v; else if(k==='cur')UICUR=v; else if(k==='mkt')UIMKT=v; else if(k==='isub')ISUB=v; else if(k==='ascope')ASCOPE=v; else if(k==='aper')APER=v; else if(k==='shide')SHIDE=!!v; saveUI(); render(); }
 function toggleCol(k){ SCOL[k]=!SCOL[k]; saveUI(); render(); }
-function setTab(k){ TAB=k; saveUI(); closePlus(); render(); }
+function setTab(k){ const hk=SUBOF[k]; if(!hk)return; TAB=hk; HSUB[hk]=k; saveUI(); closePlus(); render(); } // lien croisé → ouvre la vue k dans son hub
+function goHub(hk){ TAB=hk; saveUI(); closePlus(); render(); } // onglet du bas → garde le dernier sous-onglet
+function setSub(hk,sk){ HSUB[hk]=sk; TAB=hk; saveUI(); render(); }
 function openPlus(){ document.getElementById('plusSheet').classList.add('on'); }
 function closePlus(){ document.getElementById('plusSheet').classList.remove('on'); }
 function renderNav(){
-  document.getElementById('sidenav').innerHTML=NAV.map(n=>`<button class="navi ${TAB===n.k?'on':''}" onclick="setTab('${n.k}')"><span class="ni">${n.i}</span>${n.l}</button>`).join('');
-  const prim=NAV.filter(n=>n.p);
-  document.getElementById('tabbar').innerHTML=prim.map(n=>`<button class="tab ${TAB===n.k?'on':''}" onclick="setTab('${n.k}')"><span class="ti">${n.i}</span>${n.sl||n.l}</button>`).join('')+`<button class="tab ${NAV.some(n=>!n.p&&n.k===TAB)?'on':''}" onclick="openPlus()"><span class="ti">⋯</span>Plus</button>`;
-  document.getElementById('plusList').innerHTML=NAV.filter(n=>!n.p).map(n=>`<div class="row clk" onclick="setTab('${n.k}')"><div class="ic" style="background:var(--accent-soft);color:var(--accent)">${n.i}</div><div class="nm"><b>${n.l}</b></div><div class="chev">›</div></div>`).join('');
+  document.getElementById('sidenav').innerHTML=NAV.map(n=>`<button class="navi ${TAB===n.k?'on':''}" onclick="goHub('${n.k}')"><span class="ni">${n.i}</span>${n.l}</button>`).join('');
+  const prim=NAV.filter(n=>n.p), extra=NAV.filter(n=>!n.p);
+  document.getElementById('tabbar').innerHTML=prim.map(n=>`<button class="tab ${TAB===n.k?'on':''}" onclick="goHub('${n.k}')"><span class="ti">${n.i}</span>${n.sl||n.l}</button>`).join('')+(extra.length?`<button class="tab ${extra.some(n=>n.k===TAB)?'on':''}" onclick="openPlus()"><span class="ti">⋯</span>Plus</button>`:'');
+  document.getElementById('plusList').innerHTML=extra.map(n=>`<div class="row clk" onclick="setTab('${n.k}')"><div class="ic" style="background:var(--accent-soft);color:var(--accent)">${n.i}</div><div class="nm"><b>${n.l}</b></div><div class="chev">›</div></div>`).join('');
 }
 function render(){
   const s=document.getElementById('scroll'); let h='';
+  if(!HUBS.find(x=>x.k===TAB)){ const hk=SUBOF[TAB]; if(hk){ HSUB[hk]=TAB; TAB=hk; } else TAB='accueil'; } // migre un onglet enregistré de l'ancienne nav
+  const cur=hubSub(TAB), hub=HUBS.find(x=>x.k===TAB)||HUBS[0];
   if(!people.length){ h=`<div class="card"><div class="note">Aucune donnée sur cet appareil. Ouvre d'abord l'appli complète pour saisir ton budget, puis reviens ici.</div></div>`; }
-  else { const head=`<div class="deskhead"><h1>${(NAV.find(n=>n.k===TAB)||{}).l||''}</h1><div class="note">${esc(MONTHS[MONTH])} ${YEARK}</div></div>`; let body=''; try{ body=(SECT[TAB]||secAccueil)(); }catch(err){ console.error('render '+TAB, err); body=`<div class="card"><h2 style="margin:0 0 6px">⚠️ Souci d'affichage</h2><div class="note">L'onglet « ${esc((NAV.find(n=>n.k===TAB)||{}).l||TAB)} » a rencontré une erreur : <b>${esc((err&&err.message)||err)}</b>.<br>Fais-moi une capture. Tes données sont intactes (voir l'<span style="text-decoration:underline;cursor:pointer" onclick="location.href='/budget-famille/classic/'">ancienne appli</span>).</div></div>`; } h=head+body; }
-  if(people.length && TAB!=='accueil' && TAB!=='analyse'){ h+=`<div class="banner">${LIVE?(TAB==='invest'?'✅ <b>Journal éditable</b> — onglet Journal : ajoute/modifie une opération, ou importe ton relevé Coris.':'✅ <b>Modifiable ici</b> — touche une ligne / un champ pour éditer.'):'Aperçu démo — sur ton appareil, tout est enregistré.'}</div>`; }
-  s.innerHTML=`<div class="fade">${h}</div>`; s.scrollTop=0; renderNav(); if(TAB==='invest'&&PFQ)pfFilterInvest(PFQ);
+  else { const head=`<div class="deskhead"><h1>${esc(hub.l)}</h1><div class="note">${esc(MONTHS[MONTH])} ${YEARK}</div></div>`; let body='';
+    if(hub.subs.length>1) body+=`<div class="seg">`+hub.subs.map(([sk,lbl])=>`<button class="${cur===sk?'on':''}" onclick="setSub('${hub.k}','${sk}')">${lbl}</button>`).join('')+`</div>`;
+    try{ body+=(SECFN[cur]||secAccueil)(); }catch(err){ console.error('render '+cur, err); body+=`<div class="card"><h2 style="margin:0 0 6px">⚠️ Souci d'affichage</h2><div class="note">La vue « ${esc((hub.subs.find(x=>x[0]===cur)||[])[1]||cur)} » a rencontré une erreur : <b>${esc((err&&err.message)||err)}</b>.<br>Fais-moi une capture. Tes données sont intactes (voir l'<span style="text-decoration:underline;cursor:pointer" onclick="location.href='/budget-famille/classic/'">ancienne appli</span>).</div></div>`; } h=head+body; }
+  if(people.length && !['accueil','pilotage','analyse','objectifs','defisc','params'].includes(cur)){ h+=`<div class="banner">${LIVE?(cur==='invest'?'✅ <b>Journal éditable</b> — sous-onglet Journal : ajoute/modifie une opération, ou importe ton relevé Coris.':'✅ <b>Modifiable ici</b> — touche une ligne / un champ pour éditer.'):'Aperçu démo — sur ton appareil, tout est enregistré.'}</div>`; }
+  s.innerHTML=`<div class="fade">${h}</div>`; s.scrollTop=0; renderNav(); if(cur==='invest'&&PFQ)pfFilterInvest(PFQ);
 }
 function toggleTheme(){ const cur=document.documentElement.getAttribute('data-theme'); const dark=matchMedia('(prefers-color-scheme: dark)').matches; const next=cur==='dark'?'light':cur==='light'?'dark':(dark?'light':'dark'); setThemeMode(next); }
 function openYearSheet(){ DETAIL={level:'year'}; showDetail(); }
