@@ -425,6 +425,12 @@ function secRevenus(){
   h+=`<div class="sec"><h2>Prorata moyen ${YEARK}</h2></div><div class="card"><div class="pbar">`;
   const totInc=people.map(p=>sumM(m=>personIncome(p,m))); const gt=totInc.reduce((s,v)=>s+v,0)||1;
   h+=people.map((p,i)=>`<i style="width:${(totInc[i]/gt*100).toFixed(1)}%;background:${cols[i%4]}"></i>`).join('')+`</div><div class="plegend">${people.map((p,i)=>`<div class="li"><span class="dot" style="background:${cols[i%4]}"></span><b style="color:var(--ink)">${esc(p)}</b> ${pctI(totInc[i]/gt)}</div>`).join('')}</div></div>`;
+  h+=`<div class="sec"><h2>Prorata par mois ${YEARK}</h2></div>`;
+  const nowM=(YEARK===new Date().getFullYear())?new Date().getMonth():-1;
+  h+=`<div class="card" style="padding:0;overflow:hidden"><div style="overflow-x:auto"><table class="ptab"><thead><tr><th class="pnm">Mois</th>${people.map((p,i)=>`<th style="color:${cols[i%4]}">${esc(p)}</th>`).join('')}<th>Revenu base</th></tr></thead><tbody>`;
+  for(let m=0;m<12;m++){ const tot=incomeTotal(m); h+=`<tr><td class="pnm">${esc(MONTHS[m])}${m===nowM?' •':''}</td>${people.map((p,i)=>`<td style="color:${cols[i%4]};font-weight:800">${tot>0?pctI(prorata(p,m)):'—'}</td>`).join('')}<td class="pmoy">${eur(tot)}</td></tr>`; }
+  h+=`</tbody></table></div></div>`;
+  h+=`<div class="note" style="margin:6px 4px 2px">Prorata = revenu de chacun (salaire + entrées) ÷ revenu total du couple, chaque mois → il fixe la part de chacun dans les dépenses communes. ⚠️ Les « revenus perso » (👛) ne comptent pas dans le prorata : une personne dont tous les revenus sont saisis en « Revenu perso » ressort à 0 % (déplace-les en « Entrée » pour qu'ils comptent).</div>`;
   return h;
 }
 
