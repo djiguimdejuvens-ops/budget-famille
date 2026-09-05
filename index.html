@@ -1036,8 +1036,19 @@ const BK_RULES=[
 function bkEnsure(){ if(!state.bankinMap)state.bankinMap={}; return state.bankinMap; }
 function bkKey(cat,sub){ return (cat||'?')+' › '+(sub||''); }
 function bkAffect(cat,sub){ const t=((cat||'')+' '+(sub||'')).toLowerCase(); if(t.indexOf('madina')>=0)return 'Madina'; if(t.indexOf('juvens')>=0)return 'Juvens'; return 'Commun'; }
-function bkGuess(cat,sub,desc){ const t=((cat||'')+' '+(sub||'')+' '+(desc||'')).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); for(const r of BK_RULES){ if(r[0].test(t))return r[1]; } return 'À classer'; }
-function bkPoste(t){ bkEnsure(); const k=bkKey(t.cat,t.sub); if(state.bankinMap[k])return state.bankinMap[k]; if(t.montant>0)return 'Revenu'; return bkGuess(t.cat,t.sub,t.desc); }
+function bkLines(){ const out=[]; (Y().foyer||[]).forEach(l=>out.push({id:l.id,af:'Foyer',group:l.group,name:l.name})); people.forEach(p=>((Y().persons[p]||{}).cats||[]).forEach(l=>out.push({id:l.id,af:p,group:l.group,name:l.name}))); return out; }
+function bkLineInfo(id){ return bkLines().find(x=>x.id===id); }
+function bkNorm(s){ return (s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); }
+function bkGuessLine(cat,sub,desc){ const t=bkNorm((cat||'')+' '+(sub||'')+' '+(desc||''));
+  if(/virement|retrait|\bchq|transfert interne|prelevement compte/.test(t))return 'IGNORE';
+  let af='Foyer'; if(/madina/.test(t))af='Madina'; else if((/budget juvens|dime juvens|depenses perso juvens|imprevu juvens|repas midi|frais pro/.test(t))&&people.includes('Juvens'))af='Juvens';
+  const scope=bkLines().filter(l=>l.af===af); const cand=scope.length?scope:bkLines();
+  let best=cand.find(l=>{const n=bkNorm(l.name);return n.length>3&&t.includes(n);})||cand.find(l=>{const g=bkNorm(l.group);return g.length>3&&t.includes(g);});
+  if(!best){ const KW=[[/loyer|charge|electri|\beau\b|habitation|logement/,['loyer','charge','electri','eau']],[/aliment|course|supermarch|snack|nourriture/,['aliment','course']],[/restau|resto|repas|midi/,['repas','restau','sortie','aliment']],[/abonnement|internet|netflix|telephone|\bsfr\b|cloud|youtube|spotify|\bia\b|prime|audible/,['abonnement','box','internet','telephone','ia','netflix','sfr']],[/voiture|carburant|essence|transport|peage|parking|entretien/,['voiture','transport','carburant','entretien']],[/\bdime\b/,['dime']],[/offrande|\bdons?\b/,['offrande','don']],[/soutien|famille|\bpapa\b|\bmaman\b|belle-famille/,['soutien','famille','papa','maman']],[/loisir|sortie|voyage|vacance|cinema|divertiss/,['loisir','sortie','vacance']],[/sante|pharmac|medic/,['sante']],[/epargne|invest|bourse|terrain|\bpee\b/,['epargne','invest','projet','securite']],[/coiffure|cosmet|vetement|maquillage|parfum|\bsoin|shopping|habillement/,['coiffure','cosmet','vetement','soin','shopping','habillement','parfum']],[/imprevu|variable/,['imprevu','variable','autre']]]; for(const kv of KW){ if(kv[0].test(t)){ best=cand.find(l=>{const n=bkNorm(l.name+' '+l.group);return kv[1].some(kw=>n.includes(kw));}); if(best)break; } } }
+  return best?best.id:'';
+}
+function bkResolve(t){ bkEnsure(); const k=bkKey(t.cat,t.sub); if(Object.prototype.hasOwnProperty.call(state.bankinMap,k))return state.bankinMap[k]; if(t.montant>0)return 'REVENU'; return bkGuessLine(t.cat,t.sub,t.desc); }
+function bkLineOptions(cur){ let o=`<option value="" ${cur===''?'selected':''}>— À classer —</option><option value="IGNORE" ${cur==='IGNORE'?'selected':''}>🚫 Ignorer (virement interne)</option>`; ['Foyer'].concat(people).forEach(af=>{ const ls=bkLines().filter(l=>l.af===af); if(!ls.length)return; o+=`<optgroup label="${esc(af)}">`+ls.map(l=>`<option value="${l.id}" ${l.id===cur?'selected':''}>${esc(l.group)} › ${esc(l.name)}</option>`).join('')+`</optgroup>`; }); return o; }
 function bkNum(s){ if(s==null)return 0; s=(''+s).replace(/[^\d.,\-]/g,''); if(s.indexOf('.')>=0&&s.indexOf(',')>=0)s=s.replace(/\./g,'').replace(',','.'); else s=s.replace(',','.'); const v=parseFloat(s); return isNaN(v)?0:v; }
 function parseBankin(txt){
   const frdate=s=>{ s=(''+s).trim(); let m=s.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/); if(m){ let y=m[3]; if(y.length===2)y='20'+y; return y+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0'); } m=s.match(/(\d{4})-(\d{2})-(\d{2})/); if(m)return m[0]; return s; };
@@ -1079,65 +1090,57 @@ function setBankinMap(key,poste){ bkEnsure(); if(poste)state.bankinMap[key]=post
 function secBankin(){ setTitle('Import Bankin'); bkEnsure();
   let h=`<div class="monthsel"><button class="chip" onclick="yearNav(-1)">‹</button><div class="m">🟢 Bankin ${YEARK}</div><button class="chip" onclick="yearNav(1)">›</button></div>`;
   if(!BANKIN||!BANKIN.tx||!BANKIN.tx.length){ h+=`<div class="card"><div class="note" style="padding:6px">Reconnaît tes dépenses depuis ton export Bankin : catégorie Bankin + mots‑clés + apprentissage de tes corrections. 100% sur ton appareil. L'IA Claude viendra en secours pour les cas « À classer ».</div><button class="editbtn" style="width:100%;padding:12px;margin-top:8px" onclick="openBankinPaste()">＋ Coller mon relevé Bankin</button></div>`; return h; }
-  const yr=String(YEARK); const txY=BANKIN.tx.filter(t=>String(t.date).slice(0,4)===yr); txY.forEach(t=>t.poste=bkPoste(t));
-  const dep=txY.filter(t=>t.montant<0&&t.poste!=='Virement interne'&&t.poste!=='Revenu');
-  const totDep=dep.reduce((s,t)=>s+Math.abs(t.montant),0);
-  const totAcl=dep.filter(t=>t.poste==='À classer').reduce((s,t)=>s+Math.abs(t.montant),0);
-  const totRev=txY.filter(t=>t.montant>0&&t.poste!=='Virement interne').reduce((s,t)=>s+t.montant,0);
-  const totExc=txY.filter(t=>t.poste==='Virement interne').reduce((s,t)=>s+Math.abs(t.montant),0);
-  h+=`<div class="note" style="text-align:center;margin:-2px 0 2px">${BANKIN.tx.length} transactions chargées · ${txY.length} en ${yr}</div>`;
-  h+=`<div class="kgrid">${kpi('💸 Dépenses '+yr,eur(totDep))}${kpi('💰 Revenus',eur(totRev))}${kpi('❓ À classer',eur(totAcl),totAcl>0?'neg':'')}${kpi('🔁 Virements exclus',eur(totExc))}</div>`;
-  const agg={}; dep.forEach(t=>{ agg[t.poste]=(agg[t.poste]||0)+Math.abs(t.montant); });
-  const items=Object.keys(agg).map((p,i)=>({name:p,value:agg[p],color:p==='À classer'?'#94a3b8':famColor(p,i)})).sort((a,b)=>b.value-a.value);
+  const yr=String(YEARK); const txY=BANKIN.tx.filter(t=>String(t.date).slice(0,4)===yr); txY.forEach(t=>t.line=bkResolve(t));
+  const dep=txY.filter(t=>t.montant<0&&t.line!=='IGNORE');
+  const mapped=dep.filter(t=>t.line&&t.line!=='REVENU'); const acl=dep.filter(t=>!t.line);
+  const totDep=dep.reduce((s,t)=>s+Math.abs(t.montant),0); const totAcl=acl.reduce((s,t)=>s+Math.abs(t.montant),0);
+  const totRev=txY.filter(t=>t.line==='REVENU'||(t.montant>0&&t.line!=='IGNORE')).reduce((s,t)=>s+Math.abs(t.montant),0);
+  const totExc=txY.filter(t=>t.line==='IGNORE').reduce((s,t)=>s+Math.abs(t.montant),0);
+  h+=`<div class="note" style="text-align:center;margin:-2px 0 2px">${BANKIN.tx.length} transactions · ${txY.length} en ${yr}</div>`;
+  h+=`<div class="kgrid">${kpi('💸 Dépenses '+yr,eur(totDep))}${kpi('💰 Revenus',eur(totRev))}${kpi('❓ À classer',eur(totAcl),totAcl>0?'neg':'')}${kpi('🔁 Virements ignorés',eur(totExc))}</div>`;
+  const agg={}; mapped.forEach(t=>{ const info=bkLineInfo(t.line); const g=info?(info.af+' › '+info.group):'?'; agg[g]=(agg[g]||0)+Math.abs(t.montant); }); if(totAcl>0)agg['❓ À classer']=totAcl;
+  const items=Object.keys(agg).map((g,i)=>({name:g,value:agg[g],color:g[0]==='❓'?'#94a3b8':PAL[i%PAL.length]})).sort((a,b)=>b.value-a.value);
   if(items.length){ const slices=items.map(x=>({value:x.value,color:x.color,label:x.name+' : '+eur(x.value)})); h+=`<div class="sec"><h2>Où part l'argent · ${yr}</h2></div><div class="card">${donut(slices,eur(totDep),'Dépenses')}${donutLegend(items)}</div>`; }
-  const posShown=BK_POSTES.filter(p=>agg[p]); if(agg['À classer'])posShown.push('À classer');
-  if(posShown.length){ h+=`<div class="sec"><h2>Par mois × poste</h2></div><div class="card" style="padding:0;overflow:hidden"><div style="overflow-x:auto"><table class="ptab"><thead><tr><th class="pnm">Poste</th>${MSHORT.map(l=>`<th>${l[0]}</th>`).join('')}<th>Tot</th></tr></thead><tbody>`;
-    posShown.forEach(p=>{ const vals=MSHORT.map((_,m)=>dep.filter(t=>t.poste===p&&(+String(t.date).slice(5,7)-1)===m).reduce((s,t)=>s+Math.abs(t.montant),0)); const tot=vals.reduce((a,b)=>a+b,0); h+=`<tr><td class="pnm">${esc(p)}</td>${vals.map(v=>`<td>${v?num(v):'·'}</td>`).join('')}<td class="ptot">${num(tot)}</td></tr>`; }); h+=`</tbody></table></div></div>`; }
+  const grpShown=[...new Set(mapped.map(t=>{const i=bkLineInfo(t.line);return i?i.af+' › '+i.group:'?';}))].sort();
+  if(grpShown.length){ h+=`<div class="sec"><h2>Par mois × poste (${yr})</h2></div><div class="card" style="padding:0;overflow:hidden"><div style="overflow-x:auto"><table class="ptab"><thead><tr><th class="pnm">Poste</th>${MSHORT.map(l=>`<th>${l[0]}</th>`).join('')}<th>Tot</th></tr></thead><tbody>`;
+    grpShown.forEach(g=>{ const vals=MSHORT.map((_,m)=>mapped.filter(t=>{const i=bkLineInfo(t.line);return (i?i.af+' › '+i.group:'?')===g&&(+String(t.date).slice(5,7)-1)===m;}).reduce((s,t)=>s+Math.abs(t.montant),0)); const tot=vals.reduce((a,b)=>a+b,0); h+=`<tr><td class="pnm">${esc(g)}</td>${vals.map(v=>`<td>${v?num(v):'·'}</td>`).join('')}<td class="ptot">${num(tot)}</td></tr>`; }); h+=`</tbody></table></div></div>`; }
   const cats={}; txY.filter(t=>t.montant<0).forEach(t=>{ const k=bkKey(t.cat,t.sub); (cats[k]||(cats[k]={n:0,s:0,cat:t.cat,sub:t.sub})); cats[k].n++; cats[k].s+=Math.abs(t.montant); });
   const catList=Object.keys(cats).sort((a,b)=>cats[b].s-cats[a].s);
-  if(catList.length){ h+=`<div class="sec"><h2>Reconnaissance par catégorie</h2><span class="note">corrige → ça apprend</span></div><div class="card">`;
-    catList.forEach(k=>{ const c=cats[k]; const cur=state.bankinMap[k]||bkGuess(c.cat,c.sub,''); h+=`<div class="row" style="align-items:center;gap:8px"><div class="nm" style="flex:1;min-width:0"><b style="font-size:12px">${esc(c.cat||'(vide)')}</b><span>${esc(c.sub||'')} · ${c.n} op · ${eur(c.s)}</span></div><select onchange="setBankinMap('${jsq(k)}',this.value)" style="max-width:148px;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--bg2);color:var(--ink);font-size:12px">${BK_ALL.map(p=>`<option value="${esc(p)}" ${p===cur?'selected':''}>${esc(p)}</option>`).join('')}</select></div>`; }); h+=`</div>`; }
-  if(totAcl>0)h+=`<div class="card tight"><div class="note" style="margin-bottom:8px">❓ <b>${eur(totAcl)}</b> encore en « À classer »${getClaudeKey()?'':' — ajoute ta clé Claude dans Paramètres pour activer l\'IA'}.</div><button class="editbtn" style="width:100%" onclick="bankinAI()">🤖 Classer les inconnues avec Claude</button>${BK_AIERR?`<div class="note" style="color:var(--red);margin-top:8px;text-align:left">⚠️ ${esc(BK_AIERR)}</div>`:''}</div>`;
-  if(dep.length){ const ap={}; dep.forEach(t=>{ const af=bkAffect(t.cat,t.sub),key=af+'|'+t.poste; (ap[key]||(ap[key]={af,poste:t.poste,s:0})); ap[key].s+=Math.abs(t.montant); });
-    if(!state.bankinBudgetMap)state.bankinBudgetMap={};
-    h+=`<div class="sec"><h2>Vers le budget ${yr}</h2><span class="note">relie chaque poste à une ligne</span></div><div class="card">`;
-    Object.keys(ap).sort((a,b)=>ap[b].s-ap[a].s).forEach(key=>{ const o=ap[key]; const lines=o.af==='Commun'?(Y().foyer||[]):(((Y().persons||{})[o.af]||{}).cats||[]); const cur=state.bankinBudgetMap[key]||''; h+=`<div class="row" style="align-items:center;gap:8px"><div class="nm" style="flex:1;min-width:0"><b style="font-size:12px">${esc(o.af)} · ${esc(o.poste)}</b><span>${eur(o.s)}</span></div><select onchange="setBkBudget('${jsq(key)}',this.value)" style="max-width:150px;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--bg2);color:var(--ink);font-size:12px"><option value="">— ne pas pousser —</option>${lines.map(l=>`<option value="${l.id}" ${l.id===cur?'selected':''}>${esc(l.group)} › ${esc(l.name)}</option>`).join('')}</select></div>`; });
-    h+=`</div><button class="editbtn" style="width:100%;margin-top:8px" onclick="bankinToBudget()">📥 Pousser les montants réels dans le budget ${yr}</button><div class="note" style="text-align:center;margin-top:4px">Écrit le réel des mois présents dans le relevé (remplace, annulable).</div>`;
-  }
+  if(catList.length){ h+=`<div class="sec"><h2>Correspondance → tes lignes de budget</h2><span class="note">corrige → ça apprend</span></div><div class="card">`;
+    catList.forEach(k=>{ const c=cats[k]; const cur=Object.prototype.hasOwnProperty.call(state.bankinMap,k)?state.bankinMap[k]:bkGuessLine(c.cat,c.sub,''); h+=`<div class="row" style="align-items:center;gap:8px"><div class="nm" style="flex:1;min-width:0"><b style="font-size:12px">${esc(c.cat||'(vide)')}</b><span>${esc(c.sub||'')} · ${c.n} op · ${eur(c.s)}</span></div><select onchange="setBankinMap('${jsq(k)}',this.value)" style="max-width:160px;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--bg2);color:var(--ink);font-size:12px">${bkLineOptions(cur)}</select></div>`; }); h+=`</div>`; }
+  if(totAcl>0)h+=`<div class="card tight"><div class="note" style="margin-bottom:8px">❓ <b>${eur(totAcl)}</b> encore en « À classer »${getClaudeKey()?'':' — ajoute ta clé Claude dans Paramètres pour l\'IA'}.</div><button class="editbtn" style="width:100%" onclick="bankinAI()">🤖 Classer les inconnues avec Claude</button>${BK_AIERR?`<div class="note" style="color:var(--red);margin-top:8px;text-align:left">⚠️ ${esc(BK_AIERR)}</div>`:''}</div>`;
+  if(mapped.length)h+=`<div class="card"><button class="editbtn" style="width:100%;padding:12px" onclick="bankinToBudget()">📥 Écrire le réel ${yr} dans mon budget</button><div class="note" style="text-align:center;margin-top:4px">Écrit les mois présents du relevé dans tes lignes reliées (remplace, annulable).</div></div>`;
   h+=`<div class="row" style="gap:8px;padding:6px 2px"><button class="editbtn" onclick="openBankinPaste()">↻ Recharger un relevé</button></div>`;
   return h;
 }
-function famColor(p,i){ const idx=BK_POSTES.indexOf(p); return PAL[(idx>=0?idx:i)%PAL.length]; }
 function getClaudeKey(){ try{ return localStorage.getItem('budgetClaudeKey')||''; }catch(e){ return ''; } }
 function setClaudeKey(v){ try{ v=(v||'').trim(); if(v)localStorage.setItem('budgetClaudeKey',v); toast(v?'Clé Claude enregistrée ✓':'—'); render(); }catch(e){} }
 function clearClaudeKey(){ try{ localStorage.removeItem('budgetClaudeKey'); toast('Clé supprimée'); render(); }catch(e){} }
 async function bankinAI(){
   const key=getClaudeKey(); if(!key){ toast('Ajoute ta clé Claude dans Paramètres.'); setTab('params'); return; }
   if(!BANKIN||!BANKIN.tx)return; const yr=String(YEARK); BK_AIERR='';
-  const acl={}; BANKIN.tx.filter(t=>String(t.date).slice(0,4)===yr&&t.montant<0).forEach(t=>{ if(bkPoste(t)==='À classer'){ const k=bkKey(t.cat,t.sub); (acl[k]||(acl[k]={cat:t.cat,sub:t.sub,ex:[]})); if(acl[k].ex.length<3&&t.desc)acl[k].ex.push(t.desc); } });
+  const acl={}; BANKIN.tx.filter(t=>String(t.date).slice(0,4)===yr&&t.montant<0).forEach(t=>{ if(bkResolve(t)===''){ const k=bkKey(t.cat,t.sub); (acl[k]||(acl[k]={cat:t.cat,sub:t.sub,ex:[]})); if(acl[k].ex.length<3&&t.desc)acl[k].ex.push(t.desc); } });
   const keys=Object.keys(acl); if(!keys.length){ toast('Rien à classer 🎉'); return; }
-  toast('🤖 Classement Claude en cours…');
+  const lines=bkLines(); toast('🤖 Classement Claude en cours…');
   const items=keys.map((k,i)=>({i,categorie:acl[k].cat,sous:acl[k].sub,exemples:acl[k].ex}));
-  const prompt='Tu classes des dépenses bancaires (export Bankin) dans EXACTEMENT une de ces familles :\n'+BK_POSTES.map(p=>'- '+p).join('\n')+'\nRepères : « Investissement/Épargne » = épargne/bourse/PEE/terrain ; « Soutien famille » = aides à la famille ; « Dîme & dons » = dîme/offrandes/dons ; « Dépenses perso » = achats personnels/argent de poche. Réponds UNIQUEMENT par un tableau JSON, sans texte autour, au format [{"i":<index>,"poste":"<famille exacte>"}].\nÉléments :\n'+JSON.stringify(items);
+  const prompt='Voici MES lignes de budget, numérotées :\n'+lines.map((l,n)=>n+') '+l.af+' › '+l.group+' › '+l.name).join('\n')+'\n\nClasse chaque catégorie de dépense bancaire (Bankin) dans le NUMÉRO de ligne le plus adapté. Affectation : « 01 Dépenses commune » = Foyer ; « 02 Budget Juvens » = Juvens ; « Madina » = Madina. Si aucune ne convient, mets -1. Réponds UNIQUEMENT en JSON, format [{"i":<index catégorie>,"n":<numéro de ligne>}].\nCatégories :\n'+JSON.stringify(items);
   try{
     const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:BK_MODEL,max_tokens:2048,messages:[{role:'user',content:prompt}]})});
     if(!r.ok){ let em=''; try{ const eb=await r.json(); em=(eb&&eb.error&&eb.error.message)||''; }catch(_){}; BK_AIERR='Erreur '+r.status+(em?' — '+em:'')+(r.status===400&&/credit|balance|billing/i.test(em)?' (ajoute des crédits sur console.anthropic.com → Billing)':''); console.error('bankinAI',r.status,em); toast('Erreur IA '+r.status+' — détail affiché'); render(); return; }
     const d=await r.json(); const txt=(d.content&&d.content[0]&&d.content[0].text)||''; const mm=txt.match(/\[[\s\S]*\]/); const arr=JSON.parse(mm?mm[0]:txt);
-    let n=0; bkEnsure(); arr.forEach(o=>{ const it=items[o&&o.i]; if(it&&BK_POSTES.includes(o.poste)){ state.bankinMap[bkKey(it.categorie,it.sous)]=o.poste; n++; } });
-    BK_AIERR=''; save(); render(); toast('✅ '+n+' catégorie(s) classée(s) par Claude'+(n?'':' (aucune reconnue — réessaie)')+'.');
+    let n=0; bkEnsure(); arr.forEach(o=>{ const it=items[o&&o.i]; const li=o?+o.n:-1; if(it&&li>=0&&lines[li]){ state.bankinMap[bkKey(it.categorie,it.sous)]=lines[li].id; n++; } });
+    BK_AIERR=''; save(); render(); toast('✅ '+n+' catégorie(s) reliée(s) à tes lignes par Claude'+(n?'':' (rien de sûr — classe à la main)')+'.');
   }catch(e){ BK_AIERR='Appel IA impossible : '+((e&&e.message)||e)+' (réseau ? clé ? CORS ?)'; console.error(e); render(); toast('IA indisponible — détail affiché'); }
 }
-function setBkBudget(key,lineId){ if(!state.bankinBudgetMap)state.bankinBudgetMap={}; if(lineId)state.bankinBudgetMap[key]=lineId; else delete state.bankinBudgetMap[key]; save(); render(); }
 function bkFindLine(id){ if(!id)return null; let l=(Y().foyer||[]).find(x=>x.id===id); if(l)return l; for(const p of people){ l=((Y().persons[p]||{}).cats||[]).find(x=>x.id===id); if(l)return l; } return null; }
-function bankinToBudget(){ if(!BANKIN||!BANKIN.tx){ toast('Charge d\'abord un relevé.'); return; } if(!state.bankinBudgetMap)state.bankinBudgetMap={}; const yr=String(YEARK);
-  const dep=BANKIN.tx.filter(t=>String(t.date).slice(0,4)===yr&&t.montant<0); dep.forEach(t=>t.poste=bkPoste(t)); const dd=dep.filter(t=>t.poste!=='Virement interne'&&t.poste!=='Revenu');
-  const months=new Set(); dd.forEach(t=>{ const m=+String(t.date).slice(5,7)-1; if(m>=0&&m<12)months.add(m); });
-  const agg={}; let unmapped=0;
-  dd.forEach(t=>{ const key=bkAffect(t.cat,t.sub)+'|'+t.poste; const id=state.bankinBudgetMap[key]; if(!id){ unmapped+=Math.abs(t.montant); return; } const m=+String(t.date).slice(5,7)-1; if(m<0||m>11)return; (agg[id]||(agg[id]={}))[m]=(agg[id][m]||0)+Math.abs(t.montant); });
-  const ids=Object.keys(agg); if(!ids.length){ toast('Choisis d\'abord les lignes cibles ci-dessus.'); return; }
-  if(!confirm('Écrire le réel '+yr+' ('+months.size+' mois présents) dans '+ids.length+' ligne(s) du budget ? Le réel existant de ces mois sera remplacé. (annulable)'))return;
+function bankinToBudget(){ if(!BANKIN||!BANKIN.tx){ toast('Charge d\'abord un relevé.'); return; } bkEnsure(); const yr=String(YEARK);
+  const dd=BANKIN.tx.filter(t=>String(t.date).slice(0,4)===yr&&t.montant<0).map(t=>({t,line:bkResolve(t)})).filter(x=>x.line&&x.line!=='IGNORE'&&x.line!=='REVENU');
+  const months=new Set(); dd.forEach(x=>{ const m=+String(x.t.date).slice(5,7)-1; if(m>=0&&m<12)months.add(m); });
+  const agg={}; dd.forEach(x=>{ const m=+String(x.t.date).slice(5,7)-1; if(m<0||m>11)return; (agg[x.line]||(agg[x.line]={}))[m]=(agg[x.line][m]||0)+Math.abs(x.t.montant); });
+  const ids=Object.keys(agg); if(!ids.length){ toast('Aucune ligne reliée — renseigne la correspondance d\'abord.'); return; }
+  if(!confirm('Écrire le réel '+yr+' ('+months.size+' mois présents) dans '+ids.length+' ligne(s) de ton budget ? Le réel existant de ces mois sera remplacé. (annulable)'))return;
   ids.forEach(id=>{ const l=bkFindLine(id); if(!l)return; if(!Array.isArray(l.real))l.real=Array(12).fill(0); months.forEach(m=>{ l.real[m]=roundRule(agg[id][m]||0); }); });
-  save(); render(); toast('✅ Budget '+yr+' mis à jour : '+ids.length+' ligne(s)'+(unmapped?' · '+eur(unmapped)+' non poussé (non mappé)':''));
+  save(); render(); toast('✅ Budget '+yr+' mis à jour : '+ids.length+' ligne(s).');
 }
 const NAV=[{k:'accueil',i:'🏠',l:'Accueil',p:1},{k:'pilotage',i:'🧭',l:'Pilotage',p:1},{k:'budget',i:'🎯',l:'Budget',p:1},{k:'saisie',i:'✍️',l:'Saisie',p:1},{k:'patrimoine',i:'🏦',l:'Patrimoine',sl:'Patri.',p:1},{k:'invest',i:'📈',l:'Invest'},{k:'analyse',i:'📊',l:'Analyse'},{k:'revenus',i:'💰',l:'Revenus'},{k:'objectifs',i:'🎖️',l:'Objectifs'},{k:'exceptionnel',i:'💎',l:'Exceptionnel'},{k:'transferts',i:'🌍',l:'Transferts'},{k:'defisc',i:'⛪',l:'Défiscalisation'},{k:'bankin',i:'🟢',l:'Import Bankin'},{k:'params',i:'⚙️',l:'Paramètres'}];
 const SECT={accueil:secAccueil,pilotage:secPilotage,saisie:secSaisie,analyse:secAnalyse,budget:secBudget,revenus:secRevenus,objectifs:secObjectifs,exceptionnel:secExceptionnel,transferts:secTransferts,invest:secInvest,patrimoine:secPatrimoine,defisc:secDefisc,bankin:secBankin,params:secParams};
