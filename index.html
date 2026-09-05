@@ -803,11 +803,11 @@ function importOKX(txt){ txt=(txt||'').trim(); if(!txt)return {ok:false,msg:'Col
   const lines=txt.replace(/\r/g,'').split('\n').filter(l=>l.trim());
   let hi=lines.findIndex(l=>{ const c=l.toLowerCase(); return c.indexOf('type')>=0&&c.indexOf('symbol')>=0&&c.indexOf('amount')>=0; });
   if(hi<0)return {ok:false,msg:'⚠️ En-tête OKX introuvable (id,Time,Type,Amount,…,Symbol).'};
-  const H=lines[hi].split(',').map(s=>s.trim().toLowerCase());
+  const delim=lines[hi].indexOf('\t')>=0?'\t':(lines[hi].indexOf(';')>=0?';':','); const H=lines[hi].split(delim).map(s=>s.trim().toLowerCase());
   const iType=H.indexOf('type'), iAmt=H.indexOf('amount'), iSym=H.indexOf('symbol'), iTime=H.indexOf('time'); let iEur=H.findIndex(h=>h.replace(/[\s_-]/g,'')==='amounteur'); if(iEur<0)iEur=H.findIndex(h=>h.indexOf('eur')>=0&&h.indexOf('amount')>=0);
   if(iType<0||iAmt<0||iSym<0)return {ok:false,msg:'⚠️ Colonnes OKX manquantes.'};
   let eurW=0,eurD=0,lastDate=''; const cIn={},cEur={};
-  for(let i=hi+1;i<lines.length;i++){ const f=lines[i].split(','); if(f.length<=Math.max(iType,iAmt,iSym))continue;
+  for(let i=hi+1;i<lines.length;i++){ const f=lines[i].split(delim); if(f.length<=Math.max(iType,iAmt,iSym))continue;
     const type=(f[iType]||'').trim().toLowerCase(); const sym=(f[iSym]||'').trim().toUpperCase(); const amt=parseFloat(f[iAmt])||0; const eurv=iEur>=0?Math.abs(parseFloat(f[iEur])||0):0; const time=(f[iTime]||'').trim().slice(0,10);
     if(type.indexOf('trading account')>=0)continue; // transfert interne OKX
     if(sym==='EUR'){ if(type.indexOf('withdraw')>=0){ eurW+=Math.abs(amt); if(time>lastDate)lastDate=time; } else if(type.indexOf('deposit')>=0){ eurD+=Math.abs(amt); } }
