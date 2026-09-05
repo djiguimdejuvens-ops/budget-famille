@@ -185,9 +185,9 @@ let MONTH = (state.ui&&state.ui.month!=null)? +state.ui.month : new Date().getMo
 const PORDER=['Juvens','Madina'];
 function orderPeople(a){ return a.slice().sort((x,y)=>{ const ix=PORDER.indexOf(x),iy=PORDER.indexOf(y); return (ix<0?99:ix)-(iy<0?99:iy) || a.indexOf(x)-a.indexOf(y); }); }
 const people = orderPeople((state.people&&state.people.length)? state.people : Object.keys((state.years[YEARK]||{}).persons||{}));
-let TAB='accueil', AMODE='sorties', BSCOPE='Foyer', BPER='mois', UICUR='EUR', UIMKT='all', ISUB='actifs', ASCOPE='Foyer', APER='mois', PFQ='';
-try{ const u=JSON.parse(localStorage.getItem('budgetV3_ui')||'{}'); TAB=u.tab||TAB;AMODE=u.amode||AMODE;BSCOPE=u.bscope||BSCOPE;BPER=u.bper||BPER;UICUR=u.cur||UICUR;UIMKT=u.mkt||UIMKT;ISUB=u.isub||ISUB;ASCOPE=u.ascope||ASCOPE;APER=u.aper||APER; }catch(e){}
-function saveUI(){ try{ localStorage.setItem('budgetV3_ui',JSON.stringify({tab:TAB,amode:AMODE,bscope:BSCOPE,bper:BPER,cur:UICUR,mkt:UIMKT,isub:ISUB,ascope:ASCOPE,aper:APER})); }catch(e){} }
+let TAB='accueil', AMODE='sorties', BSCOPE='Foyer', BPER='mois', UICUR='EUR', UIMKT='all', ISUB='actifs', ASCOPE='Foyer', APER='mois', PFQ='', SHIDE=false, SCOL={};
+try{ const u=JSON.parse(localStorage.getItem('budgetV3_ui')||'{}'); TAB=u.tab||TAB;AMODE=u.amode||AMODE;BSCOPE=u.bscope||BSCOPE;BPER=u.bper||BPER;UICUR=u.cur||UICUR;UIMKT=u.mkt||UIMKT;ISUB=u.isub||ISUB;ASCOPE=u.ascope||ASCOPE;APER=u.aper||APER; SHIDE=!!u.shide; if(u.scol&&typeof u.scol==='object')SCOL=u.scol; }catch(e){}
+function saveUI(){ try{ localStorage.setItem('budgetV3_ui',JSON.stringify({tab:TAB,amode:AMODE,bscope:BSCOPE,bper:BPER,cur:UICUR,mkt:UIMKT,isub:ISUB,ascope:ASCOPE,aper:APER,shide:SHIDE,scol:SCOL})); }catch(e){} }
 const MONTHS=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 const MSHORT=['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
 function Y(){ return state.years[YEARK]; }
@@ -950,14 +950,19 @@ function secSaisie(){
   setTitle('Saisie'); const m=MONTH; let h=monthSel();
   const sumCard=(lbl,real,plan)=>`<div class="kpi" style="padding:11px 12px"><div class="k">${lbl}</div><div class="v" style="font-size:18px">${eur(real)}</div><div class="note" style="font-size:10px;margin-top:1px">prévu ${eur(plan)}</div></div>`;
   h+=`<div style="display:grid;grid-template-columns:repeat(${people.length+1},minmax(0,1fr));gap:9px;margin:4px 0 2px">${sumCard('🏠 Foyer',foyerTotal(m,'real'),foyerTotal(m,'planned'))}${people.map(p=>sumCard('👤 '+p,persoTotal(p,m,'real'),persoTotal(p,m,'planned'))).join('')}</div>`;
-  h+=`<div class="note" style="margin:2px 4px 10px">Pointe le <b>réel</b> de ${esc(MONTHS[m])} ligne par ligne. Touche le nom d'une ligne pour éditer les 12 mois en détail.</div>`;
-  const block=(title,lines,kind,person)=>{ if(!lines.length)return''; let b=`<div class="sec"><h2>${esc(title)}</h2></div><div class="card">`;
-    lines.forEach((l,i)=>{ const pv= kind==='foyer'?(l.planned[m]||0):catVal(person,l,m,'planned'); const rv=l.real[m]||0; const st=catStyle(l.group,i); const op=`openLine('${kind}','${l.id}',${person?`'${jsq(person)}'`:'null'},'${jsq(l.group)}')`;
-      b+=`<div class="row"><div class="ic sm" style="background:${tint(st.color)};color:${st.color};cursor:pointer" onclick="${op}">${st.emoji}</div><div class="nm" style="cursor:pointer" onclick="${op}"><b>${esc(l.name)}</b><span>prévu ${eur(pv)}</span></div>`
-        +(l.auto?`<div style="width:100px;text-align:right;font-weight:800;color:var(--muted)">${num(catVal(person,l,m,'real'))}</div>`:`<input class="medit" inputmode="decimal" placeholder="${pv?num(pv):'0'}" value="${rv?num(rv):''}" onchange="setCell('${kind}','${l.id}',${person?`'${jsq(person)}'`:'null'},${m},'real',this.value)">`)+`</div>`; });
-    b+=`</div>`; return b; };
-  h+=block('🏠 Foyer', Y().foyer, 'foyer', null);
-  people.forEach(p=>h+=block('👤 '+p, (Y().persons[p].cats||[]), 'perso', p));
+  h+=`<div class="seg sub" style="margin-top:6px"><button class="${!SHIDE?'on':''}" onclick="setUI('shide','')">Toutes les lignes</button><button class="${SHIDE?'on':''}" onclick="setUI('shide','1')">Masquer les lignes à 0</button></div>`;
+  h+=`<div class="note" style="margin:6px 4px 8px">Pointe le <b>réel</b> de ${esc(MONTHS[m])}. Touche une ligne pour éditer les 12 mois ; touche un <b>groupe</b> pour le replier.</div>`;
+  const isEmpty=l=>!(l.planned||[]).some(x=>x)&&!(l.real||[]).some(x=>x);
+  const rowOf=(l,i,kind,person)=>{ if(SHIDE&&!l.auto&&isEmpty(l))return ''; const pv= kind==='foyer'?(l.planned[m]||0):catVal(person,l,m,'planned'); const rv=l.real[m]||0; const st=catStyle(l.name,i); const op=`openLine('${kind}','${l.id}',${person?`'${jsq(person)}'`:'null'},'${jsq(l.group)}')`;
+    return `<div class="row"><div class="ic sm" style="background:${tint(st.color)};color:${st.color};cursor:pointer" onclick="${op}">${st.emoji}</div><div class="nm" style="cursor:pointer" onclick="${op}"><b>${esc(l.name)}</b><span>prévu ${eur(pv)}</span></div>`
+      +(l.auto?`<div style="width:100px;text-align:right;font-weight:800;color:var(--muted)">${num(catVal(person,l,m,'real'))}</div>`:`<input class="medit" inputmode="decimal" placeholder="${pv?num(pv):'0'}" value="${rv?num(rv):''}" onchange="setCell('${kind}','${l.id}',${person?`'${jsq(person)}'`:'null'},${m},'real',this.value)">`)+`</div>`; };
+  const f=realizedMonth(m)?'real':'planned';
+  const groupBlock=(title,groups,linesOf,kind,person,gtot)=>{ let any=false; let b=`<div class="sec"><h2>${esc(title)}</h2></div>`;
+    groups.forEach((g,gi)=>{ const rows=linesOf(g).map((l,i)=>rowOf(l,i,kind,person)).join(''); if(!rows.trim())return; any=true; const gkey=(person||'foyer')+'|'+g; const col=SCOL[gkey]; const st=catStyle(g,gi);
+      b+=`<div class="card" style="margin-bottom:9px;padding:8px 10px"><div class="row clk" style="align-items:center;padding:2px 0" onclick="toggleCol('${jsq(gkey)}')"><div class="ic sm" style="background:${tint(st.color)};color:${st.color}">${st.emoji}</div><div class="nm" style="flex:1"><b>${esc(g)}</b></div><span class="note" style="font-weight:800;margin-right:8px">${eur(gtot(g))}</span><span class="chev">${col?'▸':'▾'}</span></div>${col?'':rows}</div>`; });
+    return any?b:''; };
+  h+=groupBlock('🏠 Foyer', foyerGroups(), g=>Y().foyer.filter(l=>l.group===g), 'foyer', null, g=>foyerGroupTotal(g,m,f));
+  people.forEach(p=>{ h+=groupBlock('👤 '+p, persoGroups(p), g=>(Y().persons[p].cats||[]).filter(l=>l.group===g), 'perso', p, g=>persoGroupTotal(p,g,m,f)); });
   return h;
 }
 
@@ -1017,7 +1022,8 @@ const SECT={accueil:secAccueil,pilotage:secPilotage,saisie:secSaisie,analyse:sec
 function setTitle(t){ const a=document.getElementById('title'); if(a)a.textContent=t; }
 function kpi(k,v,cls){ return `<div class="kpi"><div class="k">${k}</div><div class="v ${cls||''}">${v}</div></div>`; }
 function chgMonth(d){ MONTH=(MONTH+d+12)%12; render(); }
-function setUI(k,v){ if(k==='amode')AMODE=v; else if(k==='bscope')BSCOPE=v; else if(k==='bper')BPER=v; else if(k==='cur')UICUR=v; else if(k==='mkt')UIMKT=v; else if(k==='isub')ISUB=v; else if(k==='ascope')ASCOPE=v; else if(k==='aper')APER=v; saveUI(); render(); }
+function setUI(k,v){ if(k==='amode')AMODE=v; else if(k==='bscope')BSCOPE=v; else if(k==='bper')BPER=v; else if(k==='cur')UICUR=v; else if(k==='mkt')UIMKT=v; else if(k==='isub')ISUB=v; else if(k==='ascope')ASCOPE=v; else if(k==='aper')APER=v; else if(k==='shide')SHIDE=!!v; saveUI(); render(); }
+function toggleCol(k){ SCOL[k]=!SCOL[k]; saveUI(); render(); }
 function setTab(k){ TAB=k; saveUI(); closePlus(); render(); }
 function openPlus(){ document.getElementById('plusSheet').classList.add('on'); }
 function closePlus(){ document.getElementById('plusSheet').classList.remove('on'); }
