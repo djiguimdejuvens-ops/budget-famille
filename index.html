@@ -1016,6 +1016,7 @@ function secDefisc(){ setTitle('Défiscalisation'); const list=dedList(); const 
 }
 /* ===== IMPORT BANKIN : reconnaissance locale des dépenses (IA Claude en secours, phase 2) ===== */
 let BANKIN=null; // en mémoire (non persisté) : {tx:[...]}
+let BK_AIERR=''; const BK_MODEL='claude-haiku-4-5-20251001';
 const BK_POSTES=['Loyer & charges','Courses','Abonnements','Transport','Santé','Loisirs & sorties','Dîme & dons','Soutien famille','Dépenses perso','Frais & banque','Investissement/Épargne'];
 const BK_ALL=BK_POSTES.concat(['Revenu','Virement interne','À classer']);
 const BK_RULES=[
@@ -1096,7 +1097,7 @@ function secBankin(){ setTitle('Import Bankin'); bkEnsure();
   const catList=Object.keys(cats).sort((a,b)=>cats[b].s-cats[a].s);
   if(catList.length){ h+=`<div class="sec"><h2>Reconnaissance par catégorie</h2><span class="note">corrige → ça apprend</span></div><div class="card">`;
     catList.forEach(k=>{ const c=cats[k]; const cur=state.bankinMap[k]||bkGuess(c.cat,c.sub,''); h+=`<div class="row" style="align-items:center;gap:8px"><div class="nm" style="flex:1;min-width:0"><b style="font-size:12px">${esc(c.cat||'(vide)')}</b><span>${esc(c.sub||'')} · ${c.n} op · ${eur(c.s)}</span></div><select onchange="setBankinMap('${jsq(k)}',this.value)" style="max-width:148px;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--bg2);color:var(--ink);font-size:12px">${BK_ALL.map(p=>`<option value="${esc(p)}" ${p===cur?'selected':''}>${esc(p)}</option>`).join('')}</select></div>`; }); h+=`</div>`; }
-  if(totAcl>0)h+=`<div class="card tight"><div class="note" style="margin-bottom:8px">❓ <b>${eur(totAcl)}</b> encore en « À classer »${getClaudeKey()?'':' — ajoute ta clé Claude dans Paramètres pour activer l\'IA'}.</div><button class="editbtn" style="width:100%" onclick="bankinAI()">🤖 Classer les inconnues avec Claude</button></div>`;
+  if(totAcl>0)h+=`<div class="card tight"><div class="note" style="margin-bottom:8px">❓ <b>${eur(totAcl)}</b> encore en « À classer »${getClaudeKey()?'':' — ajoute ta clé Claude dans Paramètres pour activer l\'IA'}.</div><button class="editbtn" style="width:100%" onclick="bankinAI()">🤖 Classer les inconnues avec Claude</button>${BK_AIERR?`<div class="note" style="color:var(--red);margin-top:8px;text-align:left">⚠️ ${esc(BK_AIERR)}</div>`:''}</div>`;
   if(dep.length){ const ap={}; dep.forEach(t=>{ const af=bkAffect(t.cat,t.sub),key=af+'|'+t.poste; (ap[key]||(ap[key]={af,poste:t.poste,s:0})); ap[key].s+=Math.abs(t.montant); });
     if(!state.bankinBudgetMap)state.bankinBudgetMap={};
     h+=`<div class="sec"><h2>Vers le budget ${yr}</h2><span class="note">relie chaque poste à une ligne</span></div><div class="card">`;
@@ -1112,19 +1113,19 @@ function setClaudeKey(v){ try{ v=(v||'').trim(); if(v)localStorage.setItem('budg
 function clearClaudeKey(){ try{ localStorage.removeItem('budgetClaudeKey'); toast('Clé supprimée'); render(); }catch(e){} }
 async function bankinAI(){
   const key=getClaudeKey(); if(!key){ toast('Ajoute ta clé Claude dans Paramètres.'); setTab('params'); return; }
-  if(!BANKIN||!BANKIN.tx)return; const yr=String(YEARK);
+  if(!BANKIN||!BANKIN.tx)return; const yr=String(YEARK); BK_AIERR='';
   const acl={}; BANKIN.tx.filter(t=>String(t.date).slice(0,4)===yr&&t.montant<0).forEach(t=>{ if(bkPoste(t)==='À classer'){ const k=bkKey(t.cat,t.sub); (acl[k]||(acl[k]={cat:t.cat,sub:t.sub,ex:[]})); if(acl[k].ex.length<3&&t.desc)acl[k].ex.push(t.desc); } });
   const keys=Object.keys(acl); if(!keys.length){ toast('Rien à classer 🎉'); return; }
   toast('🤖 Classement Claude en cours…');
   const items=keys.map((k,i)=>({i,categorie:acl[k].cat,sous:acl[k].sub,exemples:acl[k].ex}));
   const prompt='Tu classes des dépenses bancaires (export Bankin) dans EXACTEMENT une de ces familles :\n'+BK_POSTES.map(p=>'- '+p).join('\n')+'\nRepères : « Investissement/Épargne » = épargne/bourse/PEE/terrain ; « Soutien famille » = aides à la famille ; « Dîme & dons » = dîme/offrandes/dons ; « Dépenses perso » = achats personnels/argent de poche. Réponds UNIQUEMENT par un tableau JSON, sans texte autour, au format [{"i":<index>,"poste":"<famille exacte>"}].\nÉléments :\n'+JSON.stringify(items);
   try{
-    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5',max_tokens:2048,messages:[{role:'user',content:prompt}]})});
-    if(!r.ok){ toast(r.status===401?'Clé Claude invalide.':'Erreur IA ('+r.status+').'); return; }
+    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:BK_MODEL,max_tokens:2048,messages:[{role:'user',content:prompt}]})});
+    if(!r.ok){ let em=''; try{ const eb=await r.json(); em=(eb&&eb.error&&eb.error.message)||''; }catch(_){}; BK_AIERR='Erreur '+r.status+(em?' — '+em:'')+(r.status===400&&/credit|balance|billing/i.test(em)?' (ajoute des crédits sur console.anthropic.com → Billing)':''); console.error('bankinAI',r.status,em); toast('Erreur IA '+r.status+' — détail affiché'); render(); return; }
     const d=await r.json(); const txt=(d.content&&d.content[0]&&d.content[0].text)||''; const mm=txt.match(/\[[\s\S]*\]/); const arr=JSON.parse(mm?mm[0]:txt);
     let n=0; bkEnsure(); arr.forEach(o=>{ const it=items[o&&o.i]; if(it&&BK_POSTES.includes(o.poste)){ state.bankinMap[bkKey(it.categorie,it.sous)]=o.poste; n++; } });
-    save(); render(); toast('✅ '+n+' catégorie(s) classée(s) par Claude.');
-  }catch(e){ toast('IA indisponible : '+((e&&e.message)||e)); }
+    BK_AIERR=''; save(); render(); toast('✅ '+n+' catégorie(s) classée(s) par Claude'+(n?'':' (aucune reconnue — réessaie)')+'.');
+  }catch(e){ BK_AIERR='Appel IA impossible : '+((e&&e.message)||e)+' (réseau ? clé ? CORS ?)'; console.error(e); render(); toast('IA indisponible — détail affiché'); }
 }
 function setBkBudget(key,lineId){ if(!state.bankinBudgetMap)state.bankinBudgetMap={}; if(lineId)state.bankinBudgetMap[key]=lineId; else delete state.bankinBudgetMap[key]; save(); render(); }
 function bkFindLine(id){ if(!id)return null; let l=(Y().foyer||[]).find(x=>x.id===id); if(l)return l; for(const p of people){ l=((Y().persons[p]||{}).cats||[]).find(x=>x.id===id); if(l)return l; } return null; }
