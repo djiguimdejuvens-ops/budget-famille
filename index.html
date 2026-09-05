@@ -477,7 +477,7 @@ function secInvest(){
   let h=`<div class="seg"><button class="${sub==='actifs'?'on':''}" onclick="setUI('isub','actifs')">📊 Actifs</button><button class="${sub==='journal'?'on':''}" onclick="setUI('isub','journal')">🧾 Journal</button><button class="${sub==='perf'?'on':''}" onclick="setUI('isub','perf')">🏆 Perf</button></div>`;
   if(sub==='journal'){
     const ops=(state.pf.ops||[]).slice().sort((a,b)=>String(b.date).localeCompare(String(a.date)));
-    h+=`<div class="row" style="gap:8px;padding:2px 0;flex-wrap:wrap"><button class="editbtn" onclick="addOp()">＋ Opération</button><button class="editbtn" onclick="openCoris()">🇧🇫 Relevé Coris</button><button class="editbtn" onclick="openFortuneo()">🇫🇷 Relevé Fortuneo</button><button class="editbtn" onclick="openImport()">📥 Importer JSON</button></div>`;
+    h+=`<div class="row" style="gap:8px;padding:2px 0;flex-wrap:wrap"><button class="editbtn" onclick="addOp()">＋ Opération</button><button class="editbtn" onclick="openCoris()">🇧🇫 Relevé Coris</button><button class="editbtn" onclick="openFortuneo()">🇫🇷 Relevé Fortuneo</button><button class="editbtn" onclick="openOKX()">🅾️ Relevé OKX</button><button class="editbtn" onclick="openImport()">📥 Importer JSON</button></div>`;
     h+=`<div class="card">`; if(!ops.length)h+=`<div class="note" style="text-align:center;padding:14px">Aucune opération. Touche « ＋ Opération », « Importer JSON » ou ton relevé Coris.</div>`;
     ops.forEach((o,i)=>{ const isT=o.type==='achat'||o.type==='vente'; const amt=isT?((+o.qty||0)*(+o.price||0)+(o.type==='achat'?1:-1)*(+o.fees||0)):(+o.amount||0); const inflow=(o.type==='vente'||o.type==='depot'||o.type==='dividende');
       h+=catRow((OP_LBL[o.type]||o.type)+(isT&&o.titre?' '+o.titre:''), eurOf(amt,o.devise), (o.sgi||'')+' · '+(o.date||'')+(isT?' · '+qtyFmt(o.qty)+'×'+num(o.price):''), i, {avatar:inflow?'🟢':'🔴', amtHtml:(inflow?'+':'−')+money(eurOf(amt,o.devise)), onclick:`openOp('${o.id}')`}); });
@@ -549,6 +549,7 @@ function renderDetail(){
   if(DETAIL.level==='op'){ return renderOpDetail(); }
   if(DETAIL.level==='coris'){ return renderCorisDetail(); }
   if(DETAIL.level==='fortuneo'){ return renderFortuneoDetail(); }
+  if(DETAIL.level==='okx'){ return renderOKXDetail(); }
   if(DETAIL.level==='import'){ return renderImportDetail(); }
   if(DETAIL.level==='ad'){ return renderADDetail(); }
   if(DETAIL.level==='year'){ return renderYearDetail(); }
@@ -787,6 +788,46 @@ function importFortuneo(txt){ txt=(txt||'').trim(); if(!txt)return {ok:false,msg
   ops.forEach(o=>{ const v=norm(o),s=sig(v); if(seen.has(s)){dup++;return;} seen.add(s); state.pf.ops.push(Object.assign({id:newId()},v)); n++; });
   save();
   return {ok:true,msg:'✅ '+n+' nouvelle(s) opération(s) ajoutée(s)'+(dup?' — '+dup+' doublon(s) ignoré(s)':'')+'. Dépôts/retraits non touchés.'};
+}
+/* --- Import relevé OKX (CSV funding/wallet) : mouvements € + clôture des cryptos sorties --- */
+function openOKX(){ DETAIL={level:'okx'}; showDetail(); }
+function renderOKXDetail(){ const head=document.getElementById('detailHead'),body=document.getElementById('detailBody');
+  head.innerHTML=`<div class="dhead"><button class="bk" onclick="closeDetail()">✕</button><h3>🅾️ Relevé OKX (crypto)</h3></div>`;
+  body.innerHTML=`<div class="note" style="margin:0 2px 8px">Colle ton relevé OKX « Funding / Wallet history » (CSV, avec l'en-tête <i>id,Time,Type,Amount,…,Symbol,Amount-EUR</i>). Je lis les <b>dépôts/retraits €</b> et, si une crypto est sortie (retirée en €), je <b>clôture la position correspondante</b> à sa valeur réalisée — puisque tu ne la détiens plus. Les transferts internes OKX sont ignorés.</div>
+    <textarea id="okxTA" placeholder="id,Time,Type,Amount,Before Balance,After Balance,Symbol,Amount-EUR …" style="width:100%;height:150px;border-radius:12px;border:1.5px solid var(--line);background:var(--bg2);color:var(--ink);font-family:monospace;font-size:11px;padding:10px"></textarea>
+    <button class="editbtn" style="width:100%;margin-top:10px;padding:12px" onclick="doImportOKX()">Intégrer le relevé OKX</button>
+    <div class="note" id="okxMsg" style="margin-top:8px;text-align:center"></div>`;
+}
+function doImportOKX(){ const el=document.getElementById('okxTA'); const res=importOKX(el?el.value:''); const m=document.getElementById('okxMsg'); if(m)m.textContent=res.msg; if(res.ok){ render(); setTimeout(closeDetail,1800); } }
+function importOKX(txt){ txt=(txt||'').trim(); if(!txt)return {ok:false,msg:'Colle d\'abord ton relevé OKX (CSV).'};
+  const lines=txt.replace(/\r/g,'').split('\n').filter(l=>l.trim());
+  let hi=lines.findIndex(l=>{ const c=l.toLowerCase(); return c.indexOf('type')>=0&&c.indexOf('symbol')>=0&&c.indexOf('amount')>=0; });
+  if(hi<0)return {ok:false,msg:'⚠️ En-tête OKX introuvable (id,Time,Type,Amount,…,Symbol).'};
+  const H=lines[hi].split(',').map(s=>s.trim().toLowerCase());
+  const iType=H.indexOf('type'), iAmt=H.indexOf('amount'), iSym=H.indexOf('symbol'), iTime=H.indexOf('time'); let iEur=H.findIndex(h=>h.replace(/[\s_-]/g,'')==='amounteur'); if(iEur<0)iEur=H.findIndex(h=>h.indexOf('eur')>=0&&h.indexOf('amount')>=0);
+  if(iType<0||iAmt<0||iSym<0)return {ok:false,msg:'⚠️ Colonnes OKX manquantes.'};
+  let eurW=0,eurD=0,lastDate=''; const cIn={},cEur={};
+  for(let i=hi+1;i<lines.length;i++){ const f=lines[i].split(','); if(f.length<=Math.max(iType,iAmt,iSym))continue;
+    const type=(f[iType]||'').trim().toLowerCase(); const sym=(f[iSym]||'').trim().toUpperCase(); const amt=parseFloat(f[iAmt])||0; const eurv=iEur>=0?Math.abs(parseFloat(f[iEur])||0):0; const time=(f[iTime]||'').trim().slice(0,10);
+    if(type.indexOf('trading account')>=0)continue; // transfert interne OKX
+    if(sym==='EUR'){ if(type.indexOf('withdraw')>=0){ eurW+=Math.abs(amt); if(time>lastDate)lastDate=time; } else if(type.indexOf('deposit')>=0){ eurD+=Math.abs(amt); } }
+    else if(type.indexOf('deposit')>=0){ cIn[sym]=(cIn[sym]||0)+Math.abs(amt); cEur[sym]=(cEur[sym]||0)+eurv; if(time&&time>lastDate)lastDate=time; }
+  }
+  const netEur=Math.round((eurW-eurD)*100)/100; const date=lastDate||new Date().toISOString().slice(0,10);
+  pfEnsure(); const positions=pfPositions().filter(x=>pfMarket(x.sgi)==='Crypto');
+  const ALIAS={BTC:'bitcoin',XBT:'bitcoin',ETH:'ethereum',BNB:'binancecoin',SOL:'solana',ADA:'cardano',XRP:'ripple',DOGE:'dogecoin',USDT:'tether',USDC:'usd-coin'};
+  const syms=Object.keys(cIn); const msg=[]; let changed=false;
+  if(syms.length && netEur>0){
+    const totEur=syms.reduce((s,k)=>s+(cEur[k]||0),0)||1;
+    syms.forEach(sym=>{ const alias=ALIAS[sym]||sym.toLowerCase(); const pos=positions.find(x=>{ const t=(x.titre||'').toLowerCase(); return t===alias||t===sym.toLowerCase()||t.indexOf(sym.toLowerCase())>=0; });
+      const share=Math.round(netEur*((cEur[sym]||0)/totEur)*100)/100;
+      if(pos){ const realized=Math.round((share-pos.qty*pos.cmp)*100)/100; state.pf.ops.push({id:newId(),date,sgi:pos.sgi,type:'vente',titre:pos.titre,qty:pos.qty,price:pos.qty?share/pos.qty:0,fees:0,amount:0,devise:'EUR'}); state.pf.ops.push({id:newId(),date,sgi:pos.sgi,type:'retrait',titre:'',qty:0,price:0,fees:0,amount:share,devise:'EUR'}); msg.push(pos.titre+' clôturé à '+eur(share)+' (réalisé '+(realized>=0?'+':'')+eur(realized)+')'); changed=true; }
+      else msg.push(sym+' : aucune position crypto ouverte à clôturer'); });
+  } else if(netEur>0){ const sig=o=>o.sgi+'|'+o.type+'|'+o.date+'|'+Math.round(o.amount*100); const ex=new Set(state.pf.ops.map(sig)); const o={sgi:'OKX',type:'retrait',date,amount:netEur}; if(!ex.has(sig(o))){ state.pf.ops.push(Object.assign({id:newId(),titre:'',qty:0,price:0,fees:0,devise:'EUR'},o)); msg.push('retrait OKX '+eur(netEur)); changed=true; } else msg.push('retrait déjà enregistré'); }
+  else msg.push('aucun mouvement € net à intégrer');
+  if(!changed)return {ok:false,msg:'ℹ️ '+msg.join(' · ')+'.'};
+  save();
+  return {ok:true,msg:'✅ '+msg.join(' · ')+'.'};
 }
 /* --- Import JSON général (tous courtiers, avec replace[]) --- */
 function openImport(){ DETAIL={level:'import'}; showDetail(); }
