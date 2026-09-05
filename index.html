@@ -182,7 +182,9 @@ function load(){ try{ const r=localStorage.getItem('budgetFamille_v1'); if(r){ c
 let state = load() || {people:[],currentYear:2026,years:{2026:{foyer:[],persons:{}}},fx:{FCFA:0.001524}};
 let YEARK = (state.years&&state.years[state.currentYear])? state.currentYear : Object.keys(state.years||{})[0];
 let MONTH = (state.ui&&state.ui.month!=null)? +state.ui.month : new Date().getMonth(); if(MONTH<0||MONTH>11) MONTH=new Date().getMonth();
-const people = (state.people&&state.people.length)? state.people : Object.keys((state.years[YEARK]||{}).persons||{});
+const PORDER=['Juvens','Madina'];
+function orderPeople(a){ return a.slice().sort((x,y)=>{ const ix=PORDER.indexOf(x),iy=PORDER.indexOf(y); return (ix<0?99:ix)-(iy<0?99:iy) || a.indexOf(x)-a.indexOf(y); }); }
+const people = orderPeople((state.people&&state.people.length)? state.people : Object.keys((state.years[YEARK]||{}).persons||{}));
 let TAB='accueil', AMODE='sorties', BSCOPE='Foyer', BPER='mois', UICUR='EUR', UIMKT='all', ISUB='actifs', ASCOPE='Foyer', APER='mois', PFQ='';
 try{ const u=JSON.parse(localStorage.getItem('budgetV3_ui')||'{}'); TAB=u.tab||TAB;AMODE=u.amode||AMODE;BSCOPE=u.bscope||BSCOPE;BPER=u.bper||BPER;UICUR=u.cur||UICUR;UIMKT=u.mkt||UIMKT;ISUB=u.isub||ISUB;ASCOPE=u.ascope||ASCOPE;APER=u.aper||APER; }catch(e){}
 function saveUI(){ try{ localStorage.setItem('budgetV3_ui',JSON.stringify({tab:TAB,amode:AMODE,bscope:BSCOPE,bper:BPER,cur:UICUR,mkt:UIMKT,isub:ISUB,ascope:ASCOPE,aper:APER})); }catch(e){} }
@@ -819,6 +821,8 @@ function renderIncomeDetail(){
 
 function secSaisie(){
   setTitle('Saisie'); const m=MONTH; let h=monthSel();
+  const sumCard=(lbl,real,plan)=>`<div class="kpi" style="padding:11px 12px"><div class="k">${lbl}</div><div class="v" style="font-size:18px">${eur(real)}</div><div class="note" style="font-size:10px;margin-top:1px">prévu ${eur(plan)}</div></div>`;
+  h+=`<div style="display:grid;grid-template-columns:repeat(${people.length+1},minmax(0,1fr));gap:9px;margin:4px 0 2px">${sumCard('🏠 Foyer',foyerTotal(m,'real'),foyerTotal(m,'planned'))}${people.map(p=>sumCard('👤 '+p,persoTotal(p,m,'real'),persoTotal(p,m,'planned'))).join('')}</div>`;
   h+=`<div class="note" style="margin:2px 4px 10px">Pointe le <b>réel</b> de ${esc(MONTHS[m])} ligne par ligne. Touche le nom d'une ligne pour éditer les 12 mois en détail.</div>`;
   const block=(title,lines,kind,person)=>{ if(!lines.length)return''; let b=`<div class="sec"><h2>${esc(title)}</h2></div><div class="card">`;
     lines.forEach((l,i)=>{ const pv= kind==='foyer'?(l.planned[m]||0):catVal(person,l,m,'planned'); const rv=l.real[m]||0; const st=catStyle(l.group,i); const op=`openLine('${kind}','${l.id}',${person?`'${jsq(person)}'`:'null'},'${jsq(l.group)}')`;
