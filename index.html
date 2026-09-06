@@ -375,35 +375,63 @@ function secAnalyse(){
   return h;
 }
 
-function secBudget(){
-  setTitle('Budget');
-  const scopes=['Foyer',...people];
-  let h=`<div class="seg">${scopes.map(s=>`<button class="${BSCOPE===s?'on':''}" onclick="setUI('bscope','${esc(s)}')">${esc(s)}</button>`).join('')}</div>`;
-  h+=`<div class="seg sub"><button class="${BPER==='mois'?'on':''}" onclick="setUI('bper','mois')">Mois</button><button class="${BPER==='annee'?'on':''}" onclick="setUI('bper','annee')">Année ${YEARK}</button></div>`;
-  if(BPER==='mois')h+=monthSel();
-  h+=`<div class="card tight"><div class="barlbl"><b>📊 Dépenses mois par mois</b><span class="note">${esc(BSCOPE)} · ${YEARK}</span></div>${barChart(MSHORT.map((_,mm)=> BSCOPE==='Foyer'? foyerTotal(mm,realizedMonth(mm)?'real':'planned') : (persoTotal(BSCOPE,mm,realizedMonth(mm)?'real':'planned')+prorata(BSCOPE,mm)*foyerTotal(mm,realizedMonth(mm)?'real':'planned'))), MSHORT)}<div class="note" style="text-align:center;font-size:11px">Réel si saisi, sinon prévu · survole une barre</div></div>`;
-  const per=BPER==='mois', P=(fn)=>per?fn(MONTH):sumM(fn);
-  if(BSCOPE==='Foyer'){
-    const cl = per? null : closedMonths();
-    const plan=P(m=>foyerTotal(m,'planned')),real=P(m=>foyerTotal(m,'real'));
-    const theoF = per? null : cl.reduce((s,m)=>s+foyerTotal(m,'planned'),0);
-    h+=budgetHeader('Dépenses du foyer',per?foyerTotal(MONTH,fOf(MONTH)):plan,plan,real,per,theoF);
-    const gs=foyerGroups().map((g,i)=>({g,i,plan:P(m=>foyerGroupTotal(g,m,'planned')),real:P(m=>foyerGroupTotal(g,m,'real')),theo:per?null:cl.reduce((s,m)=>s+foyerGroupTotal(g,m,'planned'),0)})).filter(x=>x.plan||x.real).sort((a,b)=>b.plan-a.plan);
-    h+=`<div class="card">`; gs.forEach(x=>{ const shown=per?foyerGroupTotal(x.g,MONTH,fOf(MONTH)):x.plan; const st=catStyle(x.g,x.i); h+=catRow(x.g,shown, x.real>0?`réel ${eur(x.real)} · prévu ${eur(x.plan)}`:'toucher pour éditer',x.i,{style:st,onclick:`openGroup('foyer','${jsq(x.g)}')`}); const r=x.plan>0?x.real/x.plan:0;
-      const bar = (!per && x.plan>0)? progressMark(r, x.theo/x.plan, r>1.02?'var(--red)':(x.real>x.theo?'var(--amber)':st.color)) : progress(x.real>0?r:0,r>1.02?'var(--red)':st.color);
-      const rest = (!per && x.real>0)? `<div class="barlbl" style="margin-top:4px"><span class="note" style="font-size:11px">théo. ${eur(x.theo)}</span><span class="note" style="font-size:11px;font-weight:800;color:${x.plan-x.real<0?'var(--red)':'var(--muted)'}">reste ${eur(x.plan-x.real)}</span></div>`:'';
-      h+=`<div style="padding:0 2px 10px 57px;margin-top:-4px">${bar}${rest}</div>`; }); h+=`</div>`;
-    h+=`<div class="sec"><h2>Qui paie quoi (prorata)</h2></div><div class="card">`;
-    people.forEach((p,i)=>{ const sh=per?communeShare(p,MONTH,fOf(MONTH)):sumM(m=>prorata(p,m)*foyerTotal(m,'planned')); const st=catStyle(p,i+2); h+=`<div class="subline"><div class="ic sm" style="background:${tint(st.color)};color:${st.color}">${esc(p[0])}</div><span class="sn">${esc(p)}${per?' · '+pctI(prorata(p,MONTH)):''}</span><span class="sv">${eur(sh)}</span></div>`; }); h+=`</div>`;
+function secBudget(){ // Budget · Mois — pilote d'épargne à partir de ce qui est saisi
+  setTitle('Budget · Mois'); const m=MONTH, f=fOf(m); const cols=['#6c5ce7','#14b8a6','#f59e0b','#ec4899'];
+  const rev=people.reduce((s,p)=>s+personFullIncome(p,m),0);
+  const dep=foyerTotal(m,f)+people.reduce((s,p)=>s+persoTotal(p,m,f),0);
+  const ep=rev-dep;
+  let h=monthSel();
+  h+=`<div class="card"><div class="hero" style="padding:18px 8px 10px"><div class="lbl">Épargne du mois · ${esc(MONTHS[m])}</div><div class="big ${ep>=0?'pos':'neg'}">${ep>=0?'+':''}${eur(ep)}</div><div class="sub">${eur(rev)} revenus · ${eur(dep)} dépenses${rev>0?' · '+pctI(ep/rev)+' épargné':''}</div></div></div>`;
+  // Épargne par personne : reste épargne DEVANT le nom, total dépenses EN FACE
+  const prow=(name,emoji,inc,dpe,pe,click,hl)=>`<div class="row ${click?'clk':''}" ${click?`onclick="${click}"`:''} style="gap:11px${hl?';background:var(--accent-soft);border-radius:12px;margin-top:4px':''}">`
+    +`<div style="text-align:right;min-width:76px"><b style="font-size:16.5px" class="${pe>=0?'pos':'neg'}">${pe>=0?'+':''}${eur(pe)}</b><small style="display:block;font-size:10px;color:var(--muted);font-weight:700">épargne</small></div>`
+    +`<div style="flex:1;min-width:0"><b style="font-size:15.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block">${emoji} ${esc(name)}</b><span style="font-size:12px;color:var(--muted)">revenus ${eur(inc)}</span></div>`
+    +`<div style="text-align:right"><b style="font-size:15px">${eur(dpe)}</b><small style="display:block;font-size:10px;color:var(--muted);font-weight:700">dépenses</small></div>`
+    +`<div class="chev" style="${click?'':'opacity:0'}">›</div></div>`;
+  h+=`<div class="sec"><h2>💰 Épargne par personne</h2></div><div class="card">`;
+  people.forEach(p=>{ const inc=personFullIncome(p,m), perso=persoTotal(p,m,f), foy=communeShare(p,m,f); h+=prow(p,'👤',inc,perso+foy,inc-perso-foy,`setUI('bscope','${jsq(p)}')`); });
+  h+=prow('Couple','💑',rev,dep,ep,'',true);
+  h+=`</div>`;
+  // Coût du foyer : combien ça coûte à chacun (prorata)
+  const foyM=foyerTotal(m,f);
+  h+=`<div class="sec"><h2>🏠 Coût du foyer</h2><span class="note">${esc(MONTHS[m])}</span></div><div class="card"><div class="barlbl"><b>Dépenses communes</b><span style="font-weight:800">${eur(foyM)}</span></div><div class="pbar" style="margin-top:10px">${people.map((p,i)=>`<i style="width:${(prorata(p,m)*100).toFixed(1)}%;background:${cols[i%4]}"></i>`).join('')}</div><div class="plegend">${people.map((p,i)=>`<div class="li"><span class="dot" style="background:${cols[i%4]}"></span><b style="color:var(--ink)">${esc(p)}</b> ${eur(communeShare(p,m,f))} · ${pctI(prorata(p,m))}</div>`).join('')}</div><div class="note" style="margin-top:8px">Réparti selon le prorata des revenus (voir Revenus).</div></div>`;
+  // Détail par poste (scope sélectionnable)
+  const scopes=['Foyer',...people]; const scope=scopes.includes(BSCOPE)?BSCOPE:'Foyer';
+  h+=`<div class="sec"><h2>Détail par poste</h2></div>`;
+  h+=`<div class="seg sub">${scopes.map(s=>`<button class="${scope===s?'on':''}" onclick="setUI('bscope','${jsq(s)}')">${esc(s)}</button>`).join('')}</div>`;
+  if(scope==='Foyer'){
+    h+=budgetHeader('Dépenses du foyer',foyerTotal(m,f),foyerTotal(m,'planned'),foyerTotal(m,'real'),true,null);
+    const gs=foyerGroups().map((g,i)=>({g,i,val:foyerGroupTotal(g,m,f),plan:foyerGroupTotal(g,m,'planned'),real:foyerGroupTotal(g,m,'real')})).filter(x=>x.val||x.plan).sort((a,b)=>b.val-a.val);
+    h+=`<div class="card">`; gs.forEach(x=>{ const st=catStyle(x.g,x.i); h+=catRow(x.g,x.val, x.real>0?`réel ${eur(x.real)} · prévu ${eur(x.plan)}`:'prévu '+eur(x.plan),x.i,{style:st,onclick:`openGroup('foyer','${jsq(x.g)}')`}); const r=x.plan>0?x.real/x.plan:0; h+=`<div style="padding:0 2px 10px 57px;margin-top:-4px">${progress(x.real>0?r:0,r>1.02?'var(--red)':st.color)}</div>`; }); h+=`</div>`;
   } else {
-    const p=BSCOPE; const clp = per? null : closedMonths(); const inc=P(m=>personFullIncome(p,m)); const perso=P(m=>persoTotal(p,m,per?fOf(MONTH):'planned')); const foy=per?communeShare(p,MONTH,fOf(MONTH)):sumM(m=>prorata(p,m)*foyerTotal(m,'planned')); const ep=inc-perso-foy;
-    h+=`<div class="card"><div class="hero" style="padding:16px 8px 10px"><div class="lbl">Épargne ${esc(p)} · ${per?esc(MONTHS[MONTH]):'année'}</div><div class="big ${ep>=0?'pos':'neg'}" style="font-size:34px">${ep>=0?'+':''}${eur(ep)}</div><div class="sub">Revenu ${eur(inc)}</div></div><div class="grid2">${kpi('🏠 Part foyer',eur(foy))}${kpi('👛 Dépenses perso',eur(perso))}</div></div>`;
-    if(!per){ const persoPlanA=sumM(m=>persoTotal(p,m,'planned')); const persoRealD=clp.reduce((s,m)=>s+persoTotal(p,m,'real'),0); const theoP=clp.reduce((s,m)=>s+persoTotal(p,m,'planned'),0);
-      if(persoPlanA>0){ const r=persoRealD/persoPlanA; h+=`<div class="card"><div class="barlbl"><b>Suivi dépenses perso</b><span style="font-weight:800">${eur(persoRealD)}</span></div><div class="note">réel à date / prévu ${eur(persoPlanA)} · théorique ${eur(theoP)}</div>${progressMark(r,theoP/persoPlanA,r>1.02?'var(--red)':(persoRealD>theoP?'var(--amber)':'var(--green)'))}<div class="barlbl" style="margin-top:7px"><span class="note">Théorique à date <b style="color:var(--ink)">${eur(theoP)}</b></span><span class="pill ${persoPlanA-persoRealD<0?'r':'g'}">Reste ${eur(persoPlanA-persoRealD)}</span></div></div>`; } }
-    const gs=persoGroups(p).map((g,i)=>({g,i,plan:sumM(m=>persoGroupTotal(p,g,m,'planned')),real:clp?clp.reduce((s,m)=>s+persoGroupTotal(p,g,m,'real'),0):0,theo:clp?clp.reduce((s,m)=>s+persoGroupTotal(p,g,m,'planned'),0):0,v:P(m=>persoGroupTotal(p,g,m,per?fOf(MONTH):'planned'))})).filter(x=>x.v>0||x.plan>0).sort((a,b)=>b.v-a.v);
-    if(gs.length){ h+=`<div class="sec"><h2>Dépenses perso de ${esc(p)}</h2></div><div class="card">`; gs.forEach(x=>{ const st=catStyle(x.g,x.i); h+=catRow(x.g,x.v, per?(pctI(perso>0?x.v/perso:0)+' du perso'):(x.real>0?`réel ${eur(x.real)} · prévu ${eur(x.plan)}`:'prévu'),x.i,{style:st,onclick:`openGroup('perso','${jsq(x.g)}','${jsq(p)}')`});
-        if(!per && x.plan>0){ const r=x.real/x.plan; h+=`<div style="padding:0 2px 10px 57px;margin-top:-4px">${progressMark(r,x.theo/x.plan,r>1.02?'var(--red)':(x.real>x.theo?'var(--amber)':st.color))}<div class="barlbl" style="margin-top:4px"><span class="note" style="font-size:11px">théo. ${eur(x.theo)}</span><span class="note" style="font-size:11px;font-weight:800;color:${x.plan-x.real<0?'var(--red)':'var(--muted)'}">reste ${eur(x.plan-x.real)}</span></div></div>`; } }); h+=`</div>`; } else h+=`<div class="card"><div class="note" style="text-align:center;padding:12px">Aucune dépense perso.</div></div>`;
+    const p=scope, inc=personFullIncome(p,m), perso=persoTotal(p,m,f), foy=communeShare(p,m,f);
+    h+=`<div class="card"><div class="grid2">${kpi('🏠 Part foyer',eur(foy))}${kpi('👛 Dépenses perso',eur(perso))}</div></div>`;
+    const gs=persoGroups(p).map((g,i)=>({g,i,val:persoGroupTotal(p,g,m,f),plan:persoGroupTotal(p,g,m,'planned'),real:persoGroupTotal(p,g,m,'real')})).filter(x=>x.val||x.plan).sort((a,b)=>b.val-a.val);
+    if(gs.length){ h+=`<div class="card">`; gs.forEach(x=>{ const st=catStyle(x.g,x.i); h+=catRow(x.g,x.val, x.real>0?`réel ${eur(x.real)} · prévu ${eur(x.plan)}`:'prévu '+eur(x.plan),x.i,{style:st,onclick:`openGroup('perso','${jsq(x.g)}','${jsq(p)}')`}); const r=x.plan>0?x.real/x.plan:0; h+=`<div style="padding:0 2px 10px 57px;margin-top:-4px">${progress(x.real>0?r:0,r>1.02?'var(--red)':st.color)}</div>`; }); h+=`</div>`; } else h+=`<div class="card"><div class="note" style="text-align:center;padding:12px">Aucune dépense perso ${esc(MONTHS[m])}.</div></div>`;
   }
+  return h;
+}
+function secBudgetYear(){ // Budget · Année — compte de résultat + évolution de l'épargne (planification)
+  setTitle('Budget · Année');
+  const revM=m=>people.reduce((s,p)=>s+personFullIncome(p,m),0);
+  const depM=m=>foyerTotal(m,fOf(m))+people.reduce((s,p)=>s+persoTotal(p,m,fOf(m)),0);
+  const epMv=m=>revM(m)-depM(m);
+  const revY=sumM(revM),depY=sumM(depM),epY=revY-depY,cm=closedMonths().length;
+  const nowM=(YEARK===new Date().getFullYear())?new Date().getMonth():-1;
+  let h=`<div class="monthsel"><button class="chip" onclick="yearNav(-1)">‹</button><div class="m">📊 Compte de résultat ${YEARK}</div><button class="chip" onclick="yearNav(1)">›</button></div>`;
+  h+=`<div class="kgrid">${kpi('💰 Revenus '+YEARK,eur(revY))}${kpi('💸 Dépenses',eur(depY))}${kpi('🐷 Épargne',eur(epY),epY>=0?'pos':'neg')}${kpi('📊 Taux d\'épargne',revY>0?pctI(epY/revY):'—',epY>=0?'pos':'neg')}</div>`;
+  h+=`<div class="note" style="text-align:center;margin:-2px 4px 2px">Année entière · réel sur ${cm} mois saisi${cm>1?'s':''}, prévu ensuite · montants €</div>`;
+  h+=`<div class="card" style="padding:0;overflow:hidden"><div style="overflow-x:auto"><table class="ptab"><thead><tr><th class="pnm">Poste</th>${MSHORT.map((l,mm)=>`<th title="${esc(MONTHS[mm])}" class="${mm===nowM?'now':''}">${l[0]}</th>`).join('')}<th>Tot</th><th>Moy</th></tr></thead><tbody>`;
+  h+=pgRow('Revenus',MSHORT.map((_,m)=>revM(m)),{cls:'rev',icon:'💰',click:"setTab('revenus')"});
+  foyerGroups().forEach((g,i)=>{ const vals=MSHORT.map((_,m)=>foyerGroupTotal(g,m,fOf(m))); if(vals.some(v=>v)) h+=pgRow(g,vals,{icon:catStyle(g,i).emoji,click:`openGroup('foyer','${jsq(g)}')`}); });
+  people.forEach(p=>{ const vals=MSHORT.map((_,m)=>persoTotal(p,m,fOf(m))); if(vals.some(v=>v)) h+=pgRow('Perso · '+p,vals,{icon:'👛',click:`setUI('bscope','${jsq(p)}')`}); });
+  h+=pgRow('Dépenses',MSHORT.map((_,m)=>depM(m)),{cls:'sum',icon:'💸'});
+  people.forEach(p=>{ const vals=MSHORT.map((_,m)=>epargne(p,m,fOf(m))); h+=pgRow('Épargne '+p,vals,{icon:'🐷',signed:true}); });
+  h+=pgRow('Épargne couple',MSHORT.map((_,m)=>epMv(m)),{cls:'sum',icon:'🐷',signed:true});
+  h+=`</tbody></table></div></div>`;
+  h+=`<div class="note" style="text-align:center;margin-top:-2px">Clair = réel saisi · grisé = prévu · touche une ligne pour l'éditer · glisse pour voir tous les mois →</div>`;
+  { let c=0; const cum=MSHORT.map((_,m)=>{c+=epMv(m);return Math.round(c);}); h+=`<div class="sec"><h2>🐷 Épargne cumulée ${YEARK}</h2></div><div class="card"><div class="barlbl"><b>Cumul sur l'année</b><span style="font-weight:800;color:${cum[11]>=0?'var(--green-ink)':'var(--red)'}">${eur(cum[11])}</span></div>${lineChart(cum,MSHORT)}<div class="note" style="text-align:center;font-size:11px">Évolution mois par mois · survole un point</div></div>`; }
+  h+=`<div class="sec"><h2>Revenus vs dépenses</h2></div><div class="card">${dualBar(MSHORT.map((_,m)=>revM(m)),MSHORT.map((_,m)=>depM(m)),MSHORT)}</div>`;
   return h;
 }
 function budgetHeader(lbl,shown,plan,real,per,theo){ const r=plan>0?real/plan:0; const reste=plan-real; const col=r>1.02?'var(--red)':'var(--accent)';
@@ -1020,13 +1048,13 @@ function secDefisc(){ setTitle('Défiscalisation'); const list=dedList(); const 
 // ── Navigation simplifiée : 5 hubs, chacun regroupant ses vues en sous-onglets (aucune analyse perdue) ──
 const HUBS=[
   {k:'accueil',i:'🏠',l:'Accueil',subs:[['accueil','Mois'],['pilotage','Année']]},
-  {k:'budget',i:'🎯',l:'Budget',subs:[['budget','Suivi'],['saisie','Saisie'],['revenus','Revenus'],['exceptionnel','Except.'],['transferts','Envois']]},
+  {k:'budget',i:'🎯',l:'Budget',subs:[['budget','Mois'],['budgetY','Année'],['saisie','Saisie'],['revenus','Revenus'],['exceptionnel','Except.'],['transferts','Envois']]},
   {k:'analyse',i:'📊',l:'Analyse',subs:[['analyse','Dépenses'],['objectifs','Objectifs'],['defisc','Défisc']]},
   {k:'patrimoine',i:'🏦',l:'Patrimoine',sl:'Patri.',subs:[['patrimoine','Patrimoine'],['invest','Investir']]},
   {k:'params',i:'⚙️',l:'Paramètres',subs:[['params','']]}
 ];
 const NAV=HUBS.map(h=>({k:h.k,i:h.i,l:h.l,sl:h.sl,p:1}));
-const SECFN={accueil:secAccueil,pilotage:secPilotage,budget:secBudget,saisie:secSaisie,revenus:secRevenus,exceptionnel:secExceptionnel,transferts:secTransferts,analyse:secAnalyse,objectifs:secObjectifs,defisc:secDefisc,patrimoine:secPatrimoine,invest:secInvest,params:secParams};
+const SECFN={accueil:secAccueil,pilotage:secPilotage,budget:secBudget,budgetY:secBudgetYear,saisie:secSaisie,revenus:secRevenus,exceptionnel:secExceptionnel,transferts:secTransferts,analyse:secAnalyse,objectifs:secObjectifs,defisc:secDefisc,patrimoine:secPatrimoine,invest:secInvest,params:secParams};
 const SUBOF={}; HUBS.forEach(h=>h.subs.forEach(([sk])=>SUBOF[sk]=h.k)); // clé de vue → hub qui la contient
 function hubOf(k){ return SUBOF[k]||'accueil'; }
 function hubSub(hk){ const h=HUBS.find(x=>x.k===hk)||HUBS[0]; const cur=HSUB[hk]; return h.subs.some(s=>s[0]===cur)?cur:h.subs[0][0]; }
