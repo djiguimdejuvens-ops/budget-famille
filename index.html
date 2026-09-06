@@ -234,6 +234,19 @@ function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;',
 function infoTip(t){ return `<button class="itip" aria-label="Info" onclick="infoToggle(this,event)"><span aria-hidden="true">i</span><span class="tip">${t}</span></button>`; }
 function infoToggle(el,e){ if(e)e.stopPropagation(); const open=el.classList.contains('on'); document.querySelectorAll('.itip.on').forEach(x=>x.classList.remove('on')); if(!open)el.classList.add('on'); }
 document.addEventListener('click',()=>{ document.querySelectorAll('.itip.on').forEach(x=>x.classList.remove('on')); });
+// Étendre une valeur sur les mois : Maj+Entrée = toute l'année · Ctrl/Cmd/Alt+Entrée = du mois courant jusqu'à décembre
+document.addEventListener('keydown', e=>{
+  if(e.key!=='Enter') return; const el=e.target;
+  if(!el||!el.classList||!el.classList.contains('medit')||el.dataset.fill!=='1') return;
+  if(!(e.shiftKey||e.metaKey||e.ctrlKey||e.altKey)){ el.blur(); return; }
+  e.preventDefault();
+  const k=el.dataset.k, id=el.dataset.id, p=el.dataset.p||null, field=el.dataset.field||'planned', m=+el.dataset.m||0;
+  const l = k==='foyer'? foyerLine(id):persoLine(p,id); if(!l||l.auto) return;
+  const v=roundRule(parseNum(el.value)); const start=e.shiftKey?0:m;
+  for(let mm=start; mm<=11; mm++) l[field][mm]=v;
+  save(); renderDetail();
+  toast(e.shiftKey?('Recopié sur toute l’année ('+eur(v)+')'):('Recopié '+MONTHS[m]+' → déc. ('+eur(v)+')'));
+});
 function fmtDT(ts){ if(!ts) return ''; const d=new Date(ts), p=n=>String(n).padStart(2,'0'); return p(d.getDate())+'/'+p(d.getMonth()+1)+' '+p(d.getHours())+':'+p(d.getMinutes()); }
 function qtyFmt(n){ n=+n||0; if(n===0)return'0'; const a=Math.abs(n); if(a<1)return n.toFixed(6).replace(/0+$/,'').replace('.',','); if(a<1000&&!Number.isInteger(n))return n.toFixed(2).replace('.',','); return Math.round(n).toLocaleString('fr-FR'); }
 
@@ -627,11 +640,12 @@ function renderDetail(){
   } else {
     const {kind,id,person,group}=DETAIL; const l = kind==='foyer'? foyerLine(id):persoLine(person,id); if(!l){ detailBack(); return; }
     const totP=sumM(m=> kind==='foyer'?(l.planned[m]||0):catVal(person,l,m,'planned'));
-    head.innerHTML=`<div class="dhead"><button class="bk" onclick="detailBack()">‹</button><h3>${esc(l.name)}${infoTip(l.auto?'Dîme automatique = 10 % du revenu (calculée, non modifiable).':'Saisis le <b>prévu</b> et le <b>réel</b> de chaque mois. La virgule et une formule comme <b>=1040</b> sont acceptées.')}</h3><span class="tot">${eur(totP)}<small style="display:block;font-size:11px;color:var(--muted);font-weight:600;text-align:right">prévu / an</small></span></div>`;
+    head.innerHTML=`<div class="dhead"><button class="bk" onclick="detailBack()">‹</button><h3>${esc(l.name)}${infoTip(l.auto?'Dîme automatique = 10 % du revenu (calculée, non modifiable).':'Saisis le <b>prévu</b> et le <b>réel</b> de chaque mois. La virgule et une formule (<b>=1040</b>, <b>40*12</b>) sont acceptées. Raccourci : <b>Maj+Entrée</b> recopie la valeur sur toute l’année, <b>Ctrl/Cmd+Entrée</b> du mois courant jusqu’à décembre.')}</h3><span class="tot">${eur(totP)}<small style="display:block;font-size:11px;color:var(--muted);font-weight:600;text-align:right">prévu / an</small></span></div>`;
     let h=''; if(!l.auto) h+=`<div class="mrow" style="border:none;padding-bottom:10px"><input class="nameedit" value="${esc(l.name)}" onchange="renameLine('${kind}','${id}',${person?`'${jsq(person)}'`:'null'},this.value)"><button class="delbtn" onclick="delLine('${kind}','${id}',${person?`'${jsq(person)}'`:'null'})">Supprimer</button></div>`;
     h+=`<div class="card" style="margin:0"><div class="mrow" style="border:none;padding-bottom:4px"><div class="ml" style="color:var(--muted);font-size:11px;font-weight:700">MOIS</div><div style="width:100px;text-align:center;font-size:11px;color:var(--muted);font-weight:700">PRÉVU</div><div style="width:100px;text-align:center;font-size:11px;color:var(--muted);font-weight:700">RÉEL</div></div>`;
     for(let m=0;m<12;m++){ const pv= kind==='foyer'?(l.planned[m]||0):catVal(person,l,m,'planned'); const rv=l.real[m]||0; const now=m===MONTH;
-      h+=`<div class="mrow ${now?'today':''}"><div class="ml">${MONTHS[m]}</div>`+(l.auto?`<div style="width:100px;text-align:right;font-weight:800">${pv?num(pv):'—'}</div>`:`<input class="medit" inputmode="decimal" placeholder="0" value="${pv?num(pv):''}" onchange="setCell('${kind}','${id}',${person?`'${jsq(person)}'`:'null'},${m},'planned',this.value)">`)+`<input class="medit" inputmode="decimal" placeholder="0" value="${rv?num(rv):''}" onchange="setCell('${kind}','${id}',${person?`'${jsq(person)}'`:'null'},${m},'real',this.value)"></div>`; }
+      const datt=`data-fill="1" data-k="${kind}" data-id="${esc(id)}" data-p="${person?esc(person):''}" data-m="${m}"`;
+      h+=`<div class="mrow ${now?'today':''}"><div class="ml">${MONTHS[m]}</div>`+(l.auto?`<div style="width:100px;text-align:right;font-weight:800">${pv?num(pv):'—'}</div>`:`<input class="medit" inputmode="decimal" placeholder="0" value="${pv?num(pv):''}" ${datt} data-field="planned" onchange="setCell('${kind}','${id}',${person?`'${jsq(person)}'`:'null'},${m},'planned',this.value)">`)+`<input class="medit" inputmode="decimal" placeholder="0" value="${rv?num(rv):''}" ${datt} data-field="real" onchange="setCell('${kind}','${id}',${person?`'${jsq(person)}'`:'null'},${m},'real',this.value)"></div>`; }
     h+=`</div>`; if(!LIVE)h+=`<div class="note" style="text-align:center;margin-top:8px">Démo : non enregistré ici. Sur ton appareil, tout est sauvegardé.</div>`;
     body.innerHTML=h;
   }
