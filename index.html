@@ -192,7 +192,7 @@ const PORDER=['Juvens','Madina'];
 const APP_URL='https://djiguimdejuvens-ops.github.io/budget-famille/';
 function orderPeople(a){ return a.slice().sort((x,y)=>{ const ix=PORDER.indexOf(x),iy=PORDER.indexOf(y); return (ix<0?99:ix)-(iy<0?99:iy) || a.indexOf(x)-a.indexOf(y); }); }
 const people = orderPeople((state.people&&state.people.length)? state.people : Object.keys((state.years[YEARK]||{}).persons||{}));
-let TAB='accueil', AMODE='sorties', BSCOPE='Foyer', BPER='mois', UICUR='EUR', UIMKT='all', ISUB='actifs', ASCOPE='Foyer', APER='mois', PFQ='', SHIDE=false, SCOL={}, HSUB={}, BYSCOPE='Combiné', EXCOWN='all', PVIEW='poste';
+let TAB='accueil', AMODE='sorties', BSCOPE='Foyer', BPER='mois', UICUR='EUR', UIMKT='all', ISUB='actifs', ASCOPE='Foyer', APER='mois', PFQ='', SHIDE=false, SCOL={}, HSUB={}, BYSCOPE='Combiné', EXCOWN='', PVIEW='poste';
 try{ const u=JSON.parse(localStorage.getItem('budgetV3_ui')||'{}'); TAB=u.tab||TAB;AMODE=u.amode||AMODE;BSCOPE=u.bscope||BSCOPE;BPER=u.bper||BPER;UICUR=u.cur||UICUR;UIMKT=u.mkt||UIMKT;ISUB=u.isub||ISUB;ASCOPE=u.ascope||ASCOPE;APER=u.aper||APER; SHIDE=!!u.shide; if(u.scol&&typeof u.scol==='object')SCOL=u.scol; if(u.hsub&&typeof u.hsub==='object')HSUB=u.hsub; BYSCOPE=u.byscope||BYSCOPE; }catch(e){}
 function saveUI(){ try{ localStorage.setItem('budgetV3_ui',JSON.stringify({tab:TAB,amode:AMODE,bscope:BSCOPE,bper:BPER,cur:UICUR,mkt:UIMKT,isub:ISUB,ascope:ASCOPE,aper:APER,shide:SHIDE,scol:SCOL,hsub:HSUB,byscope:BYSCOPE})); }catch(e){} }
 const MONTHS=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
@@ -225,7 +225,7 @@ function sumM(fn){ let s=0; for(let m=0;m<12;m++)s+=fn(m); return s; }
 const EXC={deblocage:{cash:1,patr:0,lbl:'Déblocage épargne / PEE'},emprunt:{cash:1,patr:0,lbl:'Emprunt reçu'},revenu:{cash:1,patr:1,lbl:'Revenu exceptionnel'},remboursement:{cash:-1,patr:0,lbl:"Remboursement d'emprunt"},investissement:{cash:-1,patr:0,lbl:"Placement / achat d'actif"},conso:{cash:-1,patr:-1,lbl:'Conso exceptionnelle'},don:{cash:-1,patr:-1,lbl:'Don'}};
 function excList(){ return (Y().exceptional)||[]; }
 function excNat(k){ return EXC[k]||EXC.conso; }
-function excOwner(e){ return (e&&e.owner)||'foyer'; }
+function excOwner(e){ return (e&&e.owner)||(PORDER[0]||'foyer'); } // sans owner = données historiques de Juvens
 function transList(){ return (Y().transfers)||[]; }
 function trFee(t){ return t.feeMode==='pct'? (t.eur||0)*(t.fees||0)/100 : (t.fees||0); }
 
@@ -335,7 +335,7 @@ function secFoyer(){ // Page unique Foyer — tout sur un écran : revenus (+%),
   h+=syncBadge();
   h+=`<div class="card"><div class="hero" style="padding:16px 8px 8px"><div class="lbl">Épargne du mois · ${esc(MONTHS[m])}</div><div class="big ${ep>=0?'pos':'neg'}">${ep>=0?'+':''}${eur(ep)}</div><div class="sub">${eur(rev)} revenus · ${eur(dep)} dépenses${rev>0?' · '+pctI(ep/rev)+' épargné':''}</div></div></div>`;
   // 1 — Nos revenus : nom + montant + % prorata
-  h+=`<div class="sec"><h2>💰 Nos revenus${infoTip('Le % (prorata) = part de chacun dans le revenu du couple (salaire + entrées communes). Il fixe la répartition des dépenses du foyer. Les « revenus perso » ne comptent pas dans le prorata.')}</h2><span class="lnk" onclick="setTab('revenus')">Éditer ›</span></div><div class="card">`;
+  h+=`<div class="sec"><h2>💰 Nos revenus${infoTip('Le % (prorata) = part de chacun dans le revenu du couple (salaire + entrées communes). Il fixe la répartition des dépenses du foyer. Les « revenus perso » ne comptent pas dans le prorata.')}</h2><span class="lnk" onclick="setTab('saisie')">Éditer ›</span></div><div class="card">`;
   people.forEach((p,i)=>{ const inc=personIncome(p,m), perso=personPersoIncome(p,m);
     h+=catRow(p, inc, perso>0?('+ '+eur(perso)+' perso (hors partage)'):'revenu partagé', i, {avatar:'👤', onclick:`openSalary('${jsq(p)}')`, amtHtml:`${eur(inc)} · <span style="color:${cols[i%4]};font-weight:800">${pctI(prorata(p,m))}</span>`}); });
   h+=`<div class="pbar" style="margin-top:6px">${people.map((p,i)=>`<i style="width:${(prorata(p,m)*100).toFixed(1)}%;background:${cols[i%4]}"></i>`).join('')}</div></div>`;
@@ -399,7 +399,7 @@ function secPilotage(){
   h+=`<div class="kgrid">${kpi('💰 Revenus '+YEARK,eur(revY))}${kpi('💸 Dépenses',eur(depY))}${kpi('🐷 Épargne',eur(epY),epY>=0?'pos':'neg')}${kpi('📊 Taux d\'épargne',revY>0?pctI(epY/revY):'—',epY>=0?'pos':'neg')}</div>`;
   h+=`<div class="sec"><h2>📅 Toute l'année, poste par poste${infoTip('Année entière : réel sur les '+cm+' mois saisis, prévu ensuite. Clair = réel, grisé = prévu. Touche une ligne pour l’éditer, glisse pour voir tous les mois. Montants en €.')}</h2><span class="lnk" onclick="setTab('budget')">Budget ›</span></div>`;
   h+=`<div class="card" style="padding:0;overflow:hidden"><div style="overflow-x:auto"><table class="ptab"><thead><tr><th class="pnm">Poste</th>${MSHORT.map((l,m)=>`<th title="${esc(MONTHS[m])}" class="${m===nowM?'now':''}">${l[0]}</th>`).join('')}<th>Tot</th><th>Moy</th></tr></thead><tbody>`;
-  h+=pgRow('Revenus',MSHORT.map((_,m)=>revM(m)),{cls:'rev',icon:'💰',click:"setTab('revenus')"});
+  h+=pgRow('Revenus',MSHORT.map((_,m)=>revM(m)),{cls:'rev',icon:'💰',click:"setTab('saisie')"});
   foyerGroups().forEach((g,i)=>{ const vals=MSHORT.map((_,m)=>foyerGroupTotal(g,m,fOf(m))); if(vals.some(v=>v)) h+=pgRow(g,vals,{icon:catStyle(g,i).emoji,click:`openGroup('foyer','${jsq(g)}')`}); });
   people.forEach(p=>{ const vals=MSHORT.map((_,m)=>persoTotal(p,m,fOf(m))); if(vals.some(v=>v)) h+=pgRow('Perso · '+p,vals,{icon:'👛',click:`setUI('bscope','${jsq(p)}');setTab('budget')`}); });
   h+=pgRow('Dépenses',MSHORT.map((_,m)=>depM(m)),{cls:'sum',icon:'💸',click:"setTab('budget')"});
@@ -447,6 +447,13 @@ function secAnalyse(){
   return h;
 }
 
+function secSuivi(){ // Budget · Suivi — revenus / dépenses / épargne, au MOIS ou à l'ANNÉE (une seule page, simple bascule)
+  const an=BPER==='annee';
+  let h=`<div class="seg"><button class="${!an?'on':''}" onclick="setUI('bper','mois')">📅 Mois</button><button class="${an?'on':''}" onclick="setUI('bper','annee')">📊 Année</button></div>`;
+  h+= an? secBudgetYear() : secBudget();
+  setTitle(an?'Suivi · Année':'Suivi · Mois');
+  return h;
+}
 function secBudget(){ // Budget · Mois — pilote d'épargne à partir de ce qui est saisi
   setTitle('Budget · Mois'); const m=MONTH, f=fOf(m); const cols=['#6c5ce7','#14b8a6','#f59e0b','#ec4899'];
   const rev=people.reduce((s,p)=>s+personFullIncome(p,m),0);
@@ -501,9 +508,9 @@ function secBudgetYear(){ // Budget annuel — compte de résultat filtrable + �
   else { h+=`<div class="sec" style="margin-bottom:2px"><h2>Compte de résultat${infoTip('Chaque ligne = son évolution sur l’année. <b>Clair</b> = réel saisi, <b>grisé</b> = prévu. Colonne <b>Prév</b> = budget annuel prévu (fixe) pour te situer vs le réel. <b>Tot</b> = réel à date + prévu ensuite. Touche une ligne pour l’éditer. Glisse le tableau pour tous les mois.')}</h2><span class="note">réel ${cm} mois · ${esc(sc)}</span></div>`;
   h+=`<div class="card" style="padding:0;overflow:hidden"><div style="overflow-x:auto"><table class="ptab"><thead><tr><th class="pnm">Poste</th>${MSHORT.map((l,mm)=>`<th title="${esc(MONTHS[mm])}" class="${mm===nowM?'now':''}">${l[0]}</th>`).join('')}<th class="pplan" title="Budget prévu de l'année (fixe)">Prév</th><th>Tot</th><th>Moy</th></tr></thead><tbody>`;
   if(isC){
-    people.forEach(p=>{ h+=pgRow('Revenus · '+p,MSHORT.map((_,m)=>personFullIncome(p,m)),{icon:'💰',plan:sumM(m=>personFullIncome(p,m)),click:"setTab('revenus')"}); });
-    h+=pgRow('Revenus total',MSHORT.map((_,m)=>revM(m)),{cls:'rev',icon:'💰',plan:revY,click:"setTab('revenus')"});
-  } else h+=pgRow('Revenus · '+sc,MSHORT.map((_,m)=>revM(m)),{cls:'rev',icon:'💰',plan:revY,click:"setTab('revenus')"});
+    people.forEach(p=>{ h+=pgRow('Revenus · '+p,MSHORT.map((_,m)=>personFullIncome(p,m)),{icon:'💰',plan:sumM(m=>personFullIncome(p,m)),click:"setTab('saisie')"}); });
+    h+=pgRow('Revenus total',MSHORT.map((_,m)=>revM(m)),{cls:'rev',icon:'💰',plan:revY,click:"setTab('saisie')"});
+  } else h+=pgRow('Revenus · '+sc,MSHORT.map((_,m)=>revM(m)),{cls:'rev',icon:'💰',plan:revY,click:"setTab('saisie')"});
   foyerGroups().forEach((g,i)=>{ const vals=MSHORT.map((_,m)=> isC? foyerGroupTotal(g,m,fOf(m)) : foyShare(sc,g,m,fOf(m))); const pl=sumM(m=> isC? foyerGroupTotal(g,m,'planned') : prorata(sc,m)*foyerGroupTotal(g,m,'planned')); if(vals.some(v=>v)||pl) h+=pgRow(isC?g:g+' (part)',vals,{icon:catStyle(g,i).emoji,plan:pl,click:`openGroup('foyer','${jsq(g)}')`}); });
   if(isC){ people.forEach(p=>{ const vals=MSHORT.map((_,m)=>persoTotal(p,m,fOf(m))); if(vals.some(v=>v)) h+=pgRow('Perso · '+p,vals,{icon:'👛',plan:sumM(m=>persoTotal(p,m,'planned')),click:`setUI('byscope','${jsq(p)}')`}); }); }
   else { persoGroups(sc).forEach((g,i)=>{ const vals=MSHORT.map((_,m)=>persoGroupTotal(sc,g,m,fOf(m))); const pl=sumM(m=>persoGroupTotal(sc,g,m,'planned')); if(vals.some(v=>v)||pl) h+=pgRow(g,vals,{icon:catStyle(g,i).emoji,plan:pl,click:`openGroup('perso','${jsq(g)}','${jsq(sc)}')`}); }); }
@@ -563,8 +570,8 @@ function secObjectifs(){
 function secExceptionnel(){
   setTitle('Exceptionnel');
   const all=excList(); let fx=false; all.forEach(e=>{ if(!e.id){ e.id=newId(); fx=true; } }); if(fx) save();
-  const own=['all','foyer',...people].includes(EXCOWN)?EXCOWN:'all';
-  const owners=[['all','Tous'],['foyer','🏠 Foyer'],...people.map(p=>[p,p])];
+  const own=['all','foyer',...people].includes(EXCOWN)?EXCOWN:(people[0]||'foyer');
+  const owners=[...people.map(p=>[p,p]),['foyer','🏠 Foyer'],['all','Tous']];
   let h=`<div class="seg">${owners.map(o=>`<button class="${own===o[0]?'on':''}" onclick="setUI('excown','${jsq(o[0])}')">${esc(o[1])}</button>`).join('')}</div>`;
   const list=all.filter(e=>own==='all'||excOwner(e)===own);
   const tE=list.filter(e=>excNat(e.nature).cash>0).reduce((s,e)=>s+(e.montant||0),0), tS=list.filter(e=>excNat(e.nature).cash<0).reduce((s,e)=>s+(e.montant||0),0);
@@ -1086,6 +1093,14 @@ function secSaisie(){
     groups.forEach((g,gi)=>{ const rows=linesOf(g).map((l,i)=>rowOf(l,i,kind,person)).join(''); if(!rows.trim())return; any=true; const gkey=(person||'foyer')+'|'+g; const col=SCOL[gkey]; const st=catStyle(g,gi);
       b+=`<div class="card" style="margin-bottom:9px;padding:8px 10px"><div class="row clk" style="align-items:center;padding:2px 0" onclick="toggleCol('${jsq(gkey)}')"><div class="ic sm" style="background:${tint(st.color)};color:${st.color}">${st.emoji}</div><div class="nm" style="flex:1"><b>${esc(g)}</b></div><span class="note" style="font-weight:800;margin-right:8px">${eur(gtot(g))}</span><span class="chev">${col?'▸':'▾'}</span></div>${col?'':rows}</div>`; });
     return any?b:''; };
+  // Revenus (ex-page Revenus, fusionnée ici) : salaire + entrées du mois, par personne
+  h+=`<div class="sec"><h2>💰 Revenus${infoTip('Revenus du mois par personne : salaire net + entrées (comptent dans le prorata) + revenus perso (hors prorata). Touche une ligne pour éditer les 12 mois.')}</h2></div>`;
+  people.forEach((p,pi)=>{ const P=Y().persons[p]||{}; const sal=(P.salary||[])[m]||0; const st=catStyle(p,pi+2);
+    h+=`<div class="card" style="margin-bottom:9px;padding:8px 10px"><div class="row" style="padding:2px 0"><div class="ic sm" style="background:${tint(st.color)};color:${st.color}">👤</div><div class="nm" style="flex:1"><b>${esc(p)}</b><span>${pctI(prorata(p,m))} du prorata</span></div><span class="note" style="font-weight:800">${eur(personFullIncome(p,m))}</span></div>`;
+    h+=catRow('Salaire net',sal,'toucher pour les 12 mois',0,{avatar:'💰',style:{emoji:'💰',color:'#22c55e'},onclick:`openSalary('${jsq(p)}')`});
+    (P.extras||[]).forEach((e,j)=>{ h+=catRow(e.name||'Autre entrée',(e.amounts||[])[m]||0,'entrée (prorata)',j+1,{avatar:'✨',style:{emoji:'✨',color:'#f59e0b'},onclick:`openIncome('${jsq(p)}','extras','${e.id}')`}); });
+    (P.persoExtras||[]).forEach((e,j)=>{ h+=catRow(e.name||'Revenu perso',(e.amounts||[])[m]||0,'hors prorata',j+9,{avatar:'👛',style:{emoji:'👛',color:'#14b8a6'},onclick:`openIncome('${jsq(p)}','persoExtras','${e.id}')`}); });
+    h+=`<div class="row" style="gap:8px;padding:6px 2px 2px"><button class="editbtn" onclick="addIncome('${jsq(p)}','extras')">＋ Entrée</button><button class="editbtn" onclick="addIncome('${jsq(p)}','persoExtras')">＋ Revenu perso</button></div></div>`; });
   h+=groupBlock('🏠 Foyer', foyerGroups(), g=>Y().foyer.filter(l=>l.group===g), 'foyer', null, g=>foyerGroupTotal(g,m,f));
   people.forEach(p=>{ h+=groupBlock('👤 '+p, persoGroups(p), g=>(Y().persons[p].cats||[]).filter(l=>l.group===g), 'perso', p, g=>persoGroupTotal(p,g,m,f)); });
   return h;
@@ -1156,13 +1171,13 @@ function secDefisc(){ setTitle('Défiscalisation'); const list=dedList(); const 
 // ── Navigation simplifiée : 5 hubs, chacun regroupant ses vues en sous-onglets (aucune analyse perdue) ──
 const HUBS=[
   {k:'accueil',i:'🏠',l:'Foyer',subs:[['accueil','']]},
-  {k:'budget',i:'🎯',l:'Budget',subs:[['budget','Mois'],['budgetY','Année'],['saisie','Saisie'],['revenus','Revenus'],['exceptionnel','Except.'],['transferts','Envois']]},
+  {k:'budget',i:'🎯',l:'Budget',subs:[['budget','Suivi'],['saisie','Saisie'],['exceptionnel','Except.'],['transferts','Envois']]},
   {k:'analyse',i:'📊',l:'Analyse',subs:[['analyse','Dépenses'],['pilotage','Année'],['objectifs','Objectifs'],['defisc','Défisc']]},
   {k:'patrimoine',i:'🏦',l:'Patrimoine',sl:'Patri.',subs:[['patrimoine','Patrimoine'],['invest','Investir']]},
   {k:'params',i:'⚙️',l:'Paramètres',subs:[['params','']]}
 ];
 const NAV=HUBS.map(h=>({k:h.k,i:h.i,l:h.l,sl:h.sl,p:1}));
-const SECFN={accueil:secFoyer,pilotage:secPilotage,budget:secBudget,budgetY:secBudgetYear,saisie:secSaisie,revenus:secRevenus,exceptionnel:secExceptionnel,transferts:secTransferts,analyse:secAnalyse,objectifs:secObjectifs,defisc:secDefisc,patrimoine:secPatrimoine,invest:secInvest,params:secParams};
+const SECFN={accueil:secFoyer,pilotage:secPilotage,budget:secSuivi,budgetY:secBudgetYear,saisie:secSaisie,revenus:secRevenus,exceptionnel:secExceptionnel,transferts:secTransferts,analyse:secAnalyse,objectifs:secObjectifs,defisc:secDefisc,patrimoine:secPatrimoine,invest:secInvest,params:secParams};
 const SUBOF={}; HUBS.forEach(h=>h.subs.forEach(([sk])=>SUBOF[sk]=h.k)); // clé de vue → hub qui la contient
 function hubOf(k){ return SUBOF[k]||'accueil'; }
 function hubSub(hk){ const h=HUBS.find(x=>x.k===hk)||HUBS[0]; const cur=HSUB[hk]; return h.subs.some(s=>s[0]===cur)?cur:h.subs[0][0]; }
@@ -1225,11 +1240,14 @@ function pfFilterInvest(q){ q=(q||'').toLowerCase().trim(); document.querySelect
 document.addEventListener('input',e=>{ if(e.target&&e.target.id==='pfsearch'){ PFQ=e.target.value; pfFilterInvest(PFQ); } });
 /* ===== Synchro temps réel (Firebase Realtime DB) — portée de l'appli classique ===== */
 const SYNC_KEY='budgetV3_sync';
+const SYNC_DEFAULT=null; // ← config intégrée pour les NOUVEAUX appareils : {config:{…firebaseConfig…}, code:'…'} — une fois renseignée, zéro manip partout
 let syncCfg={enabled:false,config:null,code:'',device:null,lastRev:0};
 let syncRef=null, myRev=0, pushTimer=null, syncMsg='', lastPushedData='';
 function loadSyncCfg(){ try{ const r=localStorage.getItem(SYNC_KEY); if(r) syncCfg=Object.assign(syncCfg,JSON.parse(r)); }catch(e){}
-  if(!syncCfg.config||!syncCfg.code){ try{ const c=JSON.parse(localStorage.getItem('budgetFamille_sync')||'null'); if(c&&c.config&&c.code){ syncCfg.config=syncCfg.config||c.config; syncCfg.code=syncCfg.code||c.code; saveSyncCfg(); } }catch(e){} } // hérite (préremplit) la config de l'ancienne appli, MÊME origine — sans réactiver tout seul
-  if(!syncCfg.device) syncCfg.device='d'+Math.random().toString(36).slice(2,10); myRev=syncCfg.lastRev||0; }
+  if(!syncCfg.config||!syncCfg.code){ try{ const c=JSON.parse(localStorage.getItem('budgetFamille_sync')||'null'); if(c&&c.config&&c.code){ syncCfg.config=syncCfg.config||c.config; syncCfg.code=syncCfg.code||c.code; } }catch(e){} } // hérite la config de l'ancienne appli (même origine)
+  if((!syncCfg.config||!syncCfg.code)&&SYNC_DEFAULT&&SYNC_DEFAULT.config&&SYNC_DEFAULT.code){ syncCfg.config=syncCfg.config||SYNC_DEFAULT.config; syncCfg.code=syncCfg.code||SYNC_DEFAULT.code; } // config intégrée (nouveaux appareils)
+  if(syncCfg.config&&syncCfg.code&&!syncCfg.userOff) syncCfg.enabled=true; // AUTO : dès qu'une config existe, la synchro est active — zéro manip
+  if(!syncCfg.device) syncCfg.device='d'+Math.random().toString(36).slice(2,10); myRev=syncCfg.lastRev||0; saveSyncCfg(); }
 function saveSyncCfg(){ try{ localStorage.setItem(SYNC_KEY, JSON.stringify(syncCfg)); }catch(e){} }
 function setSyncMsg(s){ syncMsg=s; const el=document.getElementById('syncStatus'); if(el) el.textContent=s; }
 function loadScript(src){ return new Promise((res,rej)=>{ const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=()=>rej(new Error('Échec de chargement Firebase (connexion ?)')); document.head.appendChild(s); }); }
@@ -1240,9 +1258,12 @@ function applyRemoteData(data){ if(!data) return; const {ui, currentYear, ...d}=
 function adoptRemote(r){ myRev=r.rev||Date.now(); syncCfg.lastRev=myRev; saveSyncCfg(); applyRemoteData(r.state); }
 function onRemote(r){ if(!r||!r.state) return; if(r.device===syncCfg.device) return; if((r.rev||0)<=myRev) return; myRev=r.rev; syncCfg.lastRev=myRev; saveSyncCfg(); applyRemoteData(r.state); toast('🔄 Données mises à jour'); }
 function pushRemote(now){ if(!syncRef) return; if(JSON.stringify(syncData())===lastPushedData) return; clearTimeout(pushTimer); const go=()=>{ const d=syncData(); lastPushedData=JSON.stringify(d); myRev=Date.now(); syncCfg.lastRev=myRev; saveSyncCfg(); syncRef.set({rev:myRev,device:syncCfg.device,state:d}).then(()=>setSyncMsg('✅ Synchronisé '+new Date().toLocaleTimeString('fr-FR'))).catch(e=>setSyncMsg('⚠️ '+e.message)); }; if(now) go(); else pushTimer=setTimeout(go,600); }
-async function initSync(seed){ if(!syncCfg.enabled||!syncCfg.config||!syncCfg.code) return; try{ setSyncMsg('Connexion…'); await ensureFirebase(); if(!firebase.apps.length) firebase.initializeApp(syncCfg.config); syncRef=firebase.database().ref('budgets/'+syncCfg.code); if(seed){ const snap=await syncRef.once('value'); const r=snap.val(); if(r&&r.state){ if(confirm('Des données existent déjà dans le cloud pour ce code.\n\nOK = charger CES données du cloud sur cet appareil.\nAnnuler = REMPLACER le cloud par les données de CET appareil.')) adoptRemote(r); else pushRemote(true); } else pushRemote(true); } syncRef.on('value', snap=> onRemote(snap.val())); setSyncMsg('✅ Connecté ('+syncCfg.code+')'); }catch(e){ setSyncMsg('⚠️ '+e.message); toast('Synchro : '+e.message); } }
-function disableSync(){ try{ if(syncRef) syncRef.off(); }catch(e){} syncRef=null; syncCfg.enabled=false; saveSyncCfg(); setSyncMsg('Désactivée'); render(); }
-function syncOn(){ const cfg=parseFirebaseConfig((document.getElementById('syncConfig')||{}).value||''); const code=((document.getElementById('syncCode')||{}).value||'').trim(); if(!cfg||!cfg.databaseURL){ toast('Config Firebase invalide (databaseURL manquant)'); return; } if(!code){ toast('Choisis un code partagé'); return; } syncCfg.config=cfg; syncCfg.code=code; syncCfg.enabled=true; saveSyncCfg(); render(); initSync(true); toast('Synchro en cours…'); }
+async function initSync(seed){ if(!syncCfg.enabled||!syncCfg.config||!syncCfg.code) return; try{ setSyncMsg('Connexion…'); await ensureFirebase(); if(!firebase.apps.length) firebase.initializeApp(syncCfg.config); syncRef=firebase.database().ref('budgets/'+syncCfg.code);
+  if(seed||!myRev){ const snap=await syncRef.once('value'); const r=snap.val(); const localT=(state&&state.lastEdit)||0; // 1re synchro sur cet appareil : fusion AUTO par horodatage (le plus récent gagne), aucun dialogue
+    if(r&&r.state){ if((r.rev||0)>=localT) adoptRemote(r); else pushRemote(true); } else pushRemote(true); }
+  syncRef.on('value', snap=> onRemote(snap.val())); setSyncMsg('✅ Connecté ('+syncCfg.code+')'); }catch(e){ setSyncMsg('⚠️ '+e.message); } }
+function disableSync(){ try{ if(syncRef) syncRef.off(); }catch(e){} syncRef=null; syncCfg.enabled=false; syncCfg.userOff=true; saveSyncCfg(); setSyncMsg('Désactivée'); render(); }
+function syncOn(){ const cfg=parseFirebaseConfig((document.getElementById('syncConfig')||{}).value||''); const code=((document.getElementById('syncCode')||{}).value||'').trim(); if(!cfg||!cfg.databaseURL){ toast('Config Firebase invalide (databaseURL manquant)'); return; } if(!code){ toast('Choisis un code partagé'); return; } syncCfg.config=cfg; syncCfg.code=code; syncCfg.enabled=true; syncCfg.userOff=false; saveSyncCfg(); render(); initSync(true); toast('Synchro en cours…'); }
 function syncOff(){ if(confirm('Désactiver la synchro sur cet appareil ? (tes données restent enregistrées ici)')) disableSync(); }
 function syncPush(){ pushRemote(true); toast('Envoi au cloud…'); }
 (function(){ try{ const t=currentTheme(); if(t&&t!=='auto')document.documentElement.setAttribute('data-theme',t); }catch(e){} })();
