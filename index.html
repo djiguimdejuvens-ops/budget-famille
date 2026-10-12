@@ -665,34 +665,125 @@ function secPilotage(){
   h+=`<div class="sec"><h2>Qui paie quoi ${YEARK}</h2></div><div class="card"><div class="pbar">${contrib.map((c,i)=>`<i style="width:${(c.v/ct*100).toFixed(1)}%;background:${cols[i%4]}"></i>`).join('')}</div><div class="plegend">${contrib.map((c,i)=>`<div class="li"><span class="dot" style="background:${cols[i%4]}"></span><b style="color:var(--ink)">${esc(c.p)}</b> ${eur(c.v)} · ${pctI(c.v/ct)}</div>`).join('')}</div></div>`;
   return h;
 }
+/* ══ ANALYSE — cockpit de décision : où en sommes-nous ? règles 30/50/30/20, « peut-on voyager ? », tendances, points de correction, export IA ══ */
+const ACLS=[['logement','🏠 Logement','#6c5ce7'],['besoin','🧾 Besoins','#14b8a6'],['envie','🎉 Envies','#f59e0b'],['epargne','🐷 Épargne','#22c55e']];
+function aclsLbl(k){ const x=ACLS.find(a=>a[0]===k); return x? x[1] : k; } function aclsTxt(k){ return aclsLbl(k).replace(/^\S+\s/,''); } function aclsCol(k){ const x=ACLS.find(a=>a[0]===k); return x? x[2] : '#94a3b8'; }
+function bucketOf(l){ if(l.cls&&ACLS.some(a=>a[0]===l.cls)) return l.cls; if(isSavLine(l)) return 'epargne'; const t=((l.name||'')+' '+(l.group||'')).toLowerCase();
+  if(/loyer|charges? ?(loc|copro)|copropri|habitation|électric|electric|\beau\b|\bgaz\b|énergie|energie|chauffage|foncier/.test(t)) return 'logement';
+  if(/course|alimentation|santé|sante|pharma|mutuelle|médec|medec|assurance|transport|voiture|carburant|essence|péage|peage|parking|entretien|téléphone|telephone|mobile|\bsfr\b|orange|\bfree\b|\bbox\b|internet|banc|banque|rembours|emprunt|crédit|credit|impôt|impot|taxe|obligatoire|dîme|dime|offrande|\bdons?\b|soutien|famil|papa|maman|belle|école|ecole|garde|scolaire|provision|engagement|repas|frais pro|formation|savon|\bgel\b|lingette|hygi|imprévu|imprevu|argent de poche madina|dépenses madina|depenses madina/.test(t)) return 'besoin';
+  if(/loisir|sortie|resto|restaurant|vacance|voyage|shopping|vêtement|vetement|habillement|lingerie|chaussure|cadeau|netflix|prime|audible|youtube|spotify|apple|cloud|abonnement|\bia\b|chat|beauté|beaute|soin|coiffure|cosméti|cosmeti|parfum|maquillage|snack|décor|decor|sport|noël|noel|mariage|plaisir|jeu|body|achat|divers|argent de poche|autres?\b/.test(t)) return 'envie';
+  return 'besoin'; }
+function aScopeName(){ return (ASCOPE==='Foyer'||!people.includes(ASCOPE))? 'Couple' : ASCOPE; }
+function aMonths(){ const a=[]; if(APER==='mois') return [MONTH]; const from= APER==='3m'? Math.max(0,MONTH-2) : 0; for(let m=from;m<=MONTH;m++) a.push(m); return a; }
+function aBuckets(scope,m,f){ const B={logement:0,besoin:0,envie:0,epargne:0}; const couple=scope==='Couple';
+  Y().foyer.forEach(l=>{ const sh=couple?1:prorataN(scope,m); B[bucketOf(l)]+=sh*lv(l,m,f); });
+  (couple?people:[scope]).forEach(p=>((Y().persons[p]||{}).cats||[]).forEach(l=>{ B[bucketOf(l)]+=catVal(p,l,m,f); }));
+  const rev= couple? people.reduce((s,p)=>s+personFullIncome(p,m),0) : personFullIncome(scope,m); const dep=B.logement+B.besoin+B.envie;
+  return {rev,dep,ep:rev-dep,logement:B.logement,besoin:B.besoin,envie:B.envie,epargne:B.epargne}; }
+function aSum(scope,ms,f){ const T={rev:0,dep:0,ep:0,logement:0,besoin:0,envie:0,epargne:0,n:ms.length}; ms.forEach(m=>{ const b=aBuckets(scope,m,f); ['rev','dep','ep','logement','besoin','envie','epargne'].forEach(k=>T[k]+=b[k]); }); return T; }
+function aRules(){ const r=state.rules||{}; return {log:+r.log||30, bes:+r.bes||50, env:+r.env||30, ep:+r.ep||20}; }
+function setRule(k,v){ if(!state.rules) state.rules={}; state.rules[k]=Math.max(0,Math.min(100,Math.round(parseNum(v)))); save(); renderKeep(); }
+function aScore(T){ const R=aRules(); if(T.rev<=0) return null; const epR=T.ep/T.rev*100, logR=T.logement/T.rev*100, besR=(T.logement+T.besoin)/T.rev*100, envR=T.envie/T.rev*100;
+  const under=(v,t)=> v<=t? 1 : Math.max(0, 1-(v-t)/Math.max(1,t)*2); const sEp=Math.max(0,Math.min(1,epR/Math.max(1,R.ep)));
+  const parts={ep:Math.round(sEp*40), bes:Math.round(under(besR,R.bes)*25), log:Math.round(under(logR,R.log)*20), env:Math.round(under(envR,R.env)*15)};
+  return {s:parts.ep+parts.bes+parts.log+parts.env, epR, logR, besR, envR, parts}; }
+function verdict(s){ return s>=80?['Solide','var(--green-ink)','🟢']: s>=60?['Correct','var(--accent)','🟡']: s>=40?['Fragile','var(--amber)','🟠']:['En danger','var(--red)','🔴']; }
+function aVerdictText(sc,R){ return `Vous épargnez ${Math.round(sc.epR)} % des entrées (objectif ${R.ep} %) · le logement pèse ${Math.round(sc.logR)} % (max ${R.log} %) · les besoins ${Math.round(sc.besR)} % (max ${R.bes} %) · les envies ${Math.round(sc.envR)} % (max ${R.env} %).`; }
+function aTravel(scope){ const R=aRules(), now=MONTH, fr=m=> scope==='Couple'? coupleFree(m) : freeSaving(scope,m); const bm=aBuckets(scope,now,'real');
+  const margin=bm.rev*R.env/100-bm.envie, reserve=sumTo(fr,now); const a=[]; for(let m=Math.max(0,now-2);m<=now;m++) a.push(fr(m)); const avgFree=a.reduce((s,v)=>s+v,0)/a.length; const proj=sumM(fr);
+  return {margin,reserve,avgFree,proj}; }
+let ASIM=1500; function setASim(v){ ASIM=Math.max(0,parseNum(v)); renderKeep(); }
+function aInsights(scope,ms,T){ const R=aRules(), out=[], n=ms.length, per=n>1?' / mois':'', rev=T.rev||1, pm=v=>v/n;
+  if(T.rev<=0){ out.push({lvl:'r',t:'Aucune entrée sur la période',d:'Saisis les salaires pour que l’analyse ait un sens.'}); return out; }
+  const logR=T.logement/rev*100, besR=(T.logement+T.besoin)/rev*100, envR=T.envie/rev*100, epR=T.ep/rev*100;
+  if(logR>R.log) out.push({lvl:'r',t:`Logement à ${Math.round(logR)} % des entrées (max ${R.log} %)`,d:`${eur(pm(T.logement))}${per}. Au-delà de ${R.log} %, le logement étouffe le reste : à renégocier dès que possible (loyer, énergie, assurance) et à surveiller si un revenu baisse.`});
+  if(besR>R.bes) out.push({lvl:'r',t:`Besoins à ${Math.round(besR)} % des entrées (max ${R.bes} %)`,d:`Il ne reste que ${Math.round(100-besR)} % pour vivre et épargner. Pistes : abonnements, assurances, frais bancaires, courses.`});
+  if(envR>R.env) out.push({lvl:'o',t:`Envies à ${Math.round(envR)} % des entrées (max ${R.env} %)`,d:`${eur(T.envie-rev*R.env/100)} de trop sur la période. Ce sont les dépenses les plus faciles à piloter.`});
+  else if(envR<R.env*0.5&&epR>=R.ep) out.push({lvl:'g',t:`Envies à ${Math.round(envR)} % seulement : vous pouvez vous faire plaisir`,d:`Jusqu’à ${eur(rev*R.env/100-T.envie)} de plus sur la période sans sortir de la règle, l’épargne étant déjà au niveau.`});
+  if(epR<R.ep) out.push({lvl: epR<0?'r':'o', t: epR<0? `Déficit : ${eur(-T.ep)} dépensés de plus que gagnés` : `Épargne à ${Math.round(epR)} % des entrées (objectif ${R.ep} %)`, d:`Il manque ${eur(rev*R.ep/100-T.ep)}${n>1?' sur la période':''} (${eur(pm(rev*R.ep/100-T.ep))}${per}) pour atteindre ${R.ep} %. Commence par les postes en dépassement ci-dessous.`});
+  else out.push({lvl:'g',t:`Épargne à ${Math.round(epR)} % des entrées : objectif ${R.ep} % atteint`,d:`${eur(T.ep)} épargnés${n>1?' sur la période':''}, dont ${eur(T.epargne)} placés.`});
+  const lineSets=[]; foyerGroups().forEach(g=>lineSets.push({name:g+(scope==='Couple'?'':' (ta part)'),kind:'foyer',p:null,lines:Y().foyer.filter(l=>l.group===g&&!l.archived)}));
+  (scope==='Couple'?people:[scope]).forEach(p=>persoGroups(p).forEach(g=>lineSets.push({name:g+(scope==='Couple'?' · '+p:''),kind:'perso',p,lines:((Y().persons[p]||{}).cats||[]).filter(l=>l.group===g&&!l.archived)})));
+  const grp=[], slack=[];
+  lineSets.forEach(S=>{ let over=0,months=0,plan=0,real=0,cnt=0,pAll=0,rAll=0; ms.forEach(m=>{ const sh=(S.kind==='foyer'&&scope!=='Couple')?prorataN(scope,m):1; const p=lsum(S.lines,m,'planned',S.p,'exp')*sh, r=lsum(S.lines,m,'raw',S.p,'exp')*sh; if(S.lines.some(l=>isSet((l.real||[])[m]))){ plan+=p; real+=r; if(r>p+0.5){ over+=r-p; months++; } } if(realizedMonth(m)){ cnt++; pAll+=p; rAll+=r; } });
+    if(over>0.5) grp.push({name:S.name,over,months,plan,real}); if(cnt&&pAll>0&&rAll<pAll*0.5) slack.push({name:S.name,p:pAll,r:rAll,cnt}); });
+  grp.sort((a,b)=>b.over-a.over).slice(0,3).forEach(x=>out.push({lvl:x.months>=2?'r':'o',t:`${x.name} : +${eur(x.over)} au-dessus du prévu${x.months>1?' ('+x.months+' mois)':''}`,d:`Réel ${eur(x.real)} pour ${eur(x.plan)} prévus. Soit le prévu est trop bas (ajuste-le), soit c’est là qu’il faut serrer.`}));
+  slack.sort((a,b)=>(b.p-b.r)-(a.p-a.r)).slice(0,2).forEach(x=>out.push({lvl:'g',t:`${x.name} : prévu peu consommé (${eur(x.r)} sur ${eur(x.p)})`,d:`Si c’est durable, baisse le prévu et réaffecte ${eur((x.p-x.r)/x.cnt)} / mois à l’épargne ou à un projet.`}));
+  if(scope==='Couple'&&people.length>1){ const rates=people.map(p=>{ const t=aSum(p,ms,'real'); return {p, r: t.rev>0? t.ep/t.rev*100 : null}; }).filter(x=>x.r!=null); if(rates.length===2&&Math.abs(rates[0].r-rates[1].r)>15) out.push({lvl:'o',t:`Épargne déséquilibrée : ${rates[0].p} ${Math.round(rates[0].r)} % · ${rates[1].p} ${Math.round(rates[1].r)} %`,d:'Le prorata répartit les communes selon les salaires, mais les dépenses perso creusent l’écart. À discuter à deux : clé de répartition ou niveau des dépenses perso.'}); }
+  if(scope==='Couple'){ const free=ms.reduce((s,m)=>s+coupleFree(m),0); if(free>300) out.push({lvl:'g',t:`${eur(free)} d’épargne non affectée sur la période`,d:'Donne-lui un but : réserve de sécurité (3 mois de dépenses), projet, voyage. Une épargne sans projet finit dépensée.'}); }
+  return out; }
+function aExportText(){ const scope=aScopeName(), ms=aMonths(), T=aSum(scope,ms,'real'), R=aRules(), sc=aScore(T); const L=[];
+  L.push('# Analyse budget — '+scope+' — '+YEARK+' ('+(APER==='mois'?MONTHS[MONTH]:APER==='3m'?'3 derniers mois':'janvier → '+MONTHS[MONTH])+')'); L.push('');
+  L.push('Contexte : couple à deux revenus ; dépenses communes réparties au prorata des salaires ; dépenses perso à 100 % ; épargne = entrées − dépenses (jamais saisie) ; lignes Épargne/Investissement = épargne placée (pas une dépense). Montants en euros.');
+  L.push('Règles cibles : logement ≤ '+R.log+' % ; besoins (logement compris) ≤ '+R.bes+' % ; envies ≤ '+R.env+' % ; épargne ≥ '+R.ep+' %.');
+  if(sc) L.push('Score santé : '+sc.s+'/100 ('+verdict(sc.s)[0]+'). Épargne '+Math.round(sc.epR)+' % · logement '+Math.round(sc.logR)+' % · besoins '+Math.round(sc.besR)+' % · envies '+Math.round(sc.envR)+' %.');
+  L.push(''); L.push('## Mois par mois '+YEARK+' (réel saisi, prévu pour les cases vides)'); L.push('| Mois | Entrées | Logement | Besoins | Envies | Épargne placée | Épargne totale | Taux |'); L.push('|---|---|---|---|---|---|---|---|');
+  for(let m=0;m<=MONTH;m++){ const b=aBuckets(scope,m,'real'); L.push('| '+MONTHS[m]+(realizedMonth(m)?'':' (prévu)')+' | '+Math.round(b.rev)+' | '+Math.round(b.logement)+' | '+Math.round(b.besoin)+' | '+Math.round(b.envie)+' | '+Math.round(b.epargne)+' | '+Math.round(b.ep)+' | '+(b.rev>0?Math.round(b.ep/b.rev*100)+' %':'—')+' |'); }
+  L.push(''); L.push('## Postes sur la période ('+ms.length+' mois) — réel vs prévu'); L.push('| Poste | Classe | Prévu | Réel | Écart |'); L.push('|---|---|---|---|---|');
+  const rows=[]; const add=(name,lines,kind,person)=>{ let p=0,r=0; ms.forEach(m=>{ const sh=(kind==='foyer'&&scope!=='Couple')?prorataN(scope,m):1; p+=lsum(lines,m,'planned',person,'all')*sh; r+=lsum(lines,m,'real',person,'all')*sh; }); if(p||r) rows.push([name,[...new Set(lines.map(l=>aclsTxt(bucketOf(l))))].join('/'),p,r]); };
+  foyerGroups().forEach(g=>add('Commun · '+g,Y().foyer.filter(l=>l.group===g&&!l.archived),'foyer',null));
+  (scope==='Couple'?people:[scope]).forEach(p=>persoGroups(p).forEach(g=>add(p+' · '+g,((Y().persons[p]||{}).cats||[]).filter(l=>l.group===g&&!l.archived),'perso',p)));
+  rows.sort((a,b)=>b[3]-a[3]).forEach(x=>L.push('| '+x[0]+' | '+x[1]+' | '+Math.round(x[2])+' | '+Math.round(x[3])+' | '+(x[3]-x[2]>=0?'+':'')+Math.round(x[3]-x[2])+' |'));
+  const prs=projList(); if(prs.length){ L.push(''); L.push('## Projets d’épargne'); prs.forEach(pr=>L.push('- '+(pr.name||'Projet')+' ('+projOwnerLbl(pr)+') : '+Math.round(projTotal(pr))+' € épargnés'+((pr.target||0)>0?' sur '+pr.target+' € ('+pctI(projPct(pr))+')':'')+(pr.deadline?' · échéance '+pr.deadline:''))); }
+  const ins=aInsights(scope,ms,T); if(ins.length){ L.push(''); L.push('## Constats automatiques de l’appli'); ins.forEach(i=>L.push('- '+i.t+' — '+i.d)); }
+  L.push(''); L.push('## Question'); L.push('Tu es un conseiller budgétaire bienveillant et concret. À partir de ces chiffres : 1) dis-nous où nous en sommes en 5 lignes ; 2) les 3 corrections prioritaires avec un montant mensuel chacune ; 3) ce que nous pouvons nous permettre (voyage, loisirs) sans mettre l’épargne en danger ; 4) un plan simple pour les 3 prochains mois. Réponds en français, sans jargon.');
+  return L.join('\n'); }
+function aCopy(){ const t=aExportText(); try{ navigator.clipboard.writeText(t).then(()=>toast('Analyse copiée ✓ — colle-la dans ton IA')); }catch(e){ const ta=document.getElementById('aexpTA'); if(ta){ ta.select(); try{ document.execCommand('copy'); }catch(x){} toast('Copié ✓'); } } }
+async function aShare(){ const text=aExportText(); if(navigator.share){ try{ await navigator.share({title:'Analyse budget '+YEARK,text}); return; }catch(e){ if(e&&e.name==='AbortError') return; } } aCopy(); }
+function openClasses(){ DETAIL={level:'classes'}; showDetail(); }
+function setCls(kind,id,person,cls){ const l=lineOf(kind,id,person); if(!l) return; if(cls) l.cls=cls; else delete l.cls; save(); renderDetail(); }
+function setGroupCls(kind,group,person,cls){ linesOf(kind,person).filter(l=>l.group===group).forEach(l=>{ if(cls) l.cls=cls; else delete l.cls; }); save(); renderDetail(); }
+function renderClassDetail(){ const head=document.getElementById('detailHead'), body=document.getElementById('detailBody');
+  head.innerHTML=`<div class="dhead"><button class="bk" onclick="closeDetail()">✕</button><h3>Classer mes postes</h3><span class="tot" style="font-size:11px;color:var(--muted);font-weight:600">auto = d’après le nom</span></div>`;
+  let h=`<div class="note" style="margin:0 2px 8px">Chaque ligne alimente une des quatre classes des règles (logement · besoins · envies · épargne). « Auto » = déduit du nom ; touche une classe pour forcer, « auto » pour revenir.</div>`;
+  const pq=p=>p?`'${jsq(p)}'`:'null';
+  const chips=(l,kind,person)=>{ const cur=bucketOf(l); return `<div style="display:flex;gap:4px;flex-wrap:wrap">${ACLS.map(([k,lb,c])=>`<button class="chip" style="width:auto;height:26px;padding:0 9px;font-size:11px;font-weight:800;border-radius:999px;${cur===k?`background:${c};color:#fff`:''}" onclick="setCls('${kind}','${l.id}',${pq(person)},'${k}')">${lb}</button>`).join('')}${l.cls?`<button class="chip" style="width:auto;height:26px;padding:0 9px;font-size:11px;border-radius:999px" title="Revenir au classement automatique" onclick="setCls('${kind}','${l.id}',${pq(person)},null)">auto</button>`:''}</div>`; };
+  const block=(title,kind,person,groups,lof)=>{ h+=`<div class="sec"><h2>${title}</h2></div>`; groups.forEach(g=>{ const ls=lof(g).filter(l=>!l.archived&&!l.auto); if(!ls.length) return;
+    h+=`<div class="card tight" style="margin:0 0 8px"><div class="barlbl" style="margin-bottom:2px"><b>${esc(g)}</b><span style="display:flex;gap:4px">${ACLS.map(([k,lb,c])=>`<button class="chip" title="Tout le groupe → ${esc(aclsTxt(k))}" style="width:28px;height:28px;font-size:13px" onclick="setGroupCls('${kind}','${jsq(g)}',${pq(person)},'${k}')">${lb.slice(0,2)}</button>`).join('')}</span></div>${ls.map(l=>`<div style="padding:7px 0;border-top:1px dashed var(--line)"><div style="font-size:13px;font-weight:700;margin-bottom:5px">${esc(l.name)}</div>${chips(l,kind,person)}</div>`).join('')}</div>`; }); };
+  block('🏠 Communes','foyer',null,foyerGroups(),g=>Y().foyer.filter(l=>l.group===g));
+  people.forEach(p=>block('👤 '+esc(p),'perso',p,persoGroups(p),g=>((Y().persons[p]||{}).cats||[]).filter(l=>l.group===g)));
+  body.innerHTML=h; }
 function secAnalyse(){
-  setTitle('Analyse');
-  const scopes=['Foyer',...people];
-  let h=`<div class="seg">${scopes.map(s=>`<button class="${ASCOPE===s?'on':''}" onclick="setUI('ascope','${jsq(s)}')">${esc(s)}</button>`).join('')}</div>`;
-  h+=`<div class="seg sub"><button class="${APER==='mois'?'on':''}" onclick="setUI('aper','mois')">Mois</button><button class="${APER==='annee'?'on':''}" onclick="setUI('aper','annee')">Année ${YEARK}</button></div>`;
+  setTitle('Analyse'); const scope=aScopeName(), ms=aMonths(), T=aSum(scope,ms,'real'), R=aRules(), sc=aScore(T), n=ms.length;
+  const perLbl= APER==='mois'? MONTHS[MONTH]+' '+YEARK : APER==='3m'? MSHORT[ms[0]]+' → '+MSHORT[MONTH]+' '+YEARK : 'janv. → '+MSHORT[MONTH]+' '+YEARK;
+  let h=`<div class="seg">${['Foyer',...people].map(s=>`<button class="${ASCOPE===s?'on':''}" onclick="setUI('ascope','${jsq(s)}')">${s==='Foyer'?'👫 Couple':esc(s)}</button>`).join('')}</div>`;
+  h+=`<div class="seg sub">${[['mois','📅 Ce mois'],['3m','📆 3 derniers mois'],['annee','📊 Depuis janvier']].map(([k,l])=>`<button class="${APER===k?'on':''}" onclick="setUI('aper','${k}')">${l}</button>`).join('')}</div>`;
   if(APER==='mois') h+=monthSel();
-  h+=`<div class="seg sub"><button class="${AMODE==='entrees'?'on':''}" onclick="setUI('amode','entrees')">Entrées</button><button class="${AMODE==='sorties'?'on':''}" onclick="setUI('amode','sorties')">Sorties</button></div>`;
-  const per=APER==='mois', scope=ASCOPE, ff=(m)=> per? fOf(m):'planned', M=(fn)=> per? fn(MONTH):sumM(fn);
-  let items=[],center;
-  if(AMODE==='entrees'){ center='Revenus'; const pl= scope==='Foyer'? people:[scope];
-    const sal=M(m=>pl.reduce((s,p)=>s+(Y().persons[p].salary[m]||0),0)); if(sal>0)items.push({name:'Salaire'+(scope==='Foyer'?'s':''),amount:sal});
-    pl.forEach(p=>{ (Y().persons[p].extras||[]).forEach(e=>{ const v=M(m=>e.amounts[m]||0); if(v>0)items.push({name:(e.name||'Autre entrée')+(scope==='Foyer'?' · '+p:''),amount:v}); }); (Y().persons[p].persoExtras||[]).forEach(e=>{ const v=M(m=>e.amounts[m]||0); if(v>0)items.push({name:(e.name||'Revenu perso')+(scope==='Foyer'?' · '+p:''),amount:v}); }); });
-  } else { center='Dépenses';
-    if(scope==='Foyer'){ foyerGroups().forEach(g=>{ const v=M(m=>foyerGroupTotal(g,m,ff(m),'exp')); if(v>0)items.push({name:g,amount:v}); }); }
-    else { const p=scope; foyerGroups().forEach(g=>{ const v=M(m=>prorataN(p,m)*foyerGroupTotal(g,m,ff(m),'exp')); if(v>0)items.push({name:g+' (part foyer)',amount:v}); }); persoGroups(p).forEach(g=>{ const v=M(m=>persoGroupTotal(p,g,m,ff(m),'exp')); if(v>0)items.push({name:g,amount:v}); }); }
-  }
-  const total=items.reduce((s,x)=>s+x.amount,0);
-  items.sort((a,b)=>b.amount-a.amount);
-  const GREENS=['#22c55e','#16a34a','#4ade80','#86efac','#34d399','#10b981','#0ea5e9','#14b8a6'];
-  items.forEach((it,i)=>{ it.color=AMODE==='entrees'?GREENS[i%GREENS.length]:catStyle(it.name,i).color; it.emoji=catStyle(it.name,i).emoji; });
-  const slices=items.map(it=>({value:it.amount,color:it.color,label:it.name+' : '+eur(it.amount)+' ('+pctI(total>0?it.amount/total:0)+')'}));
-  h+=`<div class="card">${donut(slices.length?slices:[{value:1,color:'var(--line)'}],eur(total),center)}<div class="note" style="text-align:center;margin-top:2px">${per?((realizedMonth(MONTH)?'Réel':'Prévu')+' · '+esc(MONTHS[MONTH])+' '+YEARK):'Année '+YEARK+' (prévu)'} · ${esc(scope)}</div>${items.length?donutLegend(items.map(it=>({name:it.name,value:it.amount,color:it.color}))):'<div class="note" style="text-align:center;padding:8px">Aucune '+(AMODE==='entrees'?'entrée':'sortie')+' sur cette période.</div>'}</div>`;
-  if(AMODE==='sorties'){ const rev= scope==='Foyer'? M(m=>people.reduce((s,p)=>s+personFullIncome(p,m),0)) : M(m=>personFullIncome(scope,m)); const ratio=rev>0?total/rev:0; h+=`<div class="card tight"><div class="barlbl"><b>💸 Dépenses / Revenus</b><span style="font-weight:800;color:${ratio>1?'var(--red)':'var(--green-ink)'}">${pctI(ratio)}</span></div><div class="note">${eur(total)} sur ${eur(rev)}</div>${progress(ratio,ratio>1?'var(--red)':'var(--accent)')}</div>`; }
-  { const revs=MSHORT.map((_,mm)=> scope==='Foyer'? people.reduce((s,p)=>s+personFullIncome(p,mm),0) : personFullIncome(scope,mm)); const deps=MSHORT.map((_,mm)=>{ const fm=fOf(mm); return scope==='Foyer'? foyerTotal(mm,fm) : (persoTotal(scope,mm,fm)+prorataN(scope,mm)*foyerTotal(mm,fm)); });
-    h+=`<div class="card"><div class="barlbl"><b>📊 Revenus vs dépenses par mois</b><span class="note">${esc(scope)} · ${YEARK}</span></div>${dualBar(revs,deps,MSHORT)}</div>`; }
+  // 1 — OÙ EN SOMMES-NOUS ? (score)
+  h+=`<div class="sec"><h2>🧭 Où en sommes-nous ?${infoTip('Score sur 100 : épargne 40 pts (objectif '+R.ep+' % des entrées), besoins 25 pts (max '+R.bes+' %), logement 20 pts (max '+R.log+' %), envies 15 pts (max '+R.env+' %). Un poste qui dépasse sa cible de moitié ne rapporte plus rien. Réel saisi, prévu pour les cases vides.')}</h2><span class="note">${esc(perLbl)}</span></div>`;
+  if(!sc){ h+=`<div class="card"><div class="note" style="text-align:center;padding:12px">Aucune entrée sur la période : saisis les salaires dans Foyer.</div></div>`; return h; }
+  const [vl,vc,vi]=verdict(sc.s);
+  h+=`<div class="card" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">${donut([{value:sc.s,color:vc,label:'Score '+sc.s+' / 100'},{value:100-sc.s,color:'var(--line)',label:''}],String(sc.s),'/ 100')}<div style="flex:1;min-width:210px"><div style="font-size:22px;font-weight:850;color:${vc}">${vi} ${vl}</div><div class="note" style="margin-top:4px">${esc(aVerdictText(sc,R))}</div><div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;font-size:12px">${[['🐷 Épargne',sc.parts.ep,40],['🧾 Besoins',sc.parts.bes,25],['🏠 Logement',sc.parts.log,20],['🎉 Envies',sc.parts.env,15]].map(([l,v,mx])=>`<div><div style="display:flex;justify-content:space-between"><span>${l}</span><b>${v}/${mx}</b></div>${progress(v/mx, v/mx>=0.99?'var(--green)':v/mx>=0.5?'var(--amber)':'var(--red)')}</div>`).join('')}</div></div></div>`;
+  // 2 — LES RÈGLES
+  h+=`<div class="sec"><h2>📏 Les règles${infoTip('Repères classiques : logement ≤ 30 % des entrées ; besoins (logement + charges contraintes) ≤ 50 % ; envies ≤ 30 % ; épargne ≥ 20 % (règle 50/30/20). Le trait noir = la cible, la barre = où vous en êtes. Chaque ligne est classée automatiquement d’après son nom — modifiable via « Classer mes postes ». Les cibles sont modifiables en bas de la carte.')}</h2><span class="lnk" onclick="openClasses()">Classer mes postes ›</span></div>`;
+  const gauge=(lbl,val,target,isMin,amt)=>{ const ok= isMin? val>=target : val<=target; const col= ok?'var(--green)':(Math.abs(val-target)<=5?'var(--amber)':'var(--red)'); return `<div style="padding:7px 0"><div class="barlbl"><b>${lbl}</b><span><b style="color:${col}">${Math.round(val)} %</b> <span class="note">${isMin?'≥':'≤'} ${target} % · ${eur(amt)}${n>1?' / mois':''}</span></span></div>${progressMark(Math.max(0,Math.min(1,val/100)), Math.min(1,target/100), col)}</div>`; };
+  const ri=(k,v)=>`<input class="medit" style="width:54px;padding:4px 6px;font-size:12px" inputmode="numeric" value="${v}" onchange="setRule('${k}',this.value)">`;
+  h+=`<div class="card tight">${gauge('🏠 Logement',sc.logR,R.log,false,T.logement/n)}${gauge('🧾 Besoins (logement compris)',sc.besR,R.bes,false,(T.logement+T.besoin)/n)}${gauge('🎉 Envies',sc.envR,R.env,false,T.envie/n)}${gauge('🐷 Épargne',sc.epR,R.ep,true,T.ep/n)}<div class="note" style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">Cibles : logement ${ri('log',R.log)} % · besoins ${ri('bes',R.bes)} % · envies ${ri('env',R.env)} % · épargne ${ri('ep',R.ep)} %</div></div>`;
+  // 3 — PEUT-ON VOYAGER ?
+  const tr=aTravel(scope), sim=ASIM, need=sim-tr.reserve, months= need>0&&tr.avgFree>0? Math.ceil(need/tr.avgFree) : null;
+  const simTxt= sim<=0? '' : tr.reserve>=sim? `✅ <b>Oui.</b> ${eur(sim)} sont finançables aujourd’hui avec la réserve non affectée (${eur(tr.reserve)}) ; il en resterait ${eur(tr.reserve-sim)}.` : months!=null? `⏳ <b>Pas encore.</b> Il manque ${eur(need)}. Au rythme actuel (${eur(tr.avgFree)} / mois), c’est possible dans ${months} mois, vers ${MONTHS[(MONTH+months)%12]}${MONTH+months>11?' '+(+YEARK+Math.floor((MONTH+months)/12)):''}.` : `❌ <b>Pas pour l’instant.</b> L’épargne non affectée est nulle ou négative ces 3 derniers mois : regarde les points de correction.`;
+  h+=`<div class="sec"><h2>✈️ Peut-on voyager / se détendre ?${infoTip('Marge envies = ce qu’il reste ce mois avant d’atteindre '+R.env+' % d’envies. Réserve = épargne non affectée cumulée depuis janvier (épargne − placée − projets). Rythme = moyenne des 3 derniers mois. Projection = réel saisi + prévu jusqu’à décembre. Le simulateur dit si une envie est finançable aujourd’hui, ou dans combien de mois.')}</h2></div>`;
+  h+=`<div class="card tight"><div class="kgrid" style="margin-bottom:10px">${kpi('🎉 Marge envies · '+MSHORT[MONTH],(tr.margin>=0?'+':'−')+eur(Math.abs(tr.margin)),tr.margin>=0?'pos':'neg')}${kpi('💧 Réserve non affectée',eur(tr.reserve),tr.reserve>=0?'pos':'neg')}${kpi('📈 Rythme (3 mois)',(tr.avgFree>=0?'+':'−')+eur(Math.abs(tr.avgFree))+' / mois',tr.avgFree>=0?'pos':'neg')}${kpi('🎯 Fin '+YEARK+' (projection)',eur(tr.proj),tr.proj>=0?'pos':'neg')}</div><div class="row" style="padding:4px 0;gap:10px;flex-wrap:wrap"><div class="nm" style="flex:1;min-width:160px"><b>Combien coûte votre envie ?</b><span>voyage, week-end, achat plaisir…</span></div><input class="medit" style="width:110px" inputmode="decimal" value="${num(sim)}" onchange="setASim(this.value)"></div>${simTxt?`<div class="banner" style="margin:8px 0 0;display:block">${simTxt}</div>`:''}</div>`;
+  // 4 — TENDANCES
+  const tm=[]; for(let m=0;m<=MONTH;m++) tm.push(m); const bs=tm.map(m=>aBuckets(scope,m,'real')); const rates=bs.map(b=>b.rev>0? b.ep/b.rev*100 : 0);
+  const avg=a=>a.length? a.reduce((s,v)=>s+v,0)/a.length : null; const a1=avg(rates.slice(-3)), a0=rates.length>=6? avg(rates.slice(-6,-3)) : null; const arrow= a0==null? '' : (a1-a0>2?'↗ en hausse vs les 3 mois d’avant':a1-a0<-2?'↘ en baisse vs les 3 mois d’avant':'→ stable');
+  h+=`<div class="sec"><h2>📈 Tendances${infoTip('Épargne de chaque mois depuis janvier (réel saisi, prévu pour les cases vides) et répartition de chaque euro entre logement, besoins, envies et épargne placée. La flèche compare le taux d’épargne des 3 derniers mois aux 3 précédents.')}</h2><span class="note">janv. → ${MSHORT[MONTH]}</span></div>`;
+  h+=`<div class="card"><div class="barlbl"><b>🐷 Épargne par mois</b><span class="note">${a1!=null?Math.round(a1)+' % des entrées sur 3 mois':''}${arrow?' · '+arrow:''}</span></div>${lineChart(bs.map(b=>Math.round(b.ep)),tm.map(m=>MSHORT[m]))}</div>`;
+  h+=`<div class="card"><div class="barlbl"><b>🧱 Où va chaque euro</b><span class="note">par mois</span></div>${stackBar(tm.map(m=>MSHORT[m]),ACLS.map(([k,l,c])=>({name:aclsTxt(k),color:c,vals:bs.map(b=>b[k])})))}</div>`;
+  // 5 — POINTS DE CORRECTION
+  const ins=aInsights(scope,ms,T); const LV={r:['🔴','var(--red)'],o:['🟠','var(--amber)'],g:['🟢','var(--green-ink)']};
+  h+=`<div class="sec"><h2>🛠️ Points de correction${infoTip('Constats automatiques sur la période : règles dépassées, postes qui dépassent leur prévu de façon répétée, prévus peu consommés à réaffecter, déséquilibre d’épargne dans le couple, épargne sans projet. Rouge = à traiter, orange = à surveiller, vert = marge ou bonne nouvelle.')}</h2><span class="note">${ins.length} constat${ins.length>1?'s':''}</span></div>`;
+  h+=`<div class="card tight">${ins.length? ins.map(i=>`<div style="display:flex;gap:10px;padding:9px 0;border-top:1px dashed var(--line);align-items:flex-start"><span style="font-size:16px;line-height:1.2">${LV[i.lvl][0]}</span><div style="min-width:0"><b style="color:${LV[i.lvl][1]}">${esc(i.t)}</b><div class="note" style="margin-top:2px">${esc(i.d)}</div></div></div>`).join('') : '<div class="note" style="text-align:center;padding:10px">Rien à signaler sur la période.</div>'}</div>`;
+  // 6 — OÙ PART L’ARGENT (dépenses seules, période)
+  let items=[]; foyerGroups().forEach(g=>{ const ls=Y().foyer.filter(l=>l.group===g); const v=ms.reduce((s,m)=>s+(scope==='Couple'?1:prorataN(scope,m))*lsum(ls,m,'real',null,'exp'),0); if(v>0) items.push({name:g+(scope==='Couple'?'':' (part)'),amount:v}); });
+  (scope==='Couple'?people:[scope]).forEach(p=>persoGroups(p).forEach(g=>{ const v=ms.reduce((s,m)=>s+persoGroupTotal(p,g,m,'real','exp'),0); if(v>0) items.push({name:g+(scope==='Couple'?' · '+p:''),amount:v}); }));
+  items.sort((a,b)=>b.amount-a.amount); items=capItems(items,8); items.forEach((it,i)=>{ if(!it.color) it.color=catStyle(it.name,i).color; }); const totD=items.reduce((s,x)=>s+x.amount,0);
+  h+=`<div class="sec"><h2>🍩 Où part l’argent</h2><span class="note">${esc(perLbl)} · dépenses</span></div><div class="card">${donut(items.length?items.map(it=>({value:it.amount,color:it.color,label:it.name+' : '+eur(it.amount)})):[{value:1,color:'var(--line)'}],eur(totD),'Dépenses')}${items.length?donutLegend(items.map(it=>({name:it.name,value:it.amount,color:it.color}))):''}</div>`;
+  // 7 — EXPORT IA
+  h+=`<div class="sec"><h2>🤖 Analyse poussée par une IA${infoTip('Copie un dossier complet (contexte, règles, mois par mois, postes réel vs prévu, projets, constats) avec la question à poser, puis colle-le dans ChatGPT, Claude, Gemini… Le texte contient vos chiffres et vos prénoms : à partager avec discernement.')}</h2></div>`;
+  h+=`<div class="card tight"><div class="row" style="gap:8px;flex-wrap:wrap;padding:0 0 8px"><button class="editbtn" onclick="aCopy()">📋 Copier le dossier pour une IA</button><button class="editbtn" onclick="aShare()">📤 Partager</button></div><details><summary class="note" style="cursor:pointer">Voir le texte</summary><textarea id="aexpTA" readonly style="width:100%;box-sizing:border-box;height:220px;margin-top:8px;font-family:monospace;font-size:11px;line-height:1.35;border:1px solid var(--line);border-radius:12px;padding:10px;background:var(--bg2);color:var(--ink)">${esc(aExportText())}</textarea></details></div>`;
   return h;
 }
-
 function secSuivi(){ // Budget · Suivi — revenus / dépenses / épargne, au MOIS ou à l'ANNÉE (une seule page, simple bascule)
   const an=BPER==='annee';
   let h=`<div class="seg"><button class="${!an?'on':''}" onclick="setUI('bper','mois')">📅 Mois</button><button class="${an?'on':''}" onclick="setUI('bper','annee')">📊 Année</button></div>`;
@@ -954,6 +1045,7 @@ function renderDetailRaw(){
   if(DETAIL.level==='pos'){ return renderPosDetail(); }
   if(DETAIL.level==='proj'){ return renderProjDetail(); }
   if(DETAIL.level==='virements'){ return renderVirDetail(); }
+  if(DETAIL.level==='classes'){ return renderClassDetail(); }
   if(DETAIL.level==='group'){
     const {kind,group,person}=DETAIL; const all=linesOf(kind,person).filter(l=>l.group===group); const lines=all.filter(l=>!l.archived), arch=all.filter(l=>l.archived);
     const isF=kind==='foyer', an=DVIEW==='annee', pq=person?`'${jsq(person)}'`:'null', gq=`'${jsq(group)}'`; const cols=['#6c5ce7','#14b8a6','#f59e0b','#ec4899'];
@@ -1593,7 +1685,7 @@ function setTitle(t){ const a=document.getElementById('title'); if(a)a.textConte
 function kpi(k,v,cls){ return `<div class="kpi"><div class="k">${k}</div><div class="v ${cls||''}">${v}</div></div>`; }
 function chgMonth(d){ MONTH=(MONTH+d+12)%12; render(); }
 // Vignette collante : rappelle le mois (ou l'année) consulté quand on a défilé, avec ‹ › pour changer sans remonter
-function pinInfo(){ const cur=hubSub(TAB); if(TAB==='accueil'||(cur==='budget'&&BPER!=='annee')||(cur==='analyse'&&APER==='mois')) return {txt:MONTHS[MONTH]+' '+YEARK,year:false}; if(cur==='budget'&&BPER==='annee') return {txt:'À fin '+MSHORT[yTo()]+' '+YEARK,year:false,yto:true}; if(cur==='pilotage'||(cur==='analyse'&&APER==='annee')) return {txt:'Année '+YEARK,year:true}; return null; }
+function pinInfo(){ const cur=hubSub(TAB); if(TAB==='accueil'||(cur==='budget'&&BPER!=='annee')||(cur==='analyse'&&APER==='mois')) return {txt:MONTHS[MONTH]+' '+YEARK,year:false}; if(cur==='budget'&&BPER==='annee') return {txt:'À fin '+MSHORT[yTo()]+' '+YEARK,year:false,yto:true}; if(cur==='pilotage') return {txt:'Année '+YEARK,year:true}; return null; } // Analyse : vignette seulement en vue « Ce mois »
 function updatePin(){ const pin=document.getElementById('monthPin'); if(!pin) return; const info=pinInfo(); const s=document.getElementById('scroll'); const y=Math.max(window.scrollY||0,(s&&s.scrollTop)||0); const sheetOpen=document.querySelector('.sheet.on'); if(!info||y<240||sheetOpen){ pin.hidden=true; return; } document.getElementById('monthPinTxt').textContent=info.txt; pin.classList.toggle('year',info.year); if(s){ const r=s.getBoundingClientRect(); pin.style.left=(r.left+r.width/2)+'px'; } pin.hidden=false; }
 function pinNav(d){ const info=pinInfo(); if(!info) return; if(info.yto){ setYTo(yTo()+d); return; } if(info.year){ yearNav(d); return; } MONTH=(MONTH+d+12)%12; renderKeep(); }
 window.addEventListener('scroll',updatePin,{passive:true}); window.addEventListener('resize',updatePin); document.addEventListener('DOMContentLoaded',()=>{ const s=document.getElementById('scroll'); if(s) s.addEventListener('scroll',updatePin,{passive:true}); });
