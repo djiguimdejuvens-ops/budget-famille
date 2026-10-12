@@ -385,10 +385,15 @@ function infoTip(t){ return `<button class="itip" aria-label="Info" onclick="inf
 function infoToggle(el,e){ if(e)e.stopPropagation(); const open=el.classList.contains('on'); document.querySelectorAll('.itip.on').forEach(x=>x.classList.remove('on')); if(!open)el.classList.add('on'); }
 document.addEventListener('click',()=>{ document.querySelectorAll('.itip.on').forEach(x=>x.classList.remove('on')); });
 // Entrée = valider le champ (blur → onchange) sur tout .medit. Dans la fiche 12 mois (inputs data-fill) : Maj+Entrée = toute l'année · Ctrl/Cmd/Alt+Entrée = du mois courant jusqu'à décembre
+// Case vide (valeur grisée = prévu retenu) : Effacer / Suppr → 0 explicite (« rien dépensé »), sans avoir à taper 0. Entrée (sans modificateur) → valide ET passe à la cellule du dessous.
+function cellKey(el){ const d=el.dataset||{}; if(d.m!=null&&d.field){ const m=+d.m+1; return m>11? null : {sel:`.medit[data-k="${CSS.escape(d.k||'')}"][data-id="${CSS.escape(d.id||'')}"][data-p="${CSS.escape(d.p||'')}"][data-field="${CSS.escape(d.field)}"][data-m="${m}"]`}; }
+  const box=el.closest('#detailBody')? '#detailBody' : '#scroll'; const all=[...document.querySelector(box).querySelectorAll('.medit')].filter(x=>!x.disabled&&x.offsetParent!==null); const i=all.indexOf(el); return (i>=0&&i<all.length-1)? {box, idx:i+1} : null; }
+function findCell(k){ if(!k) return null; if(k.sel) return document.querySelector(k.sel); const b=document.querySelector(k.box); if(!b) return null; return [...b.querySelectorAll('.medit')].filter(x=>!x.disabled&&x.offsetParent!==null)[k.idx]||null; }
 document.addEventListener('keydown', e=>{
-  if(e.key!=='Enter') return; const el=e.target;
-  if(!el||!el.classList||!el.classList.contains('medit')) return;
-  if(!(e.shiftKey||e.metaKey||e.ctrlKey||e.altKey)){ el.blur(); return; }
+  const el=e.target; if(!el||!el.classList||!el.classList.contains('medit')) return;
+  if((e.key==='Backspace'||e.key==='Delete')&&el.value===''&&!e.shiftKey&&!e.metaKey&&!e.ctrlKey&&!e.altKey){ e.preventDefault(); el.value='0'; el.dispatchEvent(new Event('change',{bubbles:true})); try{ el.select(); }catch(x){} return; }
+  if(e.key!=='Enter') return;
+  if(!(e.shiftKey||e.metaKey||e.ctrlKey||e.altKey)){ e.preventDefault(); const k=cellKey(el); el.blur(); /* valide (onchange, éventuel redessin) */ const nx=findCell(k); if(nx){ nx.focus(); try{ nx.select(); }catch(x){} } return; } // puis cellule du dessous
   if(el.dataset.fill!=='1') return;
   e.preventDefault();
   const k=el.dataset.k, id=el.dataset.id, p=el.dataset.p||null, field=el.dataset.field||'planned', m=+el.dataset.m||0;
@@ -558,7 +563,7 @@ function secMain(){
   h+=`<div class="card" style="padding:12px 16px">${prorataBar(m,PCOLS,false)}</div>`;
   // 3 — DÉPENSES COMMUNES : saisie du réel par ligne + parts au centime sous chaque ligne, totaux
   const foyM=foyerTotal(m,f), foyP=foyerTotal(m,'planned'), psT=splitParts(foyM,m);
-  h+=`<div class="sec"><h2>🏠 Dépenses communes${infoTip('Saisis le réel du mois dans chaque champ (le prévu est affiché en gris). Une case vide n’est pas un 0 : le prévu de la ligne est retenu dans les totaux tant que tu n’as rien saisi ; tape 0 si rien n’a été dépensé. Sous chaque ligne : la part de chacun au prorata des salaires, arrondie au centime de façon que les deux parts fassent exactement le montant. Touche un nom pour éditer les 12 mois, un groupe pour le replier, ✎ pour renommer, réordonner ou archiver.')}</h2><span class="lnk" onclick="setUI('shide','${SHIDE?'':'1'}')">${SHIDE?'Tout afficher':'Masquer les 0'}</span></div>`;
+  h+=`<div class="sec"><h2>🏠 Dépenses communes${infoTip('Saisis le réel du mois dans chaque champ (le prévu est affiché en gris). Une case vide n’est pas un 0 : le prévu de la ligne est retenu dans les totaux tant que tu n’as rien saisi ; tape 0 (ou la touche Effacer dans la case vide) si rien n’a été dépensé. Entrée passe à la ligne du dessous. Sous chaque ligne : la part de chacun au prorata des salaires, arrondie au centime de façon que les deux parts fassent exactement le montant. Touche un nom pour éditer les 12 mois, un groupe pour le replier, ✎ pour renommer, réordonner ou archiver.')}</h2><span class="lnk" onclick="setUI('shide','${SHIDE?'':'1'}')">${SHIDE?'Tout afficher':'Masquer les 0'}</span></div>`;
   h+=groupBlock(foyerGroups(), g=>Y().foyer.filter(l=>l.group===g), 'foyer', null, g=>foyerGroupTotal(g,m,f));
   h+=`<div class="card">`;
   h+=catRow('Total communes', foyM, done?'réel saisi · prévu retenu pour les cases vides':'prévu · aucun réel saisi', 0, {style:{emoji:'🏠',color:PCOLS[0]}, amtHtml:eur2(foyM), amtSub:'prévu '+eur(foyP), onclick:`goPoste('Foyer')`});
@@ -882,7 +887,9 @@ function openLine(kind,id,person,group){ DETAIL={level:'line',kind,id,person:per
 function detailBack(){ if(DETAIL&&DETAIL.level==='line'){ openGroup(DETAIL.kind,DETAIL.group,DETAIL.person); } else closeDetail(); }
 function closeDetail(){ document.getElementById('detailSheet').classList.remove('on'); DETAIL=null; render(); }
 function showDetail(){ document.getElementById('detailSheet').classList.add('on'); renderDetail(); }
-function renderDetail(){
+function withFocus(fn){ const a=document.activeElement; let idx=-1, ss=0, se=0; const box=document.getElementById('detailBody'); if(a&&a.classList&&a.classList.contains('medit')&&box&&box.contains(a)){ idx=[...box.querySelectorAll('.medit')].indexOf(a); ss=a.selectionStart; se=a.selectionEnd; } fn(); if(idx>=0){ const el=[...box.querySelectorAll('.medit')][idx]; if(el){ el.focus(); try{ el.select(); }catch(e){} } } } // garde la cellule active quand la fiche est redessinée (Entrée → cellule suivante)
+function renderDetail(){ withFocus(renderDetailRaw); }
+function renderDetailRaw(){
   if(!DETAIL) return; const head=document.getElementById('detailHead'), body=document.getElementById('detailBody');
   if(DETAIL.level==='salary'||DETAIL.level==='income'){ return renderIncomeDetail(); }
   if(DETAIL.level==='exc'){ return renderExcDetail(); }
@@ -931,7 +938,7 @@ function renderDetail(){
   } else {
     const {kind,id,person,group}=DETAIL; const l = kind==='foyer'? foyerLine(id):persoLine(person,id); if(!l){ detailBack(); return; }
     const totP=sumM(m=> kind==='foyer'?(l.planned[m]||0):catVal(person,l,m,'planned'));
-    head.innerHTML=`<div class="dhead"><button class="bk" onclick="detailBack()">‹</button><h3>${esc(l.name)}${infoTip(l.auto?'Dîme automatique = 10 % du revenu (calculée, non modifiable).':'Saisis le <b>prévu</b> et le <b>réel</b> de chaque mois. Une case RÉEL vide n’est pas un 0 : le prévu de la ligne est retenu dans les totaux ; tape <b>0</b> si rien n’a été dépensé. La virgule et une formule (<b>=1040</b>, <b>40*12</b>) sont acceptées. Raccourci : <b>Maj+Entrée</b> recopie la valeur sur toute l’année, <b>Ctrl/Cmd+Entrée</b> du mois courant jusqu’à décembre.')}</h3><span class="tot">${eur(totP)}<small style="display:block;font-size:11px;color:var(--muted);font-weight:600;text-align:right">prévu / an</small></span></div>`;
+    head.innerHTML=`<div class="dhead"><button class="bk" onclick="detailBack()">‹</button><h3>${esc(l.name)}${infoTip(l.auto?'Dîme automatique = 10 % du revenu (calculée, non modifiable).':'Saisis le <b>prévu</b> et le <b>réel</b> de chaque mois. Une case RÉEL vide n’est pas un 0 : le prévu de la ligne est retenu dans les totaux ; tape <b>0</b> si rien n’a été dépensé. La virgule et une formule (<b>=1040</b>, <b>40*12</b>) sont acceptées. <b>Entrée</b> valide et passe à la cellule du dessous ; <b>Effacer</b> sur une case vide écrit 0 (rien dépensé). <b>Maj+Entrée</b> recopie la valeur sur toute l’année, <b>Ctrl/Cmd+Entrée</b> du mois courant jusqu’à décembre.')}</h3><span class="tot">${eur(totP)}<small style="display:block;font-size:11px;color:var(--muted);font-weight:600;text-align:right">prévu / an</small></span></div>`;
     const pq=person?`'${jsq(person)}'`:'null'; let h='';
     if(l.archived) h+=`<div class="banner" style="margin:0 0 8px">🗄️ <b>Ligne archivée</b> ${esc(archSince(l))} — hors saisie, historique compté. <span class="lnk" style="margin-left:auto" onclick="unarchiveLine('${kind}','${id}',${pq})">Restaurer ›</span></div>`;
     if(!l.auto) h+=`<div class="mrow" style="border:none;padding-bottom:10px;flex-wrap:wrap;gap:6px"><input class="nameedit" style="flex:1;min-width:120px" value="${esc(l.name)}" onchange="renameLine('${kind}','${id}',${pq},this.value)">${(!l.archived&&hasData(l))?`<button class="ghostbtn" title="Retirer de la saisie en gardant l’historique" onclick="archiveLine('${kind}','${id}',${pq})">🗄️ Archiver</button>`:''}<button class="delbtn" onclick="delLine('${kind}','${id}',${pq})">Supprimer</button></div>`;
