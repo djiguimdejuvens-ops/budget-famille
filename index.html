@@ -512,8 +512,8 @@ function secFoyer(){ // Page unique Foyer — tout sur un écran : revenus (+%),
 }
 /* ===== PAGE PRINCIPALE « Foyer » (ordre spec : mois/année → revenus+% → communes → onglets perso → bilan → projets). Saisie DIRECTE du réel du mois, parts prorata au centime sous chaque ligne commune. ===== */
 const PCOLS=['#6c5ce7','#14b8a6','#f59e0b','#ec4899'];
-const ME=PORDER[0]; // « Moi » = Juvens (auteur de la spec) — affiché « Moi (Juvens) » pour rester lisible sur le téléphone de Madina
-function meLbl(p){ return p===ME?('Moi ('+p+')'):p; }
+const ME=PORDER[0]; // premier onglet perso par défaut = Juvens ; appli à deux → chacun est affiché par son prénom (pas de « Moi »)
+function meLbl(p){ return p; } // prénom tout court (Juvens / Madina)
 function pcol(p){ const i=people.indexOf(p); return PCOLS[(i<0?0:i)%PCOLS.length]; }
 function monthSelY(){ return `<div class="monthsel"><button class="chip" onclick="chgMonth(-1)">‹</button><div class="m" style="cursor:pointer;display:flex;align-items:center;gap:8px" onclick="openYearSheet()" title="Changer d’année">${esc(MONTHS[MONTH])} <span class="pill n">${YEARK} ▾</span></div><button class="chip" onclick="chgMonth(1)">›</button></div>`; }
 function setSalaryMonth(p,m,val){ const P=Y().persons[p]; if(!P)return; P.salary=arr12(P.salary,null); P.salary[m]=(String(val==null?'':val).trim()==='')?null:roundRule(parseNum(val)); save(); if(DETAIL)renderDetail(); else renderSoft(); }
