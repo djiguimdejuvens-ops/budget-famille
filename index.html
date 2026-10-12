@@ -279,7 +279,7 @@ function communeShare(p,m,f){ return prorataN(p,m)*foyerTotal(m,f); } // 0 si no
 function epargne(p,m,f){ return personFullIncome(p,m)-persoTotal(p,m,f)-communeShare(p,m,f); }
 function realizedMonth(m){ if(Y().foyer.some(l=>isSet((l.real||[])[m])))return true; return people.some(p=>((Y().persons[p]||{}).cats||[]).some(l=>!l.auto&&isSet((l.real||[])[m]))); } // mois « saisi » dès qu'une case réel est renseignée (0 explicite compris)
 function fOf(m){ return 'real'; } // 'real' = réel saisi, prévu pour les cases vides (ligne par ligne) — identique au prévu tant que rien n'est saisi
-function isSaving(g){ return /épargne|epargne|investiss|placement|livret/i.test(g||''); }
+function isSaving(g){ return String(g||'').toLowerCase().split(/[^\p{L}]+/u).some(w=>/^(épargnes?|epargnes?|investi\p{L}*|placements?|livrets?)$/u.test(w)); } // mots ENTIERS (« Déplacements » n'est pas un placement)
 function commonSaving(m,f){ return foyerPlaced(m,f); }
 function epargneProj(p,m){ return epargne(p,m,'real'); } // réel saisi, prévu pour le reste
 function personSaving(p){ return sumM(m=>epargneProj(p,m)); } // l'épargne placée n'est déjà plus comptée en dépense → rien à rajouter
