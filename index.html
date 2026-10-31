@@ -1662,7 +1662,7 @@ function secSaisie(){
 
 /* ══ EXPORT EXCEL / GOOGLE SHEETS (ExcelJS, chargé à la demande) — classeur VIVANT : les saisies (prévu, réel, salaires) sont des valeurs, tout le reste est formule (retenu, prorata, parts, totaux, bilan) ; l'onglet Année et la couverture renvoient aux onglets mois par clés (colonne Clé). Palette corporate : gris ardoise, rose, vert clair. ══ */
 async function ensureExcelJS(){ if(window.ExcelJS) return; await loadScript('https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js'); if(!window.ExcelJS) throw new Error('ExcelJS non chargé (connexion ?)'); }
-const XC={slate:'3F4A5A',grey:'6B7280',greySoft:'EEF0F3',band:'F6F7F9',rose:'C96A8C',roseSoft:'F7E4EA',green:'5FA98E',greenSoft:'E3F1E8',red:'D64561',ink:'1F2933',muted:'8A94A6',white:'FFFFFF',line:'E5E7EB',amber:'D9A441',amberSoft:'FBF1DC'};
+const XC={slate:'3F4A5A',grey:'6B7280',greySoft:'EEF0F3',greyMid:'D9DEE7',band:'F6F7F9',rose:'C96A8C',roseSoft:'F7E4EA',green:'5FA98E',greenSoft:'E3F1E8',red:'D64561',ink:'1F2933',muted:'8A94A6',white:'FFFFFF',line:'E5E7EB',amber:'D9A441',amberSoft:'FBF1DC'};
 const XMCOL=['C96A8C','8FBFA5','9AA3AF','D98BA6','A8D5BA','B4BBC6','E3A4BA','7FB69A','8E98A6','D27C9A','9FCDB3','A7AFBC'];
 const XNF='#,##0.00 "€";[Red]-#,##0.00 "€";"–"';
 const XL=n=>{ let s=''; while(n>0){ const k=(n-1)%26; s=String.fromCharCode(65+k)+s; n=Math.floor((n-1)/26); } return s; };
@@ -1678,71 +1678,83 @@ function xSum(col,r1,r2){ return r2>=r1? {formula:`SUM(${col}${r1}:${col}${r2})`
 function xRed(ws,r,c){ ws.getCell(r,c).font={name:'Arial',size:10,bold:true,color:{argb:'FF'+XC.red}}; }
 function xMonth(wb,m){ const nP=people.length, cCls=6+nP, cMark=7+nP, cKey=8+nP, N=cKey, C=XL; const tab=xTab(m);
   const ws=wb.addWorksheet(tab,{properties:{tabColor:{argb:'FF'+XMCOL[m%XMCOL.length]}},views:[{state:'frozen',ySplit:3,showGridLines:false}]});
-  ws.columns=[{width:28},{width:30},{width:13},{width:13},{width:13},...people.map(()=>({width:13})),{width:12},{width:11},{width:14}];
+  ws.columns=[{width:30},{width:30},{width:13},{width:13},{width:13},...people.map(()=>({width:13})),{width:12},{width:11},{width:14}];
   const pad=(arr)=>{ while(arr.length<N) arr.push(''); return arr; };
-  let r=xTitle(ws,1,'📅 '+MONTHS[m]+' '+YEARK,'Valeurs saisies : prévu, réel, salaires, primes. Tout le reste est calculé : Retenu = réel saisi sinon prévu · Prorata = salaire ÷ somme des salaires · Parts au centime · Bilan. La colonne Clé sert aux renvois de l’onglet Année : ne pas la modifier.',XMCOL[m%XMCOL.length],N);
+  let r=xTitle(ws,1,'📅 '+MONTHS[m]+' '+YEARK,'Synthèse en tête, détail ensuite. Valeurs saisies : prévu, réel, salaires, primes. Tout le reste est calculé : Retenu = réel saisi sinon prévu · Prorata = salaire ÷ somme des salaires · Parts au centime · Bilan. Colonne Clé (repliée) = identifiant de ligne pour l’onglet Année.',XMCOL[m%XMCOL.length],N);
+  // ── Synthèse du mois (réservée en tête, remplie à la fin)
+  r=xSec(ws,r,'🧾 Synthèse du mois — trésorerie, épargne, virements',XC.rose,N); const synHead=r; r++; const S={ent:r,com:r+1,ind:r+2,pl:r+3,tr:r+4,ep:r+5,vir:r+6}; r+=8;
   // ── Revenus
-  r=xSec(ws,r,'💰 Revenus',XC.green,N); r=xHead(ws,r,pad(['Personne','','Salaire net','Primes / entrées','Revenus perso','Total entrées','Prorata']),XC.green); const rv0=r, revRow={};
+  r=xSec(ws,r,'💰 Revenus',XC.green,N); r=xHead(ws,r,pad(['Personne','','Salaire net','Primes / entrées','Revenus perso','Total entrées','Prorata']),XC.green); const revTot=r; r++; const rv0=r, revRow={};
   people.forEach((p,i)=>{ const P=Y().persons[p]||{}; const sal=+((P.salary||[])[m])||0, ex=toList(P.extras).reduce((s,e)=>s+(+(((e&&e.amounts)||[])[m])||0),0), px=personPersoIncome(p,m); const row=r; revRow[p]=row;
     const vals=pad([p,'',sal,ex,px,{formula:`SUM(C${row}:E${row})`},{formula:`IF(SUM($C$${rv0}:$C$${rv0+nP-1})=0,0,C${row}/SUM($C$${rv0}:$C$${rv0+nP-1}))`}]); vals[cKey-1]='R|'+p; r=xRow(ws,row,vals,{nf:XNF}); ws.getCell(row,7).numFmt='0 %'; xKey(ws,row,cKey); xBand(ws,row,7,i); });
-  r=xRow(ws,r,pad(['Total','',xSum('C',rv0,r-1),xSum('D',rv0,r-1),xSum('E',rv0,r-1),xSum('F',rv0,r-1),null]),{b:true,fill:XC.greenSoft,nf:XNF}); r++;
+  xRow(ws,revTot,pad(['Total entrées','',xSum('C',rv0,r-1),xSum('D',rv0,r-1),xSum('E',rv0,r-1),xSum('F',rv0,r-1),null]),{b:true,fill:XC.greenSoft,nf:XNF}); r++;
   const pro=p=>`$G$${revRow[p]}`; const parts=(eRef)=>people.map((p,i)=> i<nP-1? {formula:`ROUND(${eRef}*${pro(p)},2)`} : {formula:`${eRef}-${people.slice(0,-1).map((q,j)=>'ROUND('+eRef+'*'+pro(q)+',2)').join('-')}`});
-  // ── Dépenses communes
-  r=xSec(ws,r,'🏠 Dépenses communes',XC.slate,N); r=xHead(ws,r,['Groupe','Ligne','Prévu','Réel saisi','Retenu',...people.map(p=>'Part '+p),'Classe','Marque','Clé'],XC.slate); const c1=r; let bi=0;
-  foyerGroups().forEach(g=>{ const ls=Y().foyer.filter(l=>l.group===g); if(!ls.length) return; const g0=r;
+  // ── Dépenses communes : totaux d'abord (réservés), puis le détail
+  r=xSec(ws,r,'🏠 Dépenses communes',XC.slate,N); r=xHead(ws,r,['Groupe','Ligne','Prévu','Réel saisi','Retenu',...people.map(p=>'Part '+p),'Classe','Marque','Clé'],XC.slate); const tcRow=r, plcRow=r+1; r+=2; const c1=r; let bi=0;
+  foyerGroups().forEach(g=>{ const ls=Y().foyer.filter(l=>l.group===g); if(!ls.length) return; const gt=r; r++; const g0=r;
     ls.forEach(l=>{ const row=r; const pv=lvPlan(l,m), rv=(l.real||[])[m]; const vals=[g,l.name+(l.archived?' (archivée)':''),pv,isSet(rv)?+rv:null,{formula:`IF(D${row}="",C${row},D${row})`},...parts('E'+row),aclsTxt(bucketOf(l)),isSavLine(l)?'oui':'',l.id]; r=xRow(ws,row,vals,{nf:XNF}); if(isSet(rv)&&+rv>pv+0.5) xRed(ws,row,4); xKey(ws,row,cKey); xBand(ws,row,N,bi++); });
-    r=xRow(ws,r,['Total '+g,'',xSum('C',g0,r-1),xSum('D',g0,r-1),xSum('E',g0,r-1),...people.map((p,i)=>xSum(C(6+i),g0,r-1)),'','sous-total',''],{b:true,fill:XC.greySoft,nf:XNF}); });
+    xRow(ws,gt,['Total '+g,'',xSum('C',g0,r-1),xSum('D',g0,r-1),xSum('E',g0,r-1),...people.map((p,i)=>xSum(C(6+i),g0,r-1)),'','sous-total',''],{b:true,fill:XC.greyMid,nf:XNF}); });
   const c2=r-1, rng=col=>`${col}${c1}:${col}${c2}`, mk=`$${C(cMark)}$${c1}:$${C(cMark)}$${c2}`, sif=(col,crit)=>({formula: c2>=c1? (crit==='oui'? `SUMIFS(${rng(col)},${mk},"oui")` : `SUMIFS(${rng(col)},${mk},"<>oui",${mk},"<>sous-total")`) : 0});
-  const tcRow=r; r=xRow(ws,r,['TOTAL DÉPENSES COMMUNES (hors épargne placée)','',sif('C'),sif('D'),sif('E'),...people.map((p,i)=>sif(C(6+i))),'','','TC'],{b:true,fill:XC.slate,color:XC.white,nf:XNF}); xKey(ws,tcRow,cKey); ws.getCell(tcRow,cKey).font={name:'Arial',size:8,color:{argb:'FFDDE2EA'}};
-  const plcRow=r; r=xRow(ws,r,['Épargne placée en commun','',sif('C','oui'),sif('D','oui'),sif('E','oui'),...people.map((p,i)=>sif(C(6+i),'oui')),'','','PLC'],{b:true,fill:XC.greenSoft,nf:XNF}); xKey(ws,plcRow,cKey);
-  const virRow=r; r=xRow(ws,r,['Virement prévu au compte joint (part du prévu, épargne commune comprise)','',{formula:`C${tcRow}+C${plcRow}`},null,{formula:`C${virRow}`},...parts('E'+virRow),'','','VIR'],{b:true,fill:XC.roseSoft,nf:XNF}); xKey(ws,virRow,cKey); r++;
-  // ── Dépenses perso
+  xRow(ws,tcRow,['TOTAL DÉPENSES COMMUNES (hors épargne placée)','',sif('C'),sif('D'),sif('E'),...people.map((p,i)=>sif(C(6+i))),'','','TC'],{b:true,fill:XC.slate,color:XC.white,nf:XNF}); ws.getCell(tcRow,cKey).font={name:'Arial',size:8,color:{argb:'FFDDE2EA'}};
+  xRow(ws,plcRow,['Épargne placée en commun (lignes marquées « oui »)','',sif('C','oui'),sif('D','oui'),sif('E','oui'),...people.map((p,i)=>sif(C(6+i),'oui')),'','','PLC'],{b:true,fill:XC.greenSoft,nf:XNF}); xKey(ws,plcRow,cKey); r++;
+  // ── Dépenses perso : total d'abord, puis le détail
   const tpRow={}, ppRow={};
-  people.forEach(p=>{ r=xSec(ws,r,'👛 Dépenses perso · '+p,XC.grey,N); r=xHead(ws,r,pad(['Groupe','Ligne','Prévu','Réel saisi','Retenu']).map((x,i)=> i===cCls-1?'Classe': i===cMark-1?'Marque': i===cKey-1?'Clé': x),XC.grey); const p1=r; let bj=0; const cats=(Y().persons[p]||{}).cats||[];
-    persoGroups(p).forEach(g=>{ const ls=cats.filter(l=>l.group===g); if(!ls.length) return; const g0=r;
+  people.forEach(p=>{ r=xSec(ws,r,'👛 Dépenses perso · '+p,XC.grey,N); r=xHead(ws,r,pad(['Groupe','Ligne','Prévu','Réel saisi','Retenu']).map((x,i)=> i===cCls-1?'Classe': i===cMark-1?'Marque': i===cKey-1?'Clé': x),XC.grey); tpRow[p]=r; ppRow[p]=r+1; r+=2; const p1=r; let bj=0; const cats=(Y().persons[p]||{}).cats||[];
+    persoGroups(p).forEach(g=>{ const ls=cats.filter(l=>l.group===g); if(!ls.length) return; const gt=r; r++; const g0=r;
       ls.forEach(l=>{ const row=r; let pv,rv,ef; if(l.auto){ pv={formula:`ROUND($F$${revRow[p]}*${(l.rate||10)/100},0)`}; rv=null; ef={formula:`C${row}`}; } else { pv=lvPlan(l,m); rv=(l.real||[])[m]; ef={formula:`IF(D${row}="",C${row},D${row})`}; }
         const vals=pad([g,l.name+(l.auto?' (auto '+(l.rate||10)+' % des entrées)':'')+(l.archived?' (archivée)':''),pv,isSet(rv)?+rv:null,ef]); vals[cCls-1]=aclsTxt(bucketOf(l)); vals[cMark-1]=isSavLine(l)?'oui':''; vals[cKey-1]=l.id; r=xRow(ws,row,vals,{nf:XNF}); if(!l.auto&&isSet(rv)&&+rv>pv+0.5) xRed(ws,row,4); xKey(ws,row,cKey); xBand(ws,row,N,bj++); });
-      const gt=pad(['Total '+g,'',xSum('C',g0,r-1),xSum('D',g0,r-1),xSum('E',g0,r-1)]); gt[cMark-1]='sous-total'; r=xRow(ws,r,gt,{b:true,fill:XC.greySoft,nf:XNF}); });
+      const gtv=pad(['Total '+g,'',xSum('C',g0,r-1),xSum('D',g0,r-1),xSum('E',g0,r-1)]); gtv[cMark-1]='sous-total'; xRow(ws,gt,gtv,{b:true,fill:XC.greyMid,nf:XNF}); });
     const p2=r-1, prng=col=>`${col}${p1}:${col}${p2}`, pmk=`$${C(cMark)}$${p1}:$${C(cMark)}$${p2}`, psif=(col,crit)=>({formula: p2>=p1? (crit==='oui'? `SUMIFS(${prng(col)},${pmk},"oui")` : `SUMIFS(${prng(col)},${pmk},"<>oui",${pmk},"<>sous-total")`) : 0});
-    tpRow[p]=r; const tv=pad(['TOTAL DÉPENSES PERSO '+p+' (hors épargne placée)','',psif('C'),psif('D'),psif('E')]); tv[cKey-1]='TP|'+p; r=xRow(ws,r,tv,{b:true,fill:XC.grey,color:XC.white,nf:XNF}); ws.getCell(tpRow[p],cKey).font={name:'Arial',size:8,color:{argb:'FFDDE2EA'}};
-    ppRow[p]=r; const pp=pad(['Épargne placée · '+p,'',psif('C','oui'),psif('D','oui'),psif('E','oui')]); pp[cKey-1]='PP|'+p; r=xRow(ws,r,pp,{b:true,fill:XC.greenSoft,nf:XNF}); xKey(ws,ppRow[p],cKey); r++; });
-  // ── Bilan (formules)
-  r=xSec(ws,r,'🧾 Bilan du mois',XC.rose,N); const bh=['']; people.forEach(p=>bh.push('Prévu '+p,'Réel '+p)); bh.push('Prévu couple','Réel couple'); r=xHead(ws,r,pad(bh),XC.rose);
-  const colP=i=>2+2*i, colR=i=>3+2*i, bRows={};
-  const bl=(lbl,key,fnP,fnR,o)=>{ const row=r; const vals=[lbl]; people.forEach((p,i)=>{ vals.push({formula:fnP(p,i,row)},{formula:fnR(p,i,row)}); }); vals.push({formula:people.map((p,i)=>C(colP(i))+row).join('+')},{formula:people.map((p,i)=>C(colR(i))+row).join('+')}); r=xRow(ws,row,pad(vals),Object.assign({nf:XNF},o||{})); bRows[key]=row; };
+    const tv=pad(['TOTAL DÉPENSES PERSO '+p+' (hors épargne placée)','',psif('C'),psif('D'),psif('E')]); tv[cKey-1]='TP|'+p; xRow(ws,tpRow[p],tv,{b:true,fill:XC.grey,color:XC.white,nf:XNF}); ws.getCell(tpRow[p],cKey).font={name:'Arial',size:8,color:{argb:'FFDDE2EA'}};
+    const pp=pad(['Épargne placée · '+p+' (lignes marquées « oui »)','',psif('C','oui'),psif('D','oui'),psif('E','oui')]); pp[cKey-1]='PP|'+p; xRow(ws,ppRow[p],pp,{b:true,fill:XC.greenSoft,nf:XNF}); xKey(ws,ppRow[p],cKey); r++; });
+  // ── Synthèse (remplissage) : bilan en formules + virement prévu
+  const bh=['']; people.forEach(p=>bh.push('Prévu '+p,'Réel '+p)); bh.push('Prévu couple','Réel couple'); xHead(ws,synHead,pad(bh),XC.rose);
+  const colP=i=>2+2*i, colR=i=>3+2*i;
   const shareP=(baseRef,p,i)=> i<nP-1? `ROUND(${baseRef}*${pro(p)},2)` : `${baseRef}-${people.slice(0,-1).map(q=>'ROUND('+baseRef+'*'+pro(q)+',2)').join('-')}`;
-  bl('💰 Entrées','ent',(p)=>`$F$${revRow[p]}`,(p)=>`$F$${revRow[p]}`);
-  bl('🏠 Part des communes','com',(p,i)=>shareP('$C$'+tcRow,p,i),(p,i)=>`${C(6+i)}${tcRow}`);
-  bl('👛 Dépenses perso','ind',(p)=>`C${tpRow[p]}`,(p)=>`E${tpRow[p]}`);
-  bl('🏦 Placé en épargne','pl',(p,i)=>`${shareP('$C$'+plcRow,p,i)}+C${ppRow[p]}`,(p,i)=>`${C(6+i)}${plcRow}+E${ppRow[p]}`);
-  bl('💧 Trésorerie (reste sur le compte)','tr',(p,i)=>`${C(colP(i))}${bRows.ent}-${C(colP(i))}${bRows.com}-${C(colP(i))}${bRows.ind}-${C(colP(i))}${bRows.pl}`,(p,i)=>`${C(colR(i))}${bRows.ent}-${C(colR(i))}${bRows.com}-${C(colR(i))}${bRows.ind}-${C(colR(i))}${bRows.pl}`,{b:true,fill:XC.roseSoft});
-  bl('🐷 Épargne totale (trésorerie + placé)','ep',(p,i)=>`${C(colP(i))}${bRows.tr}+${C(colP(i))}${bRows.pl}`,(p,i)=>`${C(colR(i))}${bRows.tr}+${C(colR(i))}${bRows.pl}`,{b:true,fill:XC.greenSoft}); r++;
+  const bl=(row,lbl,fnP,fnR,o)=>{ const vals=[lbl]; people.forEach((p,i)=>{ vals.push(fnP?{formula:fnP(p,i)}:null, fnR?{formula:fnR(p,i)}:null); }); vals.push(fnP?{formula:people.map((p,i)=>C(colP(i))+row).join('+')}:null, fnR?{formula:people.map((p,i)=>C(colR(i))+row).join('+')}:null); xRow(ws,row,pad(vals),Object.assign({nf:XNF},o||{})); };
+  bl(S.ent,'💰 Entrées',(p)=>`$F$${revRow[p]}`,(p)=>`$F$${revRow[p]}`,{b:true,fill:XC.greenSoft});
+  bl(S.com,'🏠 Part des communes (hors épargne placée)',(p,i)=>shareP('$C$'+tcRow,p,i),(p,i)=>`${C(6+i)}${tcRow}`,{fill:XC.greySoft});
+  bl(S.ind,'👛 Dépenses perso',(p)=>`C${tpRow[p]}`,(p)=>`E${tpRow[p]}`,{fill:XC.greySoft});
+  bl(S.pl,'🏦 Placé en épargne (commun au prorata + perso)',(p,i)=>`${shareP('$C$'+plcRow,p,i)}+C${ppRow[p]}`,(p,i)=>`${C(6+i)}${plcRow}+E${ppRow[p]}`,{fill:XC.greenSoft});
+  bl(S.tr,'💧 Trésorerie = entrées − communes − perso − placé',(p,i)=>`${C(colP(i))}${S.ent}-${C(colP(i))}${S.com}-${C(colP(i))}${S.ind}-${C(colP(i))}${S.pl}`,(p,i)=>`${C(colR(i))}${S.ent}-${C(colR(i))}${S.com}-${C(colR(i))}${S.ind}-${C(colR(i))}${S.pl}`,{b:true,fill:XC.rose,color:XC.white});
+  bl(S.ep,'🐷 Épargne totale = trésorerie + placé',(p,i)=>`${C(colP(i))}${S.tr}+${C(colP(i))}${S.pl}`,(p,i)=>`${C(colR(i))}${S.tr}+${C(colR(i))}${S.pl}`,{b:true,fill:XC.green,color:XC.white});
+  bl(S.vir,'💸 Virement prévu au compte joint (communes + épargne commune, part du prévu)',(p,i)=>shareP(`($C$${tcRow}+$C$${plcRow})`,p,i),null,{b:true,fill:XC.roseSoft});
+  ws.getCell(S.vir,cKey).value='VIR'; xKey(ws,S.vir,cKey); people.forEach((p,i)=>{ /* parts du virement aussi dans les colonnes Part (F..) pour l'onglet Année */ ws.getCell(S.vir,6+i).value={formula:`${C(colP(i))}${S.vir}`}; xStyle(ws.getCell(S.vir,6+i),{b:true,fill:XC.roseSoft,nf:XNF,al:{horizontal:'right'}}); });
   // ── Projets / Exceptionnel / Envois (données)
   const prs=projList(); if(prs.length){ r=xSec(ws,r,'🎯 Projets — contributions du mois',XC.amber,N); r=xHead(ws,r,pad(['Projet','Pour',...people,'Total mois','Cumul projet','Cible','Reste']),XC.amber); prs.forEach((pr,i)=>{ const row=r; const cs=people.map(p=>projContrib(pr,p,YEARK,m)); r=xRow(ws,r,pad([pr.name||'Projet',projOwnerLbl(pr).replace(/^\S+\s/,''),...cs,{formula:`SUM(${C(3)}${row}:${C(2+nP)}${row})`},projTotal(pr),pr.target||0,projRemaining(pr)]),{nf:XNF}); xBand(ws,row,N,i); }); r++; }
   const ex=excList().filter(e=>+e.month===m); if(ex.length){ r=xSec(ws,r,'🎁 Exceptionnel du mois',XC.amber,N); r=xHead(ws,r,pad(['Libellé','Nature','Qui','Montant','Sens']),XC.amber); ex.forEach((e,i)=>{ const nat=excNat(e.nature); r=xRow(ws,r,pad([e.label||e.libelle||nat.lbl,nat.lbl,excOwner(e),+e.montant||0,nat.cash>0?'entrée':'sortie']),{nf:XNF}); xBand(ws,r-1,5,i); }); r++; }
   const trs=transList().filter(t=>t.date&&+t.date.slice(5,7)===m+1&&+t.date.slice(0,4)===+YEARK); if(trs.length){ r=xSec(ws,r,'✈️ Envois du mois',XC.green,N); r=xHead(ws,r,pad(['Date','Service','Bénéficiaire','Motif','Montant €','Frais €','FCFA reçus']),XC.green); trs.forEach((t,i)=>{ const row=r; r=xRow(ws,r,pad([t.date,t.provider||'',t.beneficiary||'',t.motif||'',+t.eur||0,trFee(t),+t.fcfa||0]),{nf:XNF}); ws.getCell(row,7).numFmt='#,##0'; xBand(ws,row,7,i); }); }
+  const kc=ws.getColumn(cKey); kc.outlineLevel=1; kc.hidden=true; ws.properties.outlineProperties={summaryRight:false,summaryBelow:false};
   return ws; }
-function xYear(wb){ const K=xKeyCol(), tabs=MSHORT.map((_,m)=>xTab(m)); const ws=wb.addWorksheet(xYearTab(),{properties:{tabColor:{argb:'FF'+XC.slate}},views:[{state:'frozen',xSplit:2,ySplit:3,showGridLines:false}]});
-  ws.columns=[{width:30},{width:28},...MSHORT.map(()=>({width:11})),{width:13},{width:13},{width:12},{width:14}]; const N=18, kc=18;
-  let r=xTitle(ws,1,'📊 Année '+YEARK+' — tout en colonnes, relié aux onglets mois','Chaque cellule renvoie à l’onglet du mois (par la colonne Clé) : modifie un mois, l’année suit. Mois en gris = aucun réel saisi dans l’appli · « Prévu an » = somme des prévus des 12 onglets',XC.slate,N);
+function xYear(wb){ const K=xKeyCol(), tabs=MSHORT.map((_,m)=>xTab(m)), nP=people.length; const ws=wb.addWorksheet(xYearTab(),{properties:{tabColor:{argb:'FF'+XC.slate}},views:[{state:'frozen',xSplit:2,ySplit:3,showGridLines:false}]});
+  ws.columns=[{width:34},{width:30},...MSHORT.map(()=>({width:11})),{width:13},{width:13},{width:12},{width:14}]; const N=18, kc=18;
+  let r=xTitle(ws,1,'📊 Année '+YEARK+' — bilan en tête, détail ensuite, relié aux onglets mois','Chaque cellule renvoie à l’onglet du mois (par la colonne Clé) : modifie un mois, l’année suit. Mois en gris = aucun réel saisi dans l’appli · « Prévu an » = somme des prévus des 12 onglets',XC.slate,N);
   const H=(title,color)=>{ r=xSec(ws,r,title,color,N); r=xHead(ws,r,['Poste','Détail',...MSHORT,'Total','Prévu an','Moy. / mois','Clé'],color); };
   const grey=row=>{ for(let m=0;m<12;m++){ if(!realizedMonth(m)){ const c=ws.getCell(row,3+m); c.font=Object.assign({},c.font,{color:{argb:'FF'+XC.muted}}); } } };
   const sumifs=(tab,col,row)=>`SUMIFS('${tab}'!$${col}:$${col},'${tab}'!$${K}:$${K},$R${row})`;
-  const putK=(lbl,sub,key,col,o,planCol)=>{ const row=r; const vals=[lbl,sub,...MSHORT.map((_,m)=>({formula:sumifs(tabs[m],col,row)})),{formula:`SUM(C${row}:N${row})`},planCol?{formula:MSHORT.map((_,m)=>sumifs(tabs[m],planCol,row)).join('+')}:null,{formula:`SUM(C${row}:N${row})/12`},key]; r=xRow(ws,row,vals,Object.assign({nf:XNF},o||{})); if(!(o&&o.color)) grey(row); xKey(ws,row,kc); return row; };
-  const putF=(lbl,sub,fn,o,noTot)=>{ const row=r; const vals=[lbl,sub,...MSHORT.map((_,m)=>({formula:fn(XL(3+m),m)})),noTot?null:{formula:`SUM(C${row}:N${row})`},null,noTot?null:{formula:`SUM(C${row}:N${row})/12`},'']; r=xRow(ws,row,vals,Object.assign({nf:XNF},o||{})); if(!(o&&o.color)) grey(row); return row; };
+  const putK=(lbl,sub,key,col,o,planCol,at)=>{ const row=at||r; const vals=[lbl,sub,...MSHORT.map((_,m)=>({formula:sumifs(tabs[m],col,row)})),{formula:`SUM(C${row}:N${row})`},planCol?{formula:MSHORT.map((_,m)=>sumifs(tabs[m],planCol,row)).join('+')}:null,{formula:`SUM(C${row}:N${row})/12`},key]; xRow(ws,row,vals,Object.assign({nf:XNF},o||{})); if(!(o&&o.color)) grey(row); xKey(ws,row,kc); if(!at) r++; return row; };
+  const putF=(lbl,sub,fn,o,noTot,at)=>{ const row=at||r; const vals=[lbl,sub,...MSHORT.map((_,m)=>({formula:fn(XL(3+m),m)})),noTot?null:{formula:`SUM(C${row}:N${row})`},null,noTot?null:{formula:`SUM(C${row}:N${row})/12`},'']; xRow(ws,row,vals,Object.assign({nf:XNF},o||{})); if(!(o&&o.color)) grey(row); if(!at) r++; return row; };
   r=xRow(ws,r,['État du mois dans l’appli','',...MSHORT.map((_,m)=>realizedMonth(m)?'réel saisi':'prévu'),'','','',''],{i:true,color:XC.muted});
-  H('💰 Revenus',XC.green); const entRow={}; people.forEach(p=>{ entRow[p]=putK(p,'salaire + primes + revenus perso','R|'+p,'F'); }); const entTot=putF('Total entrées','',c=>people.map(p=>c+entRow[p]).join('+'),{b:true,fill:XC.greenSoft});
-  H('🏠 Dépenses communes (retenu = réel saisi, sinon prévu)',XC.slate); foyerGroups().forEach(g=>Y().foyer.filter(l=>l.group===g).forEach(l=>putK(g,l.name+(isSavLine(l)?' (épargne placée)':'')+(l.archived?' (archivée)':''),l.id,'E',null,'C')));
-  const tcY=putK('TOTAL communes (hors épargne placée)','','TC','E',{b:true,fill:XC.slate,color:XC.white},'C'); const partRow={}; people.forEach((p,i)=>{ partRow[p]=putK('Part '+p,'prorata des salaires du mois','TC',XL(6+i),{fill:XC.greySoft}); });
-  const virRow={}; people.forEach((p,i)=>{ virRow[p]=putK('Virement prévu au compte joint · '+p,'part du prévu, épargne commune comprise','VIR',XL(6+i),{fill:XC.roseSoft}); });
-  const tpY={}; people.forEach(p=>{ H('👛 Dépenses perso · '+p,XC.grey); const cats=(Y().persons[p]||{}).cats||[]; persoGroups(p).forEach(g=>cats.filter(l=>l.group===g).forEach(l=>putK(g,l.name+(l.auto?' (auto)':'')+(isSavLine(l)?' (épargne placée)':'')+(l.archived?' (archivée)':''),l.id,'E',null,'C'))); tpY[p]=putK('TOTAL perso '+p+' (hors épargne placée)','','TP|'+p,'E',{b:true,fill:XC.grey,color:XC.white},'C'); });
-  H('🏦 Épargne placée',XC.green); const plcY=putK('Épargne placée en commun','lignes communes marquées « oui »','PLC','E',null,'C'); const plcPart={}; people.forEach((p,i)=>{ plcPart[p]=putK('   dont part '+p,'','PLC',XL(6+i),{color:XC.grey}); }); const ppY={}; people.forEach(p=>{ ppY[p]=putK('Épargne placée · '+p,'lignes perso marquées « oui »','PP|'+p,'E',null,'C'); }); const plTot=putF('Total placé','',c=>`${c}${plcY}+${people.map(p=>c+ppY[p]).join('+')}`,{b:true,fill:XC.greenSoft});
-  H('🧾 Bilan',XC.rose); const trY={}, epY={};
-  people.forEach(p=>{ trY[p]=putF(p,'💧 Trésorerie = entrées − part communes − perso − placé',c=>`${c}${entRow[p]}-${c}${partRow[p]}-${c}${tpY[p]}-${c}${plcPart[p]}-${c}${ppY[p]}`); epY[p]=putF(p,'🐷 Épargne totale = trésorerie + placé',c=>`${c}${trY[p]}+${c}${plcPart[p]}+${c}${ppY[p]}`,{b:true}); });
-  const trC=putF('Couple','💧 Trésorerie',c=>people.map(p=>c+trY[p]).join('+'),{b:true,fill:XC.roseSoft}); const epC=putF('Couple','🐷 Épargne totale',c=>people.map(p=>c+epY[p]).join('+'),{b:true,fill:XC.greenSoft});
-  const cumRow=putF('Couple','Cumul épargne',(c,m)=> m===0? `${c}${epC}` : `${XL(2+m)}${r}+${c}${epC}`,{b:true},true); const txRow=putF('Couple','Taux d’épargne',c=>`IF(${c}${entTot}=0,0,${c}${epC}/${c}${entTot})`,{nf:'0 %'},true);
-  { const c=ws.getCell(txRow,15); c.value={formula:`IF(O${entTot}=0,0,O${epC}/O${entTot})`}; c.numFmt='0 %'; c.font={name:'Arial',size:10,bold:true,color:{argb:'FF'+XC.ink}}; }
+  // ── Bilan en tête (réservé)
+  H('🧾 Bilan de l’année — en tête',XC.rose); const B={}; people.forEach(p=>{ B['tr|'+p]=r++; B['ep|'+p]=r++; }); B.trC=r++; B.epC=r++; B.cum=r++; B.tx=r++; r++;
+  // ── Revenus : total d'abord
+  H('💰 Revenus',XC.green); const entTot=r++; const entRow={}; people.forEach(p=>{ entRow[p]=putK(p,'salaire + primes + revenus perso','R|'+p,'F'); }); putF('Total entrées','',c=>people.map(p=>c+entRow[p]).join('+'),{b:true,fill:XC.greenSoft},false,entTot); r++;
+  // ── Communes : totaux, parts, virements d'abord
+  H('🏠 Dépenses communes (retenu = réel saisi, sinon prévu)',XC.slate); const tcY=r++; const partRow={}, virRow={}; people.forEach(p=>{ partRow[p]=r++; }); people.forEach(p=>{ virRow[p]=r++; });
+  foyerGroups().forEach(g=>Y().foyer.filter(l=>l.group===g).forEach(l=>putK(g,l.name+(isSavLine(l)?' (épargne placée)':'')+(l.archived?' (archivée)':''),l.id,'E',null,'C')));
+  putK('TOTAL communes (hors épargne placée)','','TC','E',{b:true,fill:XC.slate,color:XC.white},'C',tcY); people.forEach((p,i)=>{ putK('Part '+p,'prorata des salaires du mois','TC',XL(6+i),{fill:XC.greySoft},null,partRow[p]); putK('Virement prévu au compte joint · '+p,'part du prévu, épargne commune comprise','VIR',XL(6+i),{fill:XC.roseSoft},null,virRow[p]); }); r++;
+  // ── Perso : total d'abord
+  const tpY={}; people.forEach(p=>{ H('👛 Dépenses perso · '+p,XC.grey); tpY[p]=r++; const cats=(Y().persons[p]||{}).cats||[]; persoGroups(p).forEach(g=>cats.filter(l=>l.group===g).forEach(l=>putK(g,l.name+(l.auto?' (auto)':'')+(isSavLine(l)?' (épargne placée)':'')+(l.archived?' (archivée)':''),l.id,'E',null,'C'))); putK('TOTAL perso '+p+' (hors épargne placée)','','TP|'+p,'E',{b:true,fill:XC.grey,color:XC.white},'C',tpY[p]); r++; });
+  // ── Épargne placée : total d'abord
+  H('🏦 Épargne placée',XC.green); const plTot=r++; const plcY=putK('Épargne placée en commun','lignes communes marquées « oui »','PLC','E',null,'C'); const plcPart={}; people.forEach((p,i)=>{ plcPart[p]=putK('   dont part '+p,'','PLC',XL(6+i),{color:XC.grey}); }); const ppY={}; people.forEach(p=>{ ppY[p]=putK('Épargne placée · '+p,'lignes perso marquées « oui »','PP|'+p,'E',null,'C'); }); putF('Total placé','',c=>`${c}${plcY}+${people.map(p=>c+ppY[p]).join('+')}`,{b:true,fill:XC.greenSoft},false,plTot); r++;
+  // ── Bilan (remplissage des lignes réservées)
+  const trY={}, epY={};
+  people.forEach(p=>{ trY[p]=putF(p,'💧 Trésorerie = entrées − part communes − perso − placé',c=>`${c}${entRow[p]}-${c}${partRow[p]}-${c}${tpY[p]}-${c}${plcPart[p]}-${c}${ppY[p]}`,{fill:XC.roseSoft},false,B['tr|'+p]); epY[p]=putF(p,'🐷 Épargne totale = trésorerie + placé',c=>`${c}${trY[p]}+${c}${plcPart[p]}+${c}${ppY[p]}`,{b:true,fill:XC.greenSoft},false,B['ep|'+p]); });
+  const trC=putF('Couple','💧 Trésorerie',c=>people.map(p=>c+trY[p]).join('+'),{b:true,fill:XC.rose,color:XC.white},false,B.trC); const epC=putF('Couple','🐷 Épargne totale',c=>people.map(p=>c+epY[p]).join('+'),{b:true,fill:XC.green,color:XC.white},false,B.epC);
+  putF('Couple','Cumul épargne',(c,m)=> m===0? `${c}${epC}` : `${XL(2+m)}${B.cum}+${c}${epC}`,{b:true},true,B.cum); putF('Couple','Taux d’épargne',c=>`IF(${c}${entTot}=0,0,${c}${epC}/${c}${entTot})`,{nf:'0 %'},true,B.tx);
+  { const c=ws.getCell(B.tx,15); c.value={formula:`IF(O${entTot}=0,0,O${epC}/O${entTot})`}; c.numFmt='0 %'; c.font={name:'Arial',size:10,bold:true,color:{argb:'FF'+XC.ink}}; }
   const prs=projList(); if(prs.length){ H('🎯 Projets — contributions '+YEARK+' (données)',XC.amber); prs.forEach(pr=>people.forEach(p=>{ const vals=MSHORT.map((_,m)=>projContrib(pr,p,YEARK,m)); if(vals.some(v=>v)){ const row=r; r=xRow(ws,row,[pr.name||'Projet',p,...vals,{formula:`SUM(C${row}:N${row})`},null,{formula:`SUM(C${row}:N${row})/12`},''],{nf:XNF}); } })); }
+  const kcol=ws.getColumn(kc); kcol.outlineLevel=1; kcol.hidden=true; ws.properties.outlineProperties={summaryRight:false,summaryBelow:false};
   return {ws, entTot, tcY, tpY, plcY, ppY, plTot, trC, epC, entRow, partRow, epY, trY}; }
 function xCover(wb,Yr){ const ws=wb.addWorksheet('Couverture',{properties:{tabColor:{argb:'FF'+XC.rose}},views:[{showGridLines:false}]}); ws.columns=[{width:40},{width:18},{width:18},{width:18},{width:18}]; const N=5; const A=`'${xYearTab()}'!`;
   let r=xTitle(ws,1,'🏠 Budget Famille · '+YEARK,'Exporté depuis l’appli le '+new Date().toLocaleDateString('fr-FR')+' · '+people.join(' & ')+' · toutes les cellules de cette page renvoient à l’onglet Année, lui-même relié aux onglets mois',XC.slate,N);
