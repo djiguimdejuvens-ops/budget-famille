@@ -604,7 +604,7 @@ function secMain(){
   h+=secBilan(m,f);
   // 5b — VIREMENTS DU MOIS : ce que chacun vire au compte joint + garde pour ses dépenses perso (texte partageable SMS / WhatsApp)
   h+=`<div class="sec"><h2>💸 Virements du mois${infoTip('Une fois le budget saisi : pour chacun, ce qu’il vire au compte joint (sa part de chaque catégorie commune, au prorata des salaires) et ce qu’il garde pour ses dépenses perso. Le récapitulatif s’envoie par SMS, WhatsApp ou n’importe quelle appli de messagerie.')}</h2></div>`;
-  h+=`<div class="card tight"><div class="row" style="padding:0;gap:10px;flex-wrap:wrap"><div class="nm" style="flex:1;min-width:170px"><b>${ok? people.map(p=>esc(p)+' → joint '+eur(communeShare(p,m,'planned')+prorataN(p,m)*foyerPlaced(m,'planned'))).join(' · ') : 'Répartition non calculable (aucun salaire)'}</b><span>budget prévu ${esc(MONTHS[m])} · détail par catégorie, dépenses perso, envoi SMS / WhatsApp</span></div><button class="editbtn" onclick="openVirements()">💸 Préparer les virements</button></div></div>`;
+  h+=`<div class="card tight"><div class="row" style="padding:0;gap:10px;flex-wrap:wrap"><div class="nm" style="flex:1;min-width:170px"><b>${ok? people.map((p,i)=>esc(p)+' → joint '+eur2((psT?psT[i]:0)+((splitParts(foyerPlaced(m,f),m)||[])[i]||0))).join(' · ') : 'Répartition non calculable (aucun salaire)'}</b><span>${esc(MONTHS[m])} · = « à sa charge » ci-dessus (réel saisi, prévu pour le reste) · détail par catégorie, envoi SMS / WhatsApp</span></div><button class="editbtn" onclick="openVirements()">💸 Préparer les virements</button></div></div>`;
   // 6 — PROJETS (épargne affectée) — rendu par le module Projets
   if(typeof secProjetsSummary==='function') h+=secProjetsSummary(m);
   return h;
@@ -1203,16 +1203,17 @@ function archivedBlock(){ const items=[]; Y().foyer.forEach(l=>{ if(l.archived) 
       its.forEach(({l})=>{ const tot=sumM(m=>(l.real||[])[m]||0); b+=`<div class="row"><div class="nm" style="flex:1;min-width:0"><b style="color:var(--muted)">${esc(l.name)}</b><span>${archSince(l)?archSince(l)+' · ':''}réel ${eur(tot)}</span></div><button class="editbtn" onclick="unarchiveLine('${kind}','${l.id}',${pq})">Restaurer</button><button class="delbtn" style="margin-left:6px" title="Supprimer définitivement" onclick="delLine('${kind}','${l.id}',${pq})">🗑️</button></div>`; }); }); }
   return b+'</div>'; }
 /* ── VIREMENTS DU MOIS : ce que chacun vire au compte joint (sa part de chaque catégorie commune, au centime) + ses dépenses perso + son épargne placée ; texte partageable (SMS, WhatsApp, partage système) ── */
-let VIRF='planned';
+let VIRF='real'; // même base que la page Foyer : réel saisi, prévu pour le reste (« Budget prévu » reste disponible)
 function openVirements(){ DETAIL={level:'virements'}; showDetail(); }
 function setVirF(f){ VIRF=(f==='real')?'real':'planned'; renderDetail(); }
 function virData(m,f){ const ok=prorataOK(m), fg=foyerGroups(), r=a=>Math.round(a.reduce((s,x)=>s+x.amt,0)*100)/100;
   return people.map((p,i)=>{ const part=(g,kind)=>{ const tot=foyerGroupTotal(g,m,f,kind); const ps=(tot&&ok)? splitParts(tot,m) : null; return {g, amt: ps? ps[i] : 0}; };
     const com=fg.map(g=>part(g,'exp')).filter(x=>x.amt>0.004), comSav=fg.map(g=>part(g,'sav')).filter(x=>x.amt>0.004);
     const perso=persoGroups(p).map(g=>({g, amt:Math.round(persoGroupTotal(p,g,m,f,'exp')*100)/100})).filter(x=>x.amt>0.004), persoSav=persoGroups(p).map(g=>({g, amt:Math.round(persoGroupTotal(p,g,m,f,'sav')*100)/100})).filter(x=>x.amt>0.004);
-    const tCom=r(com), tComSav=r(comSav), tPerso=r(perso), tPersoSav=r(persoSav), inc=personFullIncome(p,m);
+    const fix=(arr,total)=>{ const ps=(total&&ok)? splitParts(total,m) : null; const target= ps? ps[i] : 0; const d=Math.round((target-r(arr))*100)/100; if(Math.abs(d)>=0.01&&arr.length){ const big=arr.reduce((a,b)=>b.amt>a.amt?b:a,arr[0]); big.amt=Math.round((big.amt+d)*100)/100; } return target; }; // Σ des parts par catégorie = part du total, au centime (même chiffre que « à sa charge » sur la page Foyer)
+    const tCom=fix(com,foyerTotal(m,f)), tComSav=fix(comSav,foyerPlaced(m,f)), tPerso=r(perso), tPersoSav=r(persoSav), inc=personFullIncome(p,m);
     return {p, ok, pct:pctP(p,m), com, comSav, perso, persoSav, tCom, tComSav, tPerso, tPersoSav, inc, eng:tCom+tComSav+tPerso+tPersoSav, reste:inc-tCom-tComSav-tPerso-tPersoSav}; }); }
-function virText(m,f){ const d=virData(m,f), L=['💸 Virements · '+MONTHS[m]+' '+YEARK+' ('+(f==='planned'?'budget prévu':'réel')+')'];
+function virText(m,f){ const d=virData(m,f), L=['💸 Virements · '+MONTHS[m]+' '+YEARK+' ('+(f==='planned'?'budget prévu':'réel saisi, prévu pour le reste')+')'];
   d.forEach(x=>{ L.push(''); L.push('👤 '+x.p+(x.ok?' — '+x.pct+' des communes':''));
     if(!x.ok) L.push('⚠️ '+PRORATA_NA); else { L.push('→ Virer au compte joint : '+eur2(x.tCom+x.tComSav)); x.com.forEach(c=>L.push('   · '+c.g+' : '+eur2(c.amt))); x.comSav.forEach(c=>L.push('   · '+c.g+' (épargne) : '+eur2(c.amt))); }
     L.push('→ Garder pour ses dépenses perso : '+eur2(x.tPerso)); x.perso.forEach(c=>L.push('   · '+c.g+' : '+eur2(c.amt)));
@@ -1220,9 +1221,9 @@ function virText(m,f){ const d=virData(m,f), L=['💸 Virements · '+MONTHS[m]+'
     L.push('= Engagé '+eur2(x.eng)+' sur '+eur2(x.inc)+' d’entrées · reste '+eur2(x.reste)); });
   L.push(''); L.push('— Budget Famille'); return L.join('\n'); }
 function renderVirDetail(){ const head=document.getElementById('detailHead'), body=document.getElementById('detailBody'); const m=MONTH, f=VIRF, d=virData(m,f);
-  head.innerHTML=`<div class="dhead"><button class="bk" onclick="closeDetail()">✕</button><h3>💸 Virements du mois</h3><span class="tot">${esc(MSHORT[m])} ${YEARK}<small style="display:block;font-size:11px;color:var(--muted);font-weight:600;text-align:right">${f==='planned'?'budget prévu':'réel'}</small></span></div>`;
-  let h=`<div class="seg sub" style="margin:0 0 8px"><button class="${f==='planned'?'on':''}" onclick="setVirF('planned')">📋 Budget prévu</button><button class="${f==='real'?'on':''}" onclick="setVirF('real')">✅ Réel du mois</button></div>`;
-  h+=`<div class="note" style="margin:0 2px 8px">Pour chacun : ce qu’il vire au <b>compte joint</b> (sa part de chaque catégorie commune, au prorata des salaires, au centime) et ce qu’il <b>garde</b> pour ses dépenses perso.</div>`;
+  head.innerHTML=`<div class="dhead"><button class="bk" onclick="closeDetail()">✕</button><h3>💸 Virements du mois</h3><span class="tot">${esc(MSHORT[m])} ${YEARK}<small style="display:block;font-size:11px;color:var(--muted);font-weight:600;text-align:right">${f==='planned'?'budget prévu':'réel saisi · prévu pour le reste'}</small></span></div>`;
+  let h=`<div class="seg sub" style="margin:0 0 8px"><button class="${f==='real'?'on':''}" onclick="setVirF('real')">✅ Ce mois (comme la page Foyer)</button><button class="${f==='planned'?'on':''}" onclick="setVirF('planned')">📋 Budget prévu</button></div>`;
+  h+=`<div class="note" style="margin:0 2px 8px">Pour chacun : ce qu’il vire au <b>compte joint</b> (sa part de chaque catégorie commune, au prorata des salaires, au centime — le total est exactement le « à sa charge » de la page Foyer) et ce qu’il <b>garde</b> pour ses dépenses perso. ${f==='planned'?'Base : budget prévu pur.':'Base : réel saisi, prévu pour les cases vides.'}</div>`;
   const sect=(title,tot,items,emoji)=>{ if(!items.length&&!tot) return ''; let s=`<div class="subline" style="padding:8px 2px 3px"><span class="sn"><b>${emoji} ${title}</b></span><span class="sv">${eur2(tot)}</span></div>`; items.forEach(it=>{ s+=`<div class="subline" style="padding:3px 2px 3px 22px;font-size:13px;border:none"><span class="sn" style="color:var(--muted)">${esc(it.g)}</span><span class="sv" style="font-weight:600">${eur2(it.amt)}</span></div>`; }); return s; };
   d.forEach(x=>{ const c=pcol(x.p); h+=`<div class="card tight" style="margin:0 0 10px"><div class="row" style="padding:0 0 4px"><div class="ic sm" style="background:${tint(c)};color:${c}">👤</div><div class="nm"><b>${esc(x.p)}</b><span>${x.ok?x.pct+' des communes':'répartition non calculable'} · ${eur(x.inc)} d’entrées</span></div><div class="amt">${eur2(x.eng)}<small>engagé</small></div></div>`;
     if(!x.ok) h+=prorataNote(m,true); else h+=sect('Virer au compte joint',x.tCom+x.tComSav,[...x.com,...x.comSav.map(c=>({g:c.g+' (épargne)',amt:c.amt}))],'🏦');
